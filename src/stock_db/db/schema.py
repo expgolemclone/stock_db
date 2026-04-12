@@ -72,7 +72,7 @@ def _migrate(conn: sqlite3.Connection) -> None:
         }
         for col_name, col_type in new_cols.items():
             if col_name not in stock_cols:
-                conn.execute(f"ALTER TABLE stocks ADD COLUMN {col_name} {col_type}")
+                conn.execute(f"ALTER TABLE stocks ADD COLUMN {col_name} {col_type}")  # noqa: S608
         if "edinet_code" not in stock_cols:
             conn.execute(
                 "CREATE UNIQUE INDEX IF NOT EXISTS idx_stocks_edinet_code "
