@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import argparse
 import csv
 import io
 import logging
@@ -10,7 +9,7 @@ from pathlib import Path
 
 import requests
 
-logger: logging.Logger = logging.getLogger("stock_db.scraping.validation_sites")
+logger: logging.Logger = logging.getLogger("stock_db.sources.validation.site_list")
 
 _TRANCO_URL = "https://tranco-list.eu/top-1m.csv.zip"
 _DEFAULT_COUNT = 5000
@@ -144,19 +143,3 @@ def generate_validation_sites(output: Path, *, count: int = _DEFAULT_COUNT) -> i
     output.write_text("\n".join(domains) + "\n")
     logger.info("Wrote %d domains to %s", len(domains), output)
     return len(domains)
-
-
-def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="proxy 検証用サイトリストを生成",
-    )
-    parser.add_argument(
-        "-o", "--output",
-        type=Path,
-        default=Path("config/validation_sites.txt"),
-    )
-    parser.add_argument("-n", "--count", type=int, default=_DEFAULT_COUNT)
-    args = parser.parse_args()
-
-    logging.basicConfig(level=logging.INFO, format="%(message)s")
-    generate_validation_sites(args.output, count=args.count)

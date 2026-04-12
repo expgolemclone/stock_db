@@ -6,9 +6,9 @@ import threading
 import time
 from pathlib import Path
 
-logger: logging.Logger = logging.getLogger("stock_db.proxy")
+from stock_db.paths import magic_numbers
 
-_DEFAULT_MAX_FAILURES = 2
+logger: logging.Logger = logging.getLogger("stock_db.browser.proxy_pool")
 
 
 class ProxyUnavailableError(RuntimeError):
@@ -31,7 +31,7 @@ class ProxyPool:
         proxies: list[tuple[str, str]] | list[tuple[str, str, str]],
         *,
         direct: bool = False,
-        max_failures: int = _DEFAULT_MAX_FAILURES,
+        max_failures: int | None = None,
     ) -> None:
         self._lock: threading.Lock = threading.Lock()
         self._proxies: list[tuple[str, str, str]] = [
@@ -40,7 +40,12 @@ class ProxyPool:
         ]
         self._index: int = 0
         self._failures: dict[str, int] = {}
-        self._max_failures: int = max_failures
+        effective_max: int = (
+            max_failures
+            if max_failures is not None
+            else magic_numbers()["proxy"]["max_failures"]
+        )
+        self._max_failures: int = effective_max
         self._direct: bool = direct
 
     @property

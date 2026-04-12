@@ -1,0 +1,28 @@
+from __future__ import annotations
+
+import os
+import tomllib
+from functools import lru_cache
+from pathlib import Path
+
+PROJECT_ROOT: Path = Path(__file__).resolve().parent.parent.parent
+VAR_DIR: Path = Path(os.environ.get("STOCK_DB_VAR_DIR", str(PROJECT_ROOT / "var")))
+STOCKS_DB_PATH: Path = VAR_DIR / "db" / "stocks.db"
+IRBANK_DIR: Path = VAR_DIR / "raw" / "irbank"
+BROWSER_SERVICE_DIR: Path = PROJECT_ROOT / "services" / "browser"
+
+
+def _load_toml(name: str) -> dict:
+    path = PROJECT_ROOT / "config" / name
+    with open(path, "rb") as f:
+        return tomllib.load(f)
+
+
+@lru_cache(maxsize=1)
+def magic_numbers() -> dict:
+    return _load_toml("magic_numbers.toml")
+
+
+def cli_defaults(section: str) -> dict:
+    data = _load_toml("cli_defaults.toml")
+    return dict(data[section])

@@ -10,17 +10,16 @@
 !tests/
 !tests/**
 
-!browser_service/
-!browser_service/server.js
-!browser_service/package.json
-!browser_service/package-lock.json
+!services/
+!services/**
 
-!scripts/
-!scripts/**
-!scripts/*.py
+!config/
+!config/**
 
-!data/
-!data/.gitkeep
+!var/
+!var/.gitkeep
+!var/reference/
+!var/reference/**
 
 __pycache__/
 *.pyc

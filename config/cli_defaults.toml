@@ -1,0 +1,9 @@
+[fetch_irbank_files]
+years = 5
+interval_seconds = 1.0
+proxy = "direct"
+output_dir = "var/raw/irbank"
+
+[generate_validation_site_list]
+count = 5000
+output = "var/generated/validation_sites.txt"

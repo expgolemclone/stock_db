@@ -1,19 +1,17 @@
 from __future__ import annotations
 
-import argparse
 import json
 import logging
-import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
 
 import requests
 
-from stock_db.config import IRBANK_DIR
-from stock_db.proxy import ProxyPool, random_delay
+from stock_db.browser.proxy_pool import ProxyPool, random_delay
+from stock_db.paths import IRBANK_DIR, magic_numbers
 
-logger: logging.Logger = logging.getLogger("stock_db.scraping.irbank")
+logger: logging.Logger = logging.getLogger("stock_db.sources.irbank.downloader")
 
 _BASE_URL = "https://f.irbank.net/files"
 _FY_FILES = [
@@ -37,8 +35,6 @@ _HEADERS = {
     "Accept-Encoding": "gzip, deflate, br",
     "Referer": "https://irbank.net/download",
 }
-_DEFAULT_MAX_TRIES = 5
-_DEFAULT_RATE_LIMIT_WAIT = 30.0
 
 
 def year_codes(years: int) -> list[str]:
@@ -73,8 +69,8 @@ def _download_file(
     dest: Path,
     pool: ProxyPool,
     *,
-    max_tries: int = _DEFAULT_MAX_TRIES,
-    rate_limit_wait: float = _DEFAULT_RATE_LIMIT_WAIT,
+    max_tries: int,
+    rate_limit_wait: float,
     timeout: float = 15,
 ) -> bool:
     for _ in range(max_tries):
@@ -131,10 +127,13 @@ def download_irbank_files(
     dest: Path | None = None,
     interval: float = 1.0,
     force: bool = False,
-    max_tries: int = _DEFAULT_MAX_TRIES,
-    rate_limit_wait: float = _DEFAULT_RATE_LIMIT_WAIT,
+    max_tries: int | None = None,
+    rate_limit_wait: float | None = None,
 ) -> tuple[int, int, int]:
     """IR BANK JSON ファイルをダウンロード。(ok, skip, fail) を返す。"""
+    cfg = magic_numbers()["irbank"]
+    effective_max_tries = max_tries if max_tries is not None else cfg["max_tries"]
+    effective_rate_limit_wait = rate_limit_wait if rate_limit_wait is not None else cfg["rate_limit_wait"]
     effective_dest = dest or IRBANK_DIR
     jobs = build_jobs(years, effective_dest)
 
@@ -157,8 +156,8 @@ def download_irbank_files(
         logger.info("[%d/%d] %s", count, total, url)
         if _download_file(
             url, target, pool,
-            max_tries=max_tries,
-            rate_limit_wait=rate_limit_wait,
+            max_tries=effective_max_tries,
+            rate_limit_wait=effective_rate_limit_wait,
         ):
             ok += 1
         else:
@@ -168,40 +167,3 @@ def download_irbank_files(
 
     logger.info("Done: %d downloaded, %d skipped, %d failed", ok, skip, fail)
     return ok, skip, fail
-
-
-def _build_pool(proxy_arg: str) -> ProxyPool:
-    if proxy_arg == "direct":
-        return ProxyPool.make_direct()
-    if proxy_arg.startswith("file:"):
-        return ProxyPool.from_file(Path(proxy_arg.removeprefix("file:")))
-    return ProxyPool.from_url(proxy_arg)
-
-
-def main() -> None:
-    parser = argparse.ArgumentParser(description="IR BANK JSON ファイルをダウンロード")
-    parser.add_argument("--years", type=int, default=5)
-    parser.add_argument("--dest", type=str, default=None)
-    parser.add_argument("--interval", type=float, default=1.0)
-    parser.add_argument("--force", action="store_true")
-    parser.add_argument(
-        "--proxy", type=str, default="direct",
-        help="direct | file:<path> | <proxy-url>",
-    )
-    args = parser.parse_args()
-
-    logging.basicConfig(level=logging.INFO, format="%(message)s")
-    pool = _build_pool(args.proxy)
-    dest = Path(args.dest) if args.dest else None
-    ok, skip, fail = download_irbank_files(
-        pool,
-        years=args.years,
-        dest=dest,
-        interval=args.interval,
-        force=args.force,
-    )
-    if fail > 0:
-        print("再実行で失敗ファイルをリトライできます", file=sys.stderr)
-    if ok + skip > 0:
-        print(f"Import: uv run python -m stock_db import-irbank --dir {dest or IRBANK_DIR}")
-    sys.exit(1 if fail > 0 else 0)

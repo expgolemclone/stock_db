@@ -1,0 +1,9 @@
+[proxy]
+max_failures = 2
+
+[irbank]
+max_tries = 5
+rate_limit_wait = 30.0
+
+[browser]
+startup_poll_interval = 0.25

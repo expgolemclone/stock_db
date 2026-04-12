@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from stock_db.scraping.irbank import build_jobs, is_valid_json_file, year_codes
+from stock_db.sources.irbank.downloader import build_jobs, is_valid_json_file, year_codes
 
 
 class TestYearCodes:

@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from stock_db.db.connection import get_connection
-from stock_db.db.schema import init_db
+from stock_db.storage.connection import get_connection
+from stock_db.storage.schema import init_db
 
 
 @pytest.fixture()

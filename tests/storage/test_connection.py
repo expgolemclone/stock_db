@@ -3,9 +3,7 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
-import pytest
-
-from stock_db.db.connection import get_connection
+from stock_db.storage.connection import get_connection
 
 
 class TestGetConnection:

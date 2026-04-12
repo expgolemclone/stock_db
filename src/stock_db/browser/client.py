@@ -14,10 +14,11 @@ from urllib.parse import unquote, urlsplit
 
 import requests
 
-logger: logging.Logger = logging.getLogger("stock_db.browser_client")
+from stock_db.paths import BROWSER_SERVICE_DIR, magic_numbers
+
+logger: logging.Logger = logging.getLogger("stock_db.browser.client")
 
 _NODE_EXECUTABLE: str = os.environ.get("NODE_PATH", "node")
-_STARTUP_POLL_INTERVAL: float = 0.25
 
 
 class ProxyFields(TypedDict, total=False):
@@ -58,16 +59,16 @@ class BrowserResponse:
     error: str | None
 
 
-class BrowserClientError(RuntimeError):
+class BrowserServiceError(RuntimeError):
     pass
 
 
-class BrowserClient:
+class BrowserServiceClient:
     def __init__(
         self,
         *,
         config: BrowserConfig,
-        browser_service_dir: str | Path,
+        browser_service_dir: str | Path = BROWSER_SERVICE_DIR,
     ) -> None:
         self._config: BrowserConfig = config
         self._browser_service_dir: Path = Path(browser_service_dir)
@@ -88,6 +89,7 @@ class BrowserClient:
         if self.running:
             return
 
+        startup_poll_interval: float = magic_numbers()["browser"]["startup_poll_interval"]
         cfg = self._config
         env: dict[str, str] = {
             **os.environ,
@@ -142,11 +144,11 @@ class BrowserClient:
         while time.monotonic() < deadline:
             if self._process.poll() is not None:
                 stderr_output: str = "\n".join(output_lines)
-                raise BrowserClientError(
+                raise BrowserServiceError(
                     f"Browser service exited with code {self._process.returncode}: {stderr_output}"
                 )
             try:
-                line: str = line_queue.get(timeout=_STARTUP_POLL_INTERVAL)
+                line: str = line_queue.get(timeout=startup_poll_interval)
             except queue.Empty:
                 continue
             if line.startswith("BROWSER_SERVICE_PORT="):
@@ -156,7 +158,7 @@ class BrowserClient:
                 return
 
         self._kill()
-        raise BrowserClientError(
+        raise BrowserServiceError(
             f"Browser service did not start within {startup_timeout}s"
         )
 
@@ -168,7 +170,7 @@ class BrowserClient:
         timeout: int | None = None,
     ) -> BrowserResponse:
         if not self.running:
-            raise BrowserClientError("Browser service is not running")
+            raise BrowserServiceError("Browser service is not running")
 
         effective_timeout: int = timeout if timeout is not None else self._config["page_timeout"]
         fetch_body: dict[str, str | int | None] = {
@@ -201,7 +203,7 @@ class BrowserClient:
         timeout: int | None = None,
     ) -> str:
         if not self.running:
-            raise BrowserClientError("Browser service is not running")
+            raise BrowserServiceError("Browser service is not running")
 
         effective_timeout: int = timeout if timeout is not None else self._config["page_timeout"]
         body: dict[str, str | int | None] = {
@@ -221,12 +223,12 @@ class BrowserClient:
             )
             data: dict[str, str | int | None] = resp.json()
             if resp.status_code != 200 or data.get("error"):
-                raise BrowserClientError(
+                raise BrowserServiceError(
                     f"Download failed: {data.get('error', resp.status_code)}"
                 )
             return str(data["filePath"])
         except requests.RequestException as exc:
-            raise BrowserClientError(f"Download request failed: {exc}") from exc
+            raise BrowserServiceError(f"Download request failed: {exc}") from exc
 
     def shutdown(self) -> None:
         if not self.running:
@@ -269,4 +271,4 @@ class BrowserClient:
 
     def __repr__(self) -> str:
         status = f"port={self._port}" if self.running else "stopped"
-        return f"BrowserClient({status})"
+        return f"BrowserServiceClient({status})"
