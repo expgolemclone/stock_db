@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from stock_db.scraping.check_sites import should_exclude
+from stock_db.scraping.validation_sites import should_exclude
 
 
 class TestShouldExclude:

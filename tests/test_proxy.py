@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from stock_db.stealth import ProxyPool, random_delay
+from stock_db.proxy import ProxyPool, random_delay
 
 
 class TestProxyPoolDirect:

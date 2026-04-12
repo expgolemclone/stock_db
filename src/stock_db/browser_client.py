@@ -14,7 +14,7 @@ from urllib.parse import unquote, urlsplit
 
 import requests
 
-logger: logging.Logger = logging.getLogger("stock_db.browser")
+logger: logging.Logger = logging.getLogger("stock_db.browser_client")
 
 _NODE_EXECUTABLE: str = os.environ.get("NODE_PATH", "node")
 _STARTUP_POLL_INTERVAL: float = 0.25

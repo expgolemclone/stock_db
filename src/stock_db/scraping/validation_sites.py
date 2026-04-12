@@ -10,7 +10,7 @@ from pathlib import Path
 
 import requests
 
-logger: logging.Logger = logging.getLogger("stock_db.scraping.check_sites")
+logger: logging.Logger = logging.getLogger("stock_db.scraping.validation_sites")
 
 _TRANCO_URL = "https://tranco-list.eu/top-1m.csv.zip"
 _DEFAULT_COUNT = 5000

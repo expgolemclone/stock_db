@@ -17,7 +17,7 @@ dev = [
 
 [project.scripts]
 download-irbank = "stock_db.scraping.irbank:main"
-generate-check-sites = "stock_db.scraping.check_sites:main"
+generate-validation-sites = "stock_db.scraping.validation_sites:main"
 
 [build-system]
 requires = ["hatchling"]

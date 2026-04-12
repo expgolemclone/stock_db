@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import sqlite3
 
-from stock_db.db.repo import (
+from stock_db.db.queries import (
     get_all_tickers,
     get_cached_periods,
     get_edinet_code,

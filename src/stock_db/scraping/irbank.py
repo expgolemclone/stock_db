@@ -11,7 +11,7 @@ from pathlib import Path
 import requests
 
 from stock_db.config import IRBANK_DIR
-from stock_db.stealth import ProxyPool
+from stock_db.proxy import ProxyPool
 
 logger: logging.Logger = logging.getLogger("stock_db.scraping.irbank")
 

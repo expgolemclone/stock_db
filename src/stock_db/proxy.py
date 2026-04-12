@@ -6,7 +6,7 @@ import threading
 import time
 from pathlib import Path
 
-logger: logging.Logger = logging.getLogger("stock_db.stealth")
+logger: logging.Logger = logging.getLogger("stock_db.proxy")
 
 _DEFAULT_MAX_FAILURES = 2
 
