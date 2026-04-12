@@ -17,6 +17,10 @@
 
 !scripts/
 !scripts/**
+!scripts/*.py
 
 !data/
 !data/.gitkeep
+
+__pycache__/
+*.pyc
