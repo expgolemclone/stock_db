@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from stock_db.sources.irbank.downloader import build_jobs, is_valid_json_file, year_codes
+from stock_db.sources.irbank.downloader import build_jobs, is_valid_json_file, year_codes, _default_headers
 
 
 class TestYearCodes:
@@ -64,3 +64,17 @@ class TestBuildJobs:
     def test_creates_quarterly_dir(self, tmp_path: Path) -> None:
         build_jobs(1, tmp_path)
         assert (tmp_path / "quarterly").is_dir()
+
+
+class TestDefaultHeaders:
+    def test_contains_user_agent_from_config(self) -> None:
+        headers = _default_headers()
+
+        assert "User-Agent" in headers
+        assert "Mozilla" in headers["User-Agent"]
+
+    def test_contains_required_headers(self) -> None:
+        headers = _default_headers()
+
+        assert headers["Accept"] == "application/json, text/plain, */*"
+        assert headers["Referer"] == "https://irbank.net/download"

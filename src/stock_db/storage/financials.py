@@ -1,11 +1,8 @@
 from __future__ import annotations
 
 import sqlite3
-from datetime import datetime, timezone
 
-
-def _now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+from stock_db.storage._util import utc_now_iso
 
 
 def upsert_financial_item(
@@ -27,7 +24,7 @@ def upsert_financial_item(
             source=excluded.source,
             updated_at=excluded.updated_at
         """,
-        (ticker, period, statement, item_name, value, source, _now()),
+        (ticker, period, statement, item_name, value, source, utc_now_iso()),
     )
 
 
@@ -35,7 +32,7 @@ def upsert_financial_items_bulk(
     conn: sqlite3.Connection,
     rows: list[dict],
 ) -> None:
-    now = _now()
+    now = utc_now_iso()
     conn.executemany(
         """
         INSERT INTO financial_items
@@ -77,12 +74,9 @@ def get_financial_dict(
         (ticker, period),
     ).fetchall()
 
-    result: dict[str, dict[str, float | None]] = {
-        "pl": {}, "bs": {}, "cf": {}, "dividend": {}, "ss": {}, "forecast": {},
-    }
+    result: dict[str, dict[str, float | None]] = {}
     for r in rows:
-        stmt = r["statement"]
-        result.setdefault(stmt, {})[r["item_name"]] = r["value"]
+        result.setdefault(r["statement"], {})[r["item_name"]] = r["value"]
 
     forecast_rows = conn.execute(
         """
@@ -96,7 +90,7 @@ def get_financial_dict(
         (ticker, ticker),
     ).fetchall()
     for r in forecast_rows:
-        result["forecast"][r["item_name"]] = r["value"]
+        result.setdefault("forecast", {})[r["item_name"]] = r["value"]
 
     return result
 

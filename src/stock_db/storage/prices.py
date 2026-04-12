@@ -4,9 +4,7 @@ import sqlite3
 from datetime import datetime, timedelta, timezone
 from typing import TypedDict
 
-
-def _now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+from stock_db.storage._util import utc_now_iso
 
 
 def upsert_price(
@@ -25,7 +23,7 @@ def upsert_price(
             volume=excluded.volume,
             updated_at=excluded.updated_at
         """,
-        (ticker, date, close, volume, _now()),
+        (ticker, date, close, volume, utc_now_iso()),
     )
 
 
@@ -34,7 +32,7 @@ def upsert_shares_outstanding(
     ticker: str,
     shares: int,
 ) -> None:
-    now = _now()
+    now = utc_now_iso()
     conn.execute(
         """
         INSERT INTO stocks (ticker, name, sector, market, shares_outstanding, shares_updated_at, updated_at)

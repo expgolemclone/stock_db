@@ -33,6 +33,21 @@ class TestProxyPoolFromUrl:
 
         assert pool.get() == "socks5h://1.2.3.4:1080"
 
+    def test_http_proxy_with_auth(self) -> None:
+        pool = ProxyPool.from_url("http://user:p%40ss@1.2.3.4:8080")
+
+        result = pool.get()
+        assert result is not None
+        assert "user:p@ss@1.2.3.4:8080" in result
+
+    def test_socks5h_proxy_with_auth(self) -> None:
+        pool = ProxyPool.from_url("socks5h://admin:s3cret@5.6.7.8:1080")
+
+        result = pool.get()
+        assert result is not None
+        assert "admin:s3cret@5.6.7.8:1080" in result
+        assert result.startswith("socks5h://")
+
 
 class TestProxyPoolFromFile:
     def test_host_port_lines(self, tmp_path: Path) -> None:

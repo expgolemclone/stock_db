@@ -5,6 +5,7 @@ import random
 import threading
 import time
 from pathlib import Path
+from urllib.parse import urlsplit, unquote
 
 from stock_db.paths import magic_numbers
 
@@ -54,11 +55,24 @@ class ProxyPool:
 
     @classmethod
     def from_url(cls, url: str) -> ProxyPool:
-        for scheme in ("socks5h://", "socks5://"):
-            if url.startswith(scheme):
-                return cls([(url.removeprefix(scheme), "socks5")])
-        addr: str = url.removeprefix("http://").removeprefix("https://")
-        return cls([(addr, "http")])
+        parsed = urlsplit(url)
+        scheme = parsed.scheme
+        if scheme in ("socks5h", "socks5"):
+            proto = "socks5"
+            addr = parsed.hostname
+            if parsed.port:
+                addr = f"{addr}:{parsed.port}"
+            auth = ""
+            if parsed.username:
+                auth = f"{unquote(parsed.username)}:{unquote(parsed.password or '')}"
+            return cls([(addr, proto, auth)])
+        host = parsed.hostname or url.removeprefix("http://").removeprefix("https://")
+        if parsed.port:
+            host = f"{host}:{parsed.port}"
+        auth = ""
+        if parsed.username:
+            auth = f"{unquote(parsed.username)}:{unquote(parsed.password or '')}"
+        return cls([(host, "http", auth)])
 
     @classmethod
     def from_file(cls, path: Path) -> ProxyPool:

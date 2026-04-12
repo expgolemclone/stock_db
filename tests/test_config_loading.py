@@ -14,6 +14,7 @@ class TestMagicNumbers:
 
         assert cfg["irbank"]["max_tries"] == 5
         assert cfg["irbank"]["rate_limit_wait"] == 30.0
+        assert "user_agent" in cfg["irbank"]
 
     def test_loads_browser_section(self) -> None:
         cfg = magic_numbers()

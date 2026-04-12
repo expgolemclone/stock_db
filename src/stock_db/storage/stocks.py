@@ -1,11 +1,8 @@
 from __future__ import annotations
 
 import sqlite3
-from datetime import datetime, timezone
 
-
-def _now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+from stock_db.storage._util import utc_now_iso
 
 
 def upsert_stock(
@@ -28,7 +25,7 @@ def upsert_stock(
             market      = CASE WHEN excluded.market = '' THEN stocks.market ELSE excluded.market END,
             updated_at  = excluded.updated_at
         """,
-        (ticker, edinet_code, name, sector, market, _now()),
+        (ticker, edinet_code, name, sector, market, utc_now_iso()),
     )
 
 
@@ -73,7 +70,7 @@ def upsert_company_metadata(
     securities_report_url: str | None = None,
     address_source_urls: str | None = None,
 ) -> None:
-    now = _now()
+    now = utc_now_iso()
     conn.execute(
         """
         UPDATE stocks SET

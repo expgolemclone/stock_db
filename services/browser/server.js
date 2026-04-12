@@ -112,15 +112,19 @@ async function connectBrowser(options) {
   } catch (error) {
     try {
       await browser.close();
-    } catch {
-      // Browser may already be disconnected.
+    } catch (error) {
+      console.debug("browser.close() failed during connect cleanup:", error?.message || error);
     }
     throw error;
   } finally {
     if (probePage) {
-      await probePage.close().catch(() => {});
+      await probePage.close().catch((e) => {
+        console.debug("probePage.close() failed:", e?.message || e);
+      });
     }
-    await page.close().catch(() => {});
+    await page.close().catch((e) => {
+      console.debug("page.close() failed:", e?.message || e);
+    });
   }
   return { browser, lastUsed: Date.now() };
 }
@@ -195,8 +199,8 @@ async function closeBrowser(proxyAddr) {
     browserPool.delete(proxyAddr);
     try {
       await entry.browser.close();
-    } catch {
-      // Browser may already be disconnected.
+    } catch (error) {
+      console.debug("browser.close() failed during pool cleanup:", error?.message || error);
     }
   }
 }
@@ -353,8 +357,8 @@ app.post("/fetch", async (req, res) => {
     if (page) {
       try {
         await page.close();
-      } catch {
-        // Page may already be closed.
+      } catch (error) {
+        console.debug("page.close() failed after fetch:", error?.message || error);
       }
     }
   }
@@ -414,8 +418,8 @@ app.post("/download", async (req, res) => {
     if (page) {
       try {
         await page.close();
-      } catch {
-        // Page may already be closed.
+      } catch (error) {
+        console.debug("page.close() failed after download:", error?.message || error);
       }
     }
   }

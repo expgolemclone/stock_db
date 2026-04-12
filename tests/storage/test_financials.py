@@ -67,3 +67,16 @@ class TestFinancialItems:
         result = get_cached_periods(db_conn, "1234", "pl")
 
         assert result == {"2023", "2024"}
+
+    def test_get_historical_items_empty(self, db_conn: sqlite3.Connection) -> None:
+        result = get_historical_items(db_conn, "9999", "pl")
+
+        assert result == []
+
+    def test_get_dict_includes_new_statement_type(self, db_conn: sqlite3.Connection) -> None:
+        upsert_financial_item(db_conn, "1234", "2024", "custom_stmt", "metric", 42.0, "irbank")
+        db_conn.commit()
+
+        result = get_financial_dict(db_conn, "1234", "2024")
+
+        assert result["custom_stmt"]["metric"] == 42.0

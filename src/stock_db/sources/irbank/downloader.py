@@ -27,14 +27,14 @@ _QY_FILES = [
     "qy-profit-loss.json",
 ]
 _HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-        "(KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36"
-    ),
     "Accept": "application/json, text/plain, */*",
     "Accept-Encoding": "gzip, deflate, br",
     "Referer": "https://irbank.net/download",
 }
+
+
+def _default_headers() -> dict[str, str]:
+    return {**_HEADERS, "User-Agent": magic_numbers()["irbank"]["user_agent"]}
 
 
 def year_codes(years: int) -> list[str]:
@@ -53,7 +53,7 @@ def _try_download(
     *,
     timeout: float = 15,
 ) -> bytes | None:
-    kwargs: dict = {"headers": _HEADERS, "timeout": timeout}
+    kwargs: dict = {"headers": _default_headers(), "timeout": timeout}
     if proxy_url:
         kwargs["proxies"] = {"http": proxy_url, "https": proxy_url}
     resp = requests.get(url, **kwargs)
