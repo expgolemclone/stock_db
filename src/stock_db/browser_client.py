@@ -119,7 +119,10 @@ class BrowserService:
         def _reader() -> None:
             if self._pty_master_fd is None:
                 return
-            with os.fdopen(self._pty_master_fd, "r", encoding="utf-8", errors="replace") as stream:
+            fd = self._pty_master_fd
+            # os.fdopen が fd の所有権を取るため、_kill() での二重クローズを防ぐ
+            self._pty_master_fd = None
+            with os.fdopen(fd, "r", encoding="utf-8", errors="replace") as stream:
                 while True:
                     try:
                         raw_line = stream.readline()
