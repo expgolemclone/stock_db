@@ -121,7 +121,7 @@ def should_exclude(domain: str) -> bool:
     return any(pat.search(domain) for pat in _EXCLUDE_PATTERNS)
 
 
-def generate_check_sites(output: Path, *, count: int = _DEFAULT_COUNT) -> int:
+def generate_validation_sites(output: Path, *, count: int = _DEFAULT_COUNT) -> int:
     """Tranco top sites から proxy 検証用サイトリストを生成。書き出したドメイン数を返す。"""
     logger.info("Downloading Tranco top 1M list ...")
     resp = requests.get(_TRANCO_URL, timeout=60)
@@ -159,4 +159,4 @@ def main() -> None:
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(message)s")
-    generate_check_sites(args.output, count=args.count)
+    generate_validation_sites(args.output, count=args.count)

@@ -58,11 +58,11 @@ class BrowserResponse:
     error: str | None
 
 
-class BrowserServiceError(RuntimeError):
+class BrowserClientError(RuntimeError):
     pass
 
 
-class BrowserService:
+class BrowserClient:
     def __init__(
         self,
         *,
@@ -142,7 +142,7 @@ class BrowserService:
         while time.monotonic() < deadline:
             if self._process.poll() is not None:
                 stderr_output: str = "\n".join(output_lines)
-                raise BrowserServiceError(
+                raise BrowserClientError(
                     f"Browser service exited with code {self._process.returncode}: {stderr_output}"
                 )
             try:
@@ -156,7 +156,7 @@ class BrowserService:
                 return
 
         self._kill()
-        raise BrowserServiceError(
+        raise BrowserClientError(
             f"Browser service did not start within {startup_timeout}s"
         )
 
@@ -168,7 +168,7 @@ class BrowserService:
         timeout: int | None = None,
     ) -> BrowserResponse:
         if not self.running:
-            raise BrowserServiceError("Browser service is not running")
+            raise BrowserClientError("Browser service is not running")
 
         effective_timeout: int = timeout if timeout is not None else self._config["page_timeout"]
         fetch_body: dict[str, str | int | None] = {
@@ -201,7 +201,7 @@ class BrowserService:
         timeout: int | None = None,
     ) -> str:
         if not self.running:
-            raise BrowserServiceError("Browser service is not running")
+            raise BrowserClientError("Browser service is not running")
 
         effective_timeout: int = timeout if timeout is not None else self._config["page_timeout"]
         body: dict[str, str | int | None] = {
@@ -221,12 +221,12 @@ class BrowserService:
             )
             data: dict[str, str | int | None] = resp.json()
             if resp.status_code != 200 or data.get("error"):
-                raise BrowserServiceError(
+                raise BrowserClientError(
                     f"Download failed: {data.get('error', resp.status_code)}"
                 )
             return str(data["filePath"])
         except requests.RequestException as exc:
-            raise BrowserServiceError(f"Download request failed: {exc}") from exc
+            raise BrowserClientError(f"Download request failed: {exc}") from exc
 
     def shutdown(self) -> None:
         if not self.running:
@@ -269,4 +269,4 @@ class BrowserService:
 
     def __repr__(self) -> str:
         status = f"port={self._port}" if self.running else "stopped"
-        return f"BrowserService({status})"
+        return f"BrowserClient({status})"

@@ -5,8 +5,8 @@ import pytest
 from stock_db.browser_client import (
     BrowserConfig,
     BrowserResponse,
-    BrowserService,
-    BrowserServiceError,
+    BrowserClient,
+    BrowserClientError,
     build_proxy_fields,
 )
 
@@ -57,15 +57,15 @@ _TEST_CONFIG = BrowserConfig(
 )
 
 
-class TestBrowserServiceInit:
+class TestBrowserClientInit:
     def test_not_running_initially(self) -> None:
-        svc = BrowserService(config=_TEST_CONFIG, browser_service_dir="/nonexistent")
+        svc = BrowserClient(config=_TEST_CONFIG, browser_service_dir="/nonexistent")
 
         assert svc.running is False
         assert svc.port is None
 
     def test_fetch_raises_when_not_running(self) -> None:
-        svc = BrowserService(config=_TEST_CONFIG, browser_service_dir="/nonexistent")
+        svc = BrowserClient(config=_TEST_CONFIG, browser_service_dir="/nonexistent")
 
-        with pytest.raises(BrowserServiceError):
+        with pytest.raises(BrowserClientError):
             svc.fetch("http://example.com")
