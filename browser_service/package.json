@@ -1,5 +1,5 @@
 {
-  "name": "formula-screening-browser-service",
+  "name": "stock-db-browser-service",
   "version": "0.1.0",
   "private": true,
   "description": "Anti-detection browser service wrapping puppeteer-real-browser",
