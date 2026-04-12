@@ -11,7 +11,7 @@ from pathlib import Path
 import requests
 
 from stock_db.config import IRBANK_DIR
-from stock_db.proxy import ProxyPool
+from stock_db.proxy import ProxyPool, random_delay
 
 logger: logging.Logger = logging.getLogger("stock_db.scraping.irbank")
 
@@ -63,6 +63,7 @@ def _try_download(
     resp = requests.get(url, **kwargs)
     if resp.status_code != 200 or _is_rate_limited(resp):
         return None
+    # レスポンスが有効な JSON であることを確認する
     json.loads(resp.content)
     return resp.content
 
@@ -163,7 +164,7 @@ def download_irbank_files(
         else:
             fail += 1
         if count < total:
-            time.sleep(interval)
+            random_delay(interval * 0.5, interval * 1.5)
 
     logger.info("Done: %d downloaded, %d skipped, %d failed", ok, skip, fail)
     return ok, skip, fail
