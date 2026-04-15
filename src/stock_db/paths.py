@@ -23,6 +23,10 @@ def magic_numbers() -> dict:
     return _load_toml("magic_numbers.toml")
 
 
+@lru_cache(maxsize=1)
+def _cli_defaults_data() -> dict:
+    return _load_toml("cli_defaults.toml")
+
+
 def cli_defaults(section: str) -> dict:
-    data = _load_toml("cli_defaults.toml")
-    return dict(data[section])
+    return dict(_cli_defaults_data()[section])

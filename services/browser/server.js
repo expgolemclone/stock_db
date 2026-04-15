@@ -212,8 +212,10 @@ async function closeAllBrowsers() {
 
 setInterval(async () => {
   const now = Date.now();
-  for (const [key, entry] of browserPool) {
-    if (now - entry.lastUsed > IDLE_TIMEOUT) {
+  // Map イテレーション中の変更を避けるため keys を配列化
+  for (const key of [...browserPool.keys()]) {
+    const entry = browserPool.get(key);
+    if (entry && now - entry.lastUsed > IDLE_TIMEOUT) {
       await closeBrowser(key);
     }
   }

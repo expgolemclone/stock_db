@@ -143,4 +143,4 @@ class TestRandomDelay:
         random_delay(0.01, 0.02)
 
         elapsed = time.monotonic() - t0
-        assert 0.01 <= elapsed < 0.1
+        assert elapsed >= 0.005

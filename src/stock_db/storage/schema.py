@@ -56,6 +56,7 @@ CREATE TABLE IF NOT EXISTS market_cap (
 
 
 def _table_columns(conn: sqlite3.Connection, table: str) -> set[str]:
+    # table はハードコード値のみ。外部入力は挿入されない。
     rows = conn.execute(f"PRAGMA table_info({table})").fetchall()  # noqa: S608
     return {row[1] for row in rows}
 
@@ -72,6 +73,7 @@ def _migrate(conn: sqlite3.Connection) -> None:
         }
         for col_name, col_type in new_cols.items():
             if col_name not in stock_cols:
+                # col_name, col_type はハードコード値のみ。外部入力は挿入されない。
                 conn.execute(f"ALTER TABLE stocks ADD COLUMN {col_name} {col_type}")  # noqa: S608
         if "edinet_code" not in stock_cols:
             conn.execute(
