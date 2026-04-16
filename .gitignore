@@ -21,5 +21,8 @@
 !var/reference/
 !var/reference/**
 
+!db/
+!db/**
+
 __pycache__/
 *.pyc
