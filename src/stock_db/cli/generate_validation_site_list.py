@@ -5,7 +5,7 @@ import logging
 from pathlib import Path
 
 from stock_db.paths import cli_defaults
-from stock_db.sources.validation.site_list import generate_validation_sites
+from stock_db.tools.validation_site_list import generate_validation_sites
 
 
 def main() -> None:

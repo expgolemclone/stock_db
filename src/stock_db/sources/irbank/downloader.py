@@ -8,7 +8,7 @@ from pathlib import Path
 
 import requests
 
-from stock_db.browser.proxy_pool import ProxyPool, random_delay
+from stock_db.proxy_pool import ProxyPool, random_delay
 from stock_db.paths import IRBANK_DIR, magic_numbers
 
 logger: logging.Logger = logging.getLogger("stock_db.sources.irbank.downloader")

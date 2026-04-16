@@ -1,8 +1,8 @@
 *
 
 !.gitignore
-!pyproject.toml
-!uv.lock
+!*.toml
+!*.lock
 
 !src/
 !src/**
@@ -19,7 +19,7 @@
 !var/
 !var/.gitkeep
 !var/reference/
-!var/reference/**
+!var/reference/*.csv
 
 __pycache__/
 *.pyc

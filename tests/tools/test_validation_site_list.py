@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from stock_db.sources.validation.site_list import should_exclude
+from stock_db.tools.validation_site_list import should_exclude
 
 
 class TestShouldExclude:

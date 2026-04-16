@@ -5,7 +5,7 @@ import logging
 import sys
 from pathlib import Path
 
-from stock_db.browser.proxy_pool import ProxyPool
+from stock_db.proxy_pool import ProxyPool
 from stock_db.paths import IRBANK_DIR, cli_defaults
 from stock_db.sources.irbank.downloader import download_irbank_files
 

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from stock_db.browser.client import (
+from stock_db.browser_client.client import (
     BrowserConfig,
     BrowserResponse,
     BrowserServiceClient,
