@@ -1,5 +1,6 @@
 *
 
+!*.db
 !.gitignore
 !*.toml
 !*.lock
@@ -16,8 +17,12 @@
 !config/
 !config/**
 
+!.gitattributes
+
 !var/
 !var/.gitkeep
+!var/db/
+!var/db/*.db
 !var/reference/
 !var/reference/*.csv
 
