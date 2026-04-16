@@ -46,3 +46,7 @@ def main() -> None:
     if ok + skip > 0:
         print(f"Import: uv run python -m stock_db import-irbank --dir {dest or IRBANK_DIR}")
     sys.exit(1 if fail > 0 else 0)
+
+
+if __name__ == "__main__":
+    main()

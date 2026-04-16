@@ -23,3 +23,7 @@ def main() -> None:
 
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     generate_validation_sites(args.output, count=args.count)
+
+
+if __name__ == "__main__":
+    main()
