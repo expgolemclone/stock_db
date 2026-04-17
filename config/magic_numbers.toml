@@ -8,3 +8,6 @@ user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTM
 
 [browser]
 startup_poll_interval = 0.25
+
+[irbank_bs]
+request_interval_seconds = 2.0

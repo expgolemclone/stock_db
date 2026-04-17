@@ -7,3 +7,7 @@ output_dir = "var/raw/irbank"
 [generate_validation_site_list]
 count = 5000
 output = "var/generated/validation_sites.txt"
+
+[scrape_irbank_bs]
+proxy = "direct"
+skip_existing = true

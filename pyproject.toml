@@ -8,6 +8,7 @@ dependencies = [
     "truststore>=0.9,<1",
     "brotli>=1.1,<2",
     "pysocks>=1.7,<2",
+    "beautifulsoup4>=4.14.3",
 ]
 
 [dependency-groups]
@@ -18,6 +19,7 @@ dev = [
 [project.scripts]
 fetch-irbank-files = "stock_db.cli.fetch_irbank_files:main"
 generate-validation-site-list = "stock_db.cli.generate_validation_site_list:main"
+scrape-irbank-bs = "stock_db.cli.scrape_irbank_bs:main"
 
 [build-system]
 requires = ["hatchling"]
