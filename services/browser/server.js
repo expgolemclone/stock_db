@@ -1,8 +1,8 @@
 import express from "express";
-import { connect } from "puppeteer-real-browser";
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import { connectBrowser } from "./browser_pool.js";
 
 // puppeteer-real-browser's targetcreated listener races with page.close() on
 // the error path: its async page setup throws TargetCloseError against a page
@@ -38,9 +38,13 @@ const CHALLENGE_BODY_PATTERNS = [
   "checking your browser before accessing",
 ];
 
-/** @typedef {{ browser: import('puppeteer-core').Browser, lastUsed: number }} BrowserEntry */
+/** @typedef {{
+ *   browser: import('puppeteer-core').Browser,
+ *   seedPage: import('puppeteer-core').Page,
+ *   lastUsed: number,
+ * }} BrowserEntry */
 
-/** @type {Map<string, BrowserEntry>} proxy address -> browser instance */
+/** @type {Map<string, BrowserEntry>} pool key -> browser instance */
 const browserPool = new Map();
 
 /** @type {Map<string, Promise<BrowserEntry>>} in-flight connect() calls */
@@ -102,31 +106,6 @@ function buildBrowserOptions(proxyAddr, proxyType, username, password) {
   }
 
   return options;
-}
-
-async function connectBrowser(options) {
-  const { browser, page } = await connect(options);
-  let probePage = null;
-  try {
-    probePage = await browser.newPage();
-  } catch (error) {
-    try {
-      await browser.close();
-    } catch (error) {
-      console.debug("browser.close() failed during connect cleanup:", error?.message || error);
-    }
-    throw error;
-  } finally {
-    if (probePage) {
-      await probePage.close().catch((e) => {
-        console.debug("probePage.close() failed:", e?.message || e);
-      });
-    }
-    await page.close().catch((e) => {
-      console.debug("page.close() failed:", e?.message || e);
-    });
-  }
-  return { browser, lastUsed: Date.now() };
 }
 
 function shouldRetryHeadless(error, options) {
@@ -193,16 +172,39 @@ async function getBrowser(proxyAddr, proxyType, username, password) {
   return promise;
 }
 
-async function closeBrowser(proxyAddr) {
-  const entry = browserPool.get(proxyAddr);
+async function closeBrowser(key) {
+  const entry = browserPool.get(key);
   if (entry) {
-    browserPool.delete(proxyAddr);
+    browserPool.delete(key);
     try {
       await entry.browser.close();
     } catch (error) {
       console.debug("browser.close() failed during pool cleanup:", error?.message || error);
     }
   }
+}
+
+async function openRequestPage(proxyAddr, proxyType, proxyUsername, proxyPassword) {
+  const key = poolKey(proxyAddr, proxyUsername);
+  let lastError = null;
+
+  for (let attempt = 1; attempt <= 2; attempt += 1) {
+    const entry = await getBrowser(proxyAddr, proxyType, proxyUsername, proxyPassword);
+    try {
+      const page = await entry.browser.newPage();
+      entry.lastUsed = Date.now();
+      return { key, page };
+    } catch (error) {
+      lastError = error;
+      console.warn(
+        `browser.newPage() failed for ${key} on attempt ${attempt}:`,
+        error?.message || error,
+      );
+      await closeBrowser(key);
+    }
+  }
+
+  throw lastError;
 }
 
 async function closeAllBrowsers() {
@@ -337,8 +339,7 @@ app.post("/fetch", async (req, res) => {
 
   let page = null;
   try {
-    const entry = await getBrowser(proxyAddr, proxyType, proxyUsername, proxyPassword);
-    page = await entry.browser.newPage();
+    ({ page } = await openRequestPage(proxyAddr, proxyType, proxyUsername, proxyPassword));
 
     if (proxyUsername && proxyPassword !== undefined) {
       await page.authenticate({ username: proxyUsername, password: proxyPassword });
@@ -384,8 +385,7 @@ app.post("/download", async (req, res) => {
     }
     const filesBefore = new Set(readdirSync(downloadDir));
 
-    const entry = await getBrowser(proxyAddr, proxyType, proxyUsername, proxyPassword);
-    page = await entry.browser.newPage();
+    ({ page } = await openRequestPage(proxyAddr, proxyType, proxyUsername, proxyPassword));
 
     if (proxyUsername && proxyPassword !== undefined) {
       await page.authenticate({ username: proxyUsername, password: proxyPassword });

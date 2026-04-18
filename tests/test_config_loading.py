@@ -36,3 +36,12 @@ class TestCliDefaults:
 
         assert defaults["count"] == 5000
         assert defaults["output"] == "var/generated/validation_sites.txt"
+
+    def test_scrape_irbank_bs_defaults(self) -> None:
+        defaults = cli_defaults("scrape_irbank_bs")
+
+        assert defaults["proxy"] == "direct"
+        assert defaults["skip_existing"] is True
+        assert defaults["pool_size"] == 1
+        assert defaults["headless"] is False
+        assert defaults["disable_xvfb"] is True

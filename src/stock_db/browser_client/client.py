@@ -16,9 +16,6 @@ import requests
 
 from stock_db.paths import BROWSER_SERVICE_DIR, magic_numbers
 
-if sys.platform != "win32":
-    import pty
-
 logger: logging.Logger = logging.getLogger("stock_db.browser.client")
 
 _NODE_EXECUTABLE: str = os.environ.get("NODE_PATH", "node")
@@ -78,7 +75,6 @@ class BrowserServiceClient:
         self._process: subprocess.Popen[str] | None = None
         self._port: int | None = None
         self._base_url: str = ""
-        self._pty_master_fd: int | None = None
 
     @property
     def port(self) -> int | None:
@@ -105,36 +101,27 @@ class BrowserServiceClient:
             "BROWSER_CHALLENGE_CLEAR_STABLE_MS": str(cfg["challenge_clear_stable_ms"]),
         }
 
-        stdout_stream: IO[str]
-        if sys.platform == "win32":
-            # Windows は pty が無いのでパイプ経由で stdout を読む
-            self._process = subprocess.Popen(
-                [_NODE_EXECUTABLE, str(self._browser_service_dir / "server.js")],
-                stdin=subprocess.DEVNULL,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-                bufsize=1,
-                env=env,
-            )
-            assert self._process.stdout is not None
-            stdout_stream = self._process.stdout
-        else:
-            master_fd, slave_fd = pty.openpty()
-            self._process = subprocess.Popen(
-                [_NODE_EXECUTABLE, str(self._browser_service_dir / "server.js")],
-                stdin=slave_fd,
-                stdout=slave_fd,
-                stderr=slave_fd,
-                text=True,
-                env=env,
-            )
-            os.close(slave_fd)
-            # os.fdopen が fd の所有権を取るため、_kill() での二重クローズを防ぐ
-            stdout_stream = os.fdopen(master_fd, "r", encoding="utf-8", errors="replace")
-            self._pty_master_fd = None
+        popen_kwargs: dict[str, object] = {
+            "stdin": subprocess.DEVNULL,
+            "stdout": subprocess.PIPE,
+            "stderr": subprocess.STDOUT,
+            "text": True,
+            "encoding": "utf-8",
+            "errors": "replace",
+            "bufsize": 1,
+            "env": env,
+        }
+        if sys.platform != "win32":
+            # ブラウザサービスを端末セッションから切り離し、Chrome 停止時の
+            # シグナル伝播が親のターミナルまで波及しないようにする。
+            popen_kwargs["start_new_session"] = True
+
+        self._process = subprocess.Popen(
+            [_NODE_EXECUTABLE, str(self._browser_service_dir / "server.js")],
+            **popen_kwargs,
+        )
+        assert self._process.stdout is not None
+        stdout_stream: IO[str] = self._process.stdout
 
         startup_timeout: int = cfg["startup_timeout"]
         line_queue: queue.Queue[str] = queue.Queue()
@@ -267,12 +254,6 @@ class BrowserServiceClient:
             self._process = None
             self._port = None
             self._base_url = ""
-        if self._pty_master_fd is not None:
-            try:
-                os.close(self._pty_master_fd)
-            except OSError:
-                logger.debug("PTY fd close failed", exc_info=True)
-            self._pty_master_fd = None
 
     def __enter__(self) -> Self:
         self.start()

@@ -47,6 +47,20 @@ def upsert_financial_items_bulk(
     )
 
 
+def replace_financial_items_for_source(
+    conn: sqlite3.Connection,
+    ticker: str,
+    source: str,
+    rows: list[dict],
+) -> None:
+    conn.execute(
+        "DELETE FROM financial_items WHERE ticker = ? AND source = ?",
+        (ticker, source),
+    )
+    if rows:
+        upsert_financial_items_bulk(conn, rows)
+
+
 def get_financial_dict(
     conn: sqlite3.Connection,
     ticker: str,
