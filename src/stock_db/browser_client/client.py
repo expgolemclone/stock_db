@@ -2,19 +2,22 @@ from __future__ import annotations
 
 import logging
 import os
-import pty
 import queue
 import subprocess
+import sys
 import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Self, TypedDict
+from typing import IO, Self, TypedDict
 from urllib.parse import unquote, urlsplit
 
 import requests
 
 from stock_db.paths import BROWSER_SERVICE_DIR, magic_numbers
+
+if sys.platform != "win32":
+    import pty
 
 logger: logging.Logger = logging.getLogger("stock_db.browser.client")
 
@@ -102,34 +105,48 @@ class BrowserServiceClient:
             "BROWSER_CHALLENGE_CLEAR_STABLE_MS": str(cfg["challenge_clear_stable_ms"]),
         }
 
-        master_fd, slave_fd = pty.openpty()
-        self._pty_master_fd = master_fd
-        self._process = subprocess.Popen(
-            [_NODE_EXECUTABLE, str(self._browser_service_dir / "server.js")],
-            stdin=slave_fd,
-            stdout=slave_fd,
-            stderr=slave_fd,
-            text=True,
-            env=env,
-        )
-        os.close(slave_fd)
+        stdout_stream: IO[str]
+        if sys.platform == "win32":
+            # Windows は pty が無いのでパイプ経由で stdout を読む
+            self._process = subprocess.Popen(
+                [_NODE_EXECUTABLE, str(self._browser_service_dir / "server.js")],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                bufsize=1,
+                env=env,
+            )
+            assert self._process.stdout is not None
+            stdout_stream = self._process.stdout
+        else:
+            master_fd, slave_fd = pty.openpty()
+            self._process = subprocess.Popen(
+                [_NODE_EXECUTABLE, str(self._browser_service_dir / "server.js")],
+                stdin=slave_fd,
+                stdout=slave_fd,
+                stderr=slave_fd,
+                text=True,
+                env=env,
+            )
+            os.close(slave_fd)
+            # os.fdopen が fd の所有権を取るため、_kill() での二重クローズを防ぐ
+            stdout_stream = os.fdopen(master_fd, "r", encoding="utf-8", errors="replace")
+            self._pty_master_fd = None
 
         startup_timeout: int = cfg["startup_timeout"]
         line_queue: queue.Queue[str] = queue.Queue()
         output_lines: list[str] = []
 
         def _reader() -> None:
-            if self._pty_master_fd is None:
-                return
-            fd = self._pty_master_fd
-            # os.fdopen が fd の所有権を取るため、_kill() での二重クローズを防ぐ
-            self._pty_master_fd = None
-            with os.fdopen(fd, "r", encoding="utf-8", errors="replace") as stream:
+            with stdout_stream as stream:
                 while True:
                     try:
                         raw_line = stream.readline()
                     except OSError:
-                        logger.debug("PTY stream closed")
+                        logger.debug("stdout stream closed")
                         return
                     if raw_line == "":
                         return

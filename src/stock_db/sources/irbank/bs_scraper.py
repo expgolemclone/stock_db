@@ -6,6 +6,7 @@ import logging
 import sqlite3
 from typing import TYPE_CHECKING
 
+from stock_db.browser_client.client import BrowserServiceError
 from stock_db.proxy_pool import random_delay
 from stock_db.paths import magic_numbers
 from stock_db.sources.irbank.bs_parser import parse_bs_page
@@ -91,9 +92,9 @@ def scrape_and_store(
                 conn.commit()
             ok += 1
             logger.info("  %s: %d items across %d periods", ticker, len(rows), len(parsed))
-        except Exception:
+        except (BrowserServiceError, sqlite3.Error, ValueError) as exc:
             errors += 1
-            logger.exception("Error scraping %s", ticker)
+            logger.exception("Error scraping %s: %s", ticker, exc)
 
         if i < len(tickers):
             random_delay(interval * 0.5, interval * 1.5)
