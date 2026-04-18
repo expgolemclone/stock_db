@@ -59,12 +59,12 @@ def main() -> None:
         proxy_url: str | None = pool.get()
 
         client_cfg = {
-            "pool_size": 1,
+            "pool_size": defaults.get("pool_size", 1),
             "page_timeout": browser_cfg.get("page_timeout", 30000),
             "idle_timeout": browser_cfg.get("idle_timeout", 60000),
             "startup_timeout": browser_cfg.get("startup_timeout", 30),
-            "headless": True,
-            "disable_xvfb": True,
+            "headless": defaults.get("headless", False),
+            "disable_xvfb": defaults.get("disable_xvfb", True),
             "challenge_poll_interval_ms": browser_cfg.get("challenge_poll_interval_ms", 500),
             "challenge_clear_stable_ms": browser_cfg.get("challenge_clear_stable_ms", 2000),
         }

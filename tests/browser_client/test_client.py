@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import subprocess
+import sys
+
 import pytest
 
+import stock_db.browser_client.client as client_module
 from stock_db.browser_client.client import (
     BrowserConfig,
     BrowserResponse,
@@ -69,3 +73,61 @@ class TestBrowserServiceClientInit:
 
         with pytest.raises(BrowserServiceError):
             svc.fetch("http://example.com")
+
+    def test_start_uses_pipes_and_new_session(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        captured: dict[str, object] = {}
+
+        class FakeStdout:
+            def __init__(self) -> None:
+                self._lines = iter(["BROWSER_SERVICE_PORT=43210\n", ""])
+
+            def __enter__(self) -> "FakeStdout":
+                return self
+
+            def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
+                return None
+
+            def readline(self) -> str:
+                return next(self._lines)
+
+        class FakeProcess:
+            def __init__(self) -> None:
+                self.stdout = FakeStdout()
+                self._returncode: int | None = None
+
+            def poll(self) -> int | None:
+                return self._returncode
+
+            def terminate(self) -> None:
+                self._returncode = 0
+
+            def wait(self, timeout: float | None = None) -> int:
+                return 0
+
+            def kill(self) -> None:
+                self._returncode = -9
+
+        def fake_popen(args: list[str], **kwargs: object) -> FakeProcess:
+            captured["args"] = args
+            captured["kwargs"] = kwargs
+            return FakeProcess()
+
+        monkeypatch.setattr(client_module.subprocess, "Popen", fake_popen)
+
+        svc = BrowserServiceClient(config=_TEST_CONFIG, browser_service_dir="/tmp/browser-service")
+        svc.start()
+
+        assert svc.port == 43210
+        assert captured["args"] == ["node", "/tmp/browser-service/server.js"]
+        kwargs = captured["kwargs"]
+        assert kwargs["stdin"] is subprocess.DEVNULL
+        assert kwargs["stdout"] is subprocess.PIPE
+        assert kwargs["stderr"] is subprocess.STDOUT
+        assert kwargs["text"] is True
+        assert kwargs["encoding"] == "utf-8"
+        assert kwargs["errors"] == "replace"
+        assert kwargs["bufsize"] == 1
+        if sys.platform == "win32":
+            assert "start_new_session" not in kwargs
+        else:
+            assert kwargs["start_new_session"] is True
