@@ -8,7 +8,7 @@ import sqlite3
 import sys
 from pathlib import Path
 
-from stock_db.paths import cli_defaults, magic_numbers
+from stock_db.paths import STOCKS_DB_PATH, cli_defaults, magic_numbers
 from stock_db.proxy_pool import ProxyPool
 from stock_db.sources.irbank.bs_scraper import scrape_and_store
 from stock_db.storage.connection import get_connection
@@ -44,7 +44,7 @@ def main() -> None:
 
     skip_existing = args.skip_existing and not args.force
 
-    conn: sqlite3.Connection = get_connection()
+    conn: sqlite3.Connection = get_connection(STOCKS_DB_PATH)
     try:
         if args.ticker:
             tickers: list[str] = [args.ticker]
