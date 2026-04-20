@@ -6,11 +6,12 @@ import logging
 import re
 import sqlite3
 from typing import TYPE_CHECKING
+from urllib.parse import urljoin
 
 from stock_db.browser_client.client import BrowserServiceError
 from stock_db.proxy_pool import random_delay
 from stock_db.paths import magic_numbers
-from stock_db.sources.irbank.bs_parser import parse_bs_page
+from stock_db.sources.irbank.bs_parser import parse_bs_page, parse_latest_annual_bs_page
 from stock_db.storage.financials import replace_financial_items_for_source
 
 if TYPE_CHECKING:
@@ -26,6 +27,7 @@ _NO_DATA_ITEM = "no_data"
 _STATUS_PERIOD = "0000-00"
 _FETCH_RETRIES = 3
 _RETRYABLE_HTTP_STATUSES = {408, 425, 429, 500, 502, 503, 504}
+_ANNUAL_LINK_RE = re.compile(r"^\d{4}/03$")
 
 
 class BSPageFetchError(RuntimeError):
@@ -35,24 +37,43 @@ class BSPageFetchError(RuntimeError):
         self.detail = detail
 
 
-def scrape_bs_page(
+def _find_latest_annual_detail_url(summary_html: str, requested_url: str) -> str | None:
+    from bs4 import BeautifulSoup
+
+    soup = BeautifulSoup(summary_html, "html.parser")
+    canonical = soup.find("link", rel="canonical")
+    base_url = requested_url
+    if canonical is not None and canonical.get("href"):
+        base_url = str(canonical["href"])
+
+    candidates: list[tuple[str, str]] = []
+    for anchor in soup.find_all("a", href=True):
+        text = anchor.get_text(strip=True)
+        href = anchor["href"]
+        if not _ANNUAL_LINK_RE.fullmatch(text):
+            continue
+        if not href.endswith("/bs"):
+            continue
+        candidates.append((text, urljoin(base_url, href)))
+
+    if not candidates:
+        return None
+    return max(candidates, key=lambda item: item[0])[1]
+
+
+def _fetch_html(
     client: BrowserServiceClient,
-    ticker: str,
+    url: str,
     *,
     proxy: str | None = None,
-) -> dict[str, dict[str, float | None]]:
-    """Fetch and parse a single ticker's /bs page.
-
-    Returns: {period: {item_name: value}}
-    """
-    url = _BASE_URL.format(ticker=ticker)
+) -> str:
     for attempt in range(1, _FETCH_RETRIES + 1):
         resp = client.fetch(url, proxy=proxy)
         if resp.error:
             if attempt < _FETCH_RETRIES:
                 logger.warning(
                     "Fetch failed for %s (attempt %d/%d): %s",
-                    ticker,
+                    url,
                     attempt,
                     _FETCH_RETRIES,
                     resp.error,
@@ -66,7 +87,7 @@ def scrape_bs_page(
                 logger.warning(
                     "HTTP %d for %s (attempt %d/%d)",
                     resp.status,
-                    ticker,
+                    url,
                     attempt,
                     _FETCH_RETRIES,
                 )
@@ -78,16 +99,36 @@ def scrape_bs_page(
             if attempt < _FETCH_RETRIES:
                 logger.warning(
                     "Empty HTML for %s (attempt %d/%d)",
-                    ticker,
+                    url,
                     attempt,
                     _FETCH_RETRIES,
                 )
                 continue
             raise BSPageFetchError(_build_status_item("fetch_error", "empty_html"), detail)
 
-        return parse_bs_page(resp.html)
+        return resp.html
 
     raise AssertionError("unreachable")
+
+
+def scrape_bs_page(
+    client: BrowserServiceClient,
+    ticker: str,
+    *,
+    proxy: str | None = None,
+) -> dict[str, dict[str, float | None]]:
+    """Fetch and parse a single ticker's /bs page.
+
+    Returns: {period: {item_name: value}}
+    """
+    url = _BASE_URL.format(ticker=ticker)
+    summary_html = _fetch_html(client, url, proxy=proxy)
+    annual_detail_url = _find_latest_annual_detail_url(summary_html, url)
+    if annual_detail_url is None:
+        return parse_bs_page(summary_html)
+
+    detailed_html = _fetch_html(client, annual_detail_url, proxy=proxy)
+    return parse_latest_annual_bs_page(detailed_html)
 
 
 def _build_status_item(kind: str, detail: str | None = None) -> str:
