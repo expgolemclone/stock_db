@@ -59,7 +59,7 @@ def _kill_scrape() -> None:
         try:
             os.kill(pid, signal.SIGTERM)
         except ProcessLookupError:
-            pass
+            logger.debug("PID %d already gone (SIGTERM)", pid)
     # Wait up to 30s for graceful exit
     for _ in range(15):
         if not _find_scrape_pids():
@@ -73,7 +73,7 @@ def _kill_scrape() -> None:
             try:
                 os.kill(pid, signal.SIGKILL)
             except ProcessLookupError:
-                pass
+                logger.debug("PID %d already gone (SIGKILL)", pid)
         time.sleep(3)
 
 
