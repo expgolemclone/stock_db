@@ -128,6 +128,9 @@ def scrape_all_edinet_reports(
                 doc_id = search_annual_reports(client, ticker, proxy=proxy)
                 if doc_id:
                     doc_id_map[ticker] = doc_id
+                    url = build_pdf_url(doc_id)
+                    upsert_company_metadata(conn, ticker, securities_report_url=url)
+                    conn.commit()
                     logger.info("  Found docID %s for %s", doc_id, ticker)
                 else:
                     logger.info("  No annual report found for %s", ticker)
