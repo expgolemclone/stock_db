@@ -3,7 +3,7 @@
 ## Overview
 
 stock_db は日本株の財務データを収集・保存するツールキット。
-IR BANK からのスクレイピングと JSON ダウンロードの2経路でデータを取得し、SQLite に集約する。
+IR BANK からのスクレイピングと JSON ダウンロード、EDINET API からの有価証券報告書取得の3経路でデータを取得し、SQLite に集約する。
 
 ## Directory Structure
 
@@ -27,16 +27,22 @@ stock_db/
       client.py            # BrowserServiceClient（ブラウザサービスの Python クライアント）
     cli/
       scrape_irbank_bs.py  # IR BANK B/S スクレイピング CLI
+      scrape_edinet_reports.py # EDINET 有報取得 CLI
       fetch_irbank_files.py # IR BANK JSON ダウンロード CLI
+      purge_irbank_bs.py   # IR BANK B/S データ削除 CLI
       generate_validation_site_list.py
+    sources/edinet/
+      api_client.py        # EDINET API v2 クライアント（書類一覧・PDF取得）
+      pdf_extractor.py     # PDF → Markdown テキスト抽出
     sources/irbank/
       bs_parser.py         # B/S ページ HTML パーサー
       bs_scraper.py        # B/S ページスクレイパー（取得 → パース → 保存）
-      downloader.py         # IR BANK JSON ファイルダウンローダー
+      downloader.py        # IR BANK JSON ファイルダウンローダー
     storage/
       connection.py        # SQLite 接続（WAL, FK有効）
       schema.py            # テーブル定義・マイグレーション
       financials.py        # financial_items テーブル CRUD
+      sec_reports.py       # sec_reports テーブル CRUD
       stocks.py            # stocks テーブル CRUD
       prices.py            # prices テーブル CRUD
       market_caps.py       # market_cap テーブル CRUD
@@ -44,6 +50,7 @@ stock_db/
       validation_site_list.py
   var/
     db/stocks.db           # SQLite データベース（Git LFS）
+    raw/edinet/            # EDINET 有報 Markdown ファイル ({ticker}/{fiscal_year}.md)
     raw/irbank/            # ダウンロード済み JSON ファイル
 ```
 
@@ -52,6 +59,7 @@ stock_db/
 ```
 IR BANK /bs ページ ──スクレイピング──→ bs_parser ──→ financial_items
 IR BANK JSON API ──ダウンロード──→ downloader ──→ financial_items
+EDINET API v2 ──PDF取得──→ pdf_extractor ──→ sec_reports + Markdown
                                                   stocks
                                                   prices
                                                   market_cap
@@ -84,7 +92,14 @@ Windows 対応済み（PTY の代わりに PIPE を使用）。
 ### Storage Layer
 
 SQLite を使用。WAL モード・外部キー制約有効。
-4テーブル: `stocks`, `financial_items`, `prices`, `market_cap`
+5テーブル: `stocks`, `financial_items`, `prices`, `market_cap`, `sec_reports`
+
+### EDINET Sources
+
+| コンポーネント | 役割 |
+|---|---|
+| `api_client` | EDINET API v2 で書類一覧取得・PDFダウンロード |
+| `pdf_extractor` | pypdf で PDF からテキスト抽出し Markdown に変換 |
 
 ### ProxyPool
 

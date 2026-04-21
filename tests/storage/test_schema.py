@@ -23,7 +23,7 @@ class TestInitDb:
     def test_creates_all_tables(self, db_conn: sqlite3.Connection) -> None:
         tables = _table_names(db_conn)
 
-        assert tables == {"stocks", "financial_items", "prices", "market_cap"}
+        assert tables == {"stocks", "financial_items", "prices", "market_cap", "sec_reports"}
 
     def test_stocks_columns(self, db_conn: sqlite3.Connection) -> None:
         cols = _column_names(db_conn, "stocks")

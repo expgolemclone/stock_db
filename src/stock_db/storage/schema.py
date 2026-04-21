@@ -52,6 +52,20 @@ CREATE TABLE IF NOT EXISTS market_cap (
     fetched_at  TEXT    NOT NULL,
     PRIMARY KEY (ticker, source)
 );
+
+CREATE TABLE IF NOT EXISTS sec_reports (
+    ticker       TEXT    NOT NULL,
+    fiscal_year  TEXT    NOT NULL,
+    doc_id       TEXT    PRIMARY KEY,
+    doc_type     TEXT    NOT NULL DEFAULT 'annual_report',
+    file_path    TEXT    NOT NULL,
+    page_count   INTEGER,
+    char_count   INTEGER,
+    source       TEXT    NOT NULL DEFAULT 'edinet',
+    updated_at   TEXT    NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_sr_ticker ON sec_reports (ticker);
 """
 
 
