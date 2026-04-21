@@ -13,7 +13,7 @@ import requests
 from stock_db.browser_client.client import BrowserServiceClient, BrowserServiceError
 from stock_db.paths import STOCKS_DB_PATH, VAR_DIR, cli_defaults, magic_numbers
 from stock_db.proxy_pool import ProxyPool, random_delay
-from stock_db.sources.edinet.api_client import build_pdf_url, download_pdf
+from stock_db.sources.edinet.api_client import build_pdf_url, doc_id_from_url, download_pdf
 from stock_db.sources.edinet.pdf_extractor import extract_markdown
 from stock_db.sources.edinet.search_scraper import DEFAULT_INTERVAL_SECONDS, EdinetBlockError, batch_search_doc_ids
 from stock_db.storage.connection import get_connection
@@ -106,7 +106,7 @@ def scrape_all_edinet_reports(
     # Phase 1: URLあり銘柄を処理
     url_targets = [
         (t, url) for t, url in has_url.items()
-        if url not in existing_ids
+        if doc_id_from_url(url) not in existing_ids
     ]
     if url_targets:
         logger.info("Phase 1: Processing %d tickers with existing URLs", len(url_targets))
@@ -131,7 +131,7 @@ def scrape_all_edinet_reports(
             discovered_items = [
                 (ticker, build_pdf_url(doc_id))
                 for ticker, doc_id in doc_id_map.items()
-                if build_pdf_url(doc_id) not in existing_ids
+                if doc_id not in existing_ids
             ]
 
             for i, (ticker, url) in enumerate(discovered_items, 1):
