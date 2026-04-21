@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import re
+import sys
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -14,6 +15,12 @@ logger = logging.getLogger("stock_db.sources.edinet.search_scraper")
 _SEARCH_URL = "https://disclosure2.edinet-fsa.go.jp/EKW01Z01/wk110000"
 _DOC_LINK_RE = re.compile(r"/EKW01Z01/wk110000\?pEkwCatg=01&pSsn=\d+&pDocID=([A-Za-z0-9]+)")
 _TICKER_RE = re.compile(r"\((\d{4}[A-Z]?)\)")
+_BLOCK_INDICATORS = ("規定外操作", "エラー画面", "Message code")
+DEFAULT_INTERVAL_SECONDS = 2.0
+
+
+class EdinetBlockError(RuntimeError):
+    """Raised when EDINET returns a block/error page."""
 
 
 def search_annual_reports(
@@ -24,7 +31,8 @@ def search_annual_reports(
 ) -> str | None:
     """Search EDINET for the latest annual report of a given ticker.
 
-    Returns the docID if found, None otherwise.
+    Returns the docID if found, None if not found.
+    Raises EdinetBlockError if EDINET blocks the request.
     """
     from bs4 import BeautifulSoup
 
@@ -36,6 +44,13 @@ def search_annual_reports(
     if resp.html is None:
         logger.warning("Empty HTML for %s", ticker)
         return None
+
+    # ブロック検知: EDINETエラー画面を確認
+    for indicator in _BLOCK_INDICATORS:
+        if indicator in resp.html:
+            raise EdinetBlockError(
+                f"EDINET blocked the request for ticker {ticker}: '{indicator}' detected"
+            )
 
     soup = BeautifulSoup(resp.html, "html.parser")
 
@@ -73,20 +88,29 @@ def batch_search_doc_ids(
     tickers: list[str],
     *,
     proxy: str | None = None,
-    interval: float = 1.0,
+    interval: float = DEFAULT_INTERVAL_SECONDS,
 ) -> dict[str, str]:
     """Search EDINET for multiple tickers and return {ticker: docID} mapping.
 
     Only returns results for tickers where a docID was found.
+    Raises EdinetBlockError immediately if EDINET blocks any request.
     """
     from stock_db.proxy_pool import random_delay
 
     results: dict[str, str] = {}
+    consecutive_misses = 0
+    max_consecutive_misses = 5
+
     for i, ticker in enumerate(tickers, 1):
         logger.info("[%d/%d] Searching %s", i, len(tickers), ticker)
         doc_id = search_annual_reports(client, ticker, proxy=proxy)
         if doc_id:
             results[ticker] = doc_id
+            consecutive_misses = 0
+        else:
+            consecutive_misses += 1
+
         if i < len(tickers):
-            random_delay(interval * 0.5, interval * 1.5)
+            random_delay(interval * 0.75, interval * 1.25)
+
     return results

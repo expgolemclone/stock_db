@@ -15,7 +15,7 @@ from stock_db.paths import STOCKS_DB_PATH, VAR_DIR, cli_defaults, magic_numbers
 from stock_db.proxy_pool import ProxyPool, random_delay
 from stock_db.sources.edinet.api_client import build_pdf_url, download_pdf
 from stock_db.sources.edinet.pdf_extractor import extract_markdown
-from stock_db.sources.edinet.search_scraper import batch_search_doc_ids
+from stock_db.sources.edinet.search_scraper import DEFAULT_INTERVAL_SECONDS, EdinetBlockError, batch_search_doc_ids
 from stock_db.storage.connection import get_connection
 from stock_db.storage.schema import init_db
 from stock_db.storage.sec_reports import get_processed_doc_ids, upsert_sec_report
@@ -71,12 +71,14 @@ def scrape_all_edinet_reports(
     *,
     proxy: str | None = None,
     skip_existing: bool = True,
-    interval: float = 1.0,
+    interval: float = DEFAULT_INTERVAL_SECONDS,
 ) -> tuple[int, int]:
     """全銘柄の有報を取得・抽出。URLなし銘柄はEDINET検索で自動発見。
 
     1. securities_report_urlあり銘柄: 直接PDFダウンロード
     2. securities_report_urlなし銘柄: browser serviceでEDINET検索→docID発見→PDFダウンロード
+
+    Raises EdinetBlockError if EDINET blocks the search.
 
     Returns: (ok_count, error_count)
     """
@@ -148,7 +150,7 @@ def main() -> None:
     defaults = cli_defaults("scrape_edinet_reports")
     browser_cfg = magic_numbers()["browser"]
     edinet_cfg = magic_numbers().get("edinet", {})
-    interval = edinet_cfg.get("interval_seconds", 1.0)
+    interval = edinet_cfg.get("interval_seconds", DEFAULT_INTERVAL_SECONDS)
 
     parser = argparse.ArgumentParser(description="Download and extract EDINET securities reports for all listed companies")
     parser.add_argument("--ticker", type=str, help="Single ticker to process")
@@ -201,6 +203,10 @@ def main() -> None:
             )
 
         print(f"Done: {ok} ok, {errors} errors", file=sys.stderr)
+    except EdinetBlockError as exc:
+        logger.error("EDINET blocked: %s", exc)
+        print(f"BLOCKED: {exc}", file=sys.stderr)
+        sys.exit(1)
         sys.exit(1 if errors > 0 else 0)
     finally:
         conn.close()
