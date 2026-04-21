@@ -22,14 +22,14 @@ _DEFAULT_XBRL_TIMEOUT_MS = 120_000
 
 _EXTRACT_HONBUN_JS = """
 (async () => {
-  await new Promise(r => setTimeout(r, 5000));
   const frame = document.getElementById('frame_honbun');
   if (!frame) return null;
-  if (frame.srcdoc && frame.srcdoc.length > 100) return frame.srcdoc;
-  try {
-    return frame.contentDocument.documentElement.outerHTML;
-  } catch (_) { /* cross-origin fallback */ }
-  return frame.src || null;
+  for (let i = 0; i < 20; i++) {
+    await new Promise(r => setTimeout(r, 1000));
+    const content = frame.srcdoc || '';
+    if (content.length > 100) return content;
+  }
+  return null;
 })()
 """
 
