@@ -6,6 +6,7 @@ import argparse
 import logging
 import sqlite3
 import sys
+from pathlib import Path
 
 import requests
 
@@ -30,21 +31,37 @@ logger = logging.getLogger("stock_db.cli.scrape_edinet_reports")
 _EDINET_RAW_DIR = VAR_DIR / "raw" / "edinet"
 
 
-def _process_one(conn: sqlite3.Connection, ticker: str, url: str, *, client: BrowserServiceClient | None = None, proxy: str | None = None) -> tuple[int, int]:
-    """Download PDF, extract text, save Markdown. Returns (ok, errors)."""
+def _process_one(conn: sqlite3.Connection, ticker: str, url: str, *, client: BrowserServiceClient | None = None, proxy: str | None = None, skip_pdf: bool = False, skip_xbrl: bool = False) -> tuple[int, int]:
+    """Download PDF/XBRL, save. Returns (ok, errors)."""
     try:
-        pdf_path = download_pdf(url, _EDINET_RAW_DIR / "pdf" / ticker)
-        markdown = extract_markdown(pdf_path)
-
-        md_dir = _EDINET_RAW_DIR / ticker
-        md_dir.mkdir(parents=True, exist_ok=True)
-        md_path = md_dir / "latest.md"
-        md_path.write_text(markdown, encoding="utf-8")
-
         doc_id = url.rsplit("/", 1)[-1].replace(".pdf", "")
-
+        md_path: str | None = None
         xbrl_path: str | None = None
-        if client is not None:
+        page_count: int | None = None
+        char_count: int | None = None
+
+        if not skip_pdf:
+            pdf_path = download_pdf(url, _EDINET_RAW_DIR / "pdf" / ticker)
+            markdown = extract_markdown(pdf_path)
+
+            md_dir = _EDINET_RAW_DIR / ticker
+            md_dir.mkdir(parents=True, exist_ok=True)
+            md_path = str(md_dir / "latest.md")
+            Path(md_path).write_text(markdown, encoding="utf-8")
+            page_count = len(markdown.split("\n\n"))
+            char_count = len(markdown)
+            logger.info("  %s: saved %s (%d chars)", ticker, md_path, len(markdown))
+        else:
+            existing = conn.execute(
+                "SELECT file_path, page_count, char_count FROM sec_reports WHERE doc_id = ?",
+                (doc_id,),
+            ).fetchone()
+            if existing:
+                md_path = existing["file_path"]
+                page_count = existing["page_count"]
+                char_count = existing["char_count"]
+
+        if not skip_xbrl and client is not None:
             xbrl_dest = download_xbrl(client, doc_id, _EDINET_RAW_DIR / "xbrl" / ticker, proxy=proxy)
             if xbrl_dest is not None:
                 xbrl_path = str(xbrl_dest)
@@ -54,14 +71,13 @@ def _process_one(conn: sqlite3.Connection, ticker: str, url: str, *, client: Bro
             ticker=ticker,
             fiscal_year="latest",
             doc_id=doc_id,
-            file_path=str(md_path),
+            file_path=md_path or "",
             xbrl_path=xbrl_path,
-            page_count=len(markdown.split("\n\n")),
-            char_count=len(markdown),
+            page_count=page_count,
+            char_count=char_count,
         )
         upsert_company_metadata(conn, ticker, securities_report_url=url)
         conn.commit()
-        logger.info("  %s: saved %s (%d chars)", ticker, md_path, len(markdown))
         return 1, 0
     except (requests.RequestException, OSError, ValueError) as exc:
         logger.exception("  Error processing %s: %s", ticker, exc)
@@ -87,6 +103,13 @@ def scrape_all_edinet_reports(
     Returns: (ok_count, error_count)
     """
     existing_ids = get_processed_doc_ids(conn) if skip_existing else set()
+    xbrl_done_ids: set[str] = set()
+    if skip_existing:
+        xbrl_done_ids = {
+            r["doc_id"] for r in conn.execute(
+                "SELECT doc_id FROM sec_reports WHERE xbrl_path IS NOT NULL"
+            ).fetchall()
+        }
 
     # URLあり・なしを仕分け
     has_url: dict[str, str] = {}
@@ -107,16 +130,25 @@ def scrape_all_edinet_reports(
     ok = 0
     errors = 0
 
-    # Phase 1: URLあり銘柄を処理
+    # Phase 1: URLあり銘柄を処理 (PDF/XBRL個別スキップ)
     url_targets = [
         (t, url) for t, url in has_url.items()
         if doc_id_from_url(url) not in existing_ids
+        or doc_id_from_url(url) not in xbrl_done_ids
     ]
     if url_targets:
-        logger.info("Phase 1: Processing %d tickers with existing URLs", len(url_targets))
+        logger.info("Phase 1: Processing %d tickers (PDF todo: %d, XBRL todo: %d)",
+                     len(url_targets),
+                     sum(1 for _, u in url_targets if doc_id_from_url(u) not in existing_ids),
+                     sum(1 for _, u in url_targets if doc_id_from_url(u) not in xbrl_done_ids))
     for i, (ticker, url) in enumerate(url_targets, 1):
-        logger.info("[Phase1 %d/%d] Processing %s", i, len(url_targets), ticker)
-        ok_delta, err_delta = _process_one(conn, ticker, url, client=client, proxy=proxy)
+        doc_id = doc_id_from_url(url)
+        skip_pdf = doc_id in existing_ids
+        skip_xbrl = doc_id in xbrl_done_ids
+        logger.info("[Phase1 %d/%d] Processing %s (skip_pdf=%s, skip_xbrl=%s)",
+                     i, len(url_targets), ticker, skip_pdf, skip_xbrl)
+        ok_delta, err_delta = _process_one(conn, ticker, url, client=client, proxy=proxy,
+                                            skip_pdf=skip_pdf, skip_xbrl=skip_xbrl)
         ok += ok_delta
         errors += err_delta
         if i < len(url_targets):
@@ -149,14 +181,18 @@ def scrape_all_edinet_reports(
             logger.info("Discovered %d docIDs from EDINET search", len(doc_id_map))
 
             discovered_items = [
-                (ticker, build_pdf_url(doc_id))
+                (ticker, build_pdf_url(doc_id), doc_id)
                 for ticker, doc_id in doc_id_map.items()
-                if doc_id not in existing_ids
+                if doc_id not in existing_ids or doc_id not in xbrl_done_ids
             ]
 
-            for i, (ticker, url) in enumerate(discovered_items, 1):
-                logger.info("[Phase2 %d/%d] Processing discovered %s", i, len(discovered_items), ticker)
-                ok_delta, err_delta = _process_one(conn, ticker, url, client=client, proxy=proxy)
+            for i, (ticker, url, doc_id) in enumerate(discovered_items, 1):
+                skip_pdf = doc_id in existing_ids
+                skip_xbrl = doc_id in xbrl_done_ids
+                logger.info("[Phase2 %d/%d] Processing discovered %s (skip_pdf=%s, skip_xbrl=%s)",
+                             i, len(discovered_items), ticker, skip_pdf, skip_xbrl)
+                ok_delta, err_delta = _process_one(conn, ticker, url, client=client, proxy=proxy,
+                                                    skip_pdf=skip_pdf, skip_xbrl=skip_xbrl)
                 ok += ok_delta
                 errors += err_delta
                 if i < len(discovered_items):
