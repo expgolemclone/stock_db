@@ -87,3 +87,19 @@ class TestSecReports:
         result = get_processed_doc_ids(db_conn)
 
         assert result == set()
+
+    def test_upsert_with_xbrl_path(self, db_conn: sqlite3.Connection) -> None:
+        upsert_sec_report(
+            db_conn,
+            ticker="7203",
+            fiscal_year="latest",
+            doc_id="S100XBR1",
+            file_path="var/raw/edinet/7203/latest.md",
+            xbrl_path="var/raw/edinet/xbrl/7203/S100XBR1.xhtml",
+        )
+        db_conn.commit()
+
+        rows = get_sec_reports_for_ticker(db_conn, "7203")
+
+        assert len(rows) == 1
+        assert rows[0]["xbrl_path"] == "var/raw/edinet/xbrl/7203/S100XBR1.xhtml"

@@ -12,7 +12,7 @@ import requests
 from stock_db.browser_client.client import BrowserServiceClient
 from stock_db.paths import STOCKS_DB_PATH, VAR_DIR, cli_defaults, magic_numbers
 from stock_db.proxy_pool import random_delay
-from stock_db.sources.edinet.api_client import build_pdf_url, doc_id_from_url, download_pdf
+from stock_db.sources.edinet.api_client import build_pdf_url, doc_id_from_url, download_pdf, download_xbrl
 from stock_db.sources.edinet.pdf_extractor import extract_markdown
 from stock_db.sources.edinet.search_scraper import (
     DEFAULT_INTERVAL_SECONDS,
@@ -30,7 +30,7 @@ logger = logging.getLogger("stock_db.cli.scrape_edinet_reports")
 _EDINET_RAW_DIR = VAR_DIR / "raw" / "edinet"
 
 
-def _process_one(conn: sqlite3.Connection, ticker: str, url: str) -> tuple[int, int]:
+def _process_one(conn: sqlite3.Connection, ticker: str, url: str, *, client: BrowserServiceClient | None = None, proxy: str | None = None) -> tuple[int, int]:
     """Download PDF, extract text, save Markdown. Returns (ok, errors)."""
     try:
         pdf_path = download_pdf(url, _EDINET_RAW_DIR / "pdf" / ticker)
@@ -42,12 +42,20 @@ def _process_one(conn: sqlite3.Connection, ticker: str, url: str) -> tuple[int, 
         md_path.write_text(markdown, encoding="utf-8")
 
         doc_id = url.rsplit("/", 1)[-1].replace(".pdf", "")
+
+        xbrl_path: str | None = None
+        if client is not None:
+            xbrl_dest = download_xbrl(client, doc_id, _EDINET_RAW_DIR / "xbrl" / ticker, proxy=proxy)
+            if xbrl_dest is not None:
+                xbrl_path = str(xbrl_dest)
+
         upsert_sec_report(
             conn,
             ticker=ticker,
             fiscal_year="latest",
             doc_id=doc_id,
             file_path=str(md_path),
+            xbrl_path=xbrl_path,
             page_count=len(markdown.split("\n\n")),
             char_count=len(markdown),
         )
@@ -108,7 +116,7 @@ def scrape_all_edinet_reports(
         logger.info("Phase 1: Processing %d tickers with existing URLs", len(url_targets))
     for i, (ticker, url) in enumerate(url_targets, 1):
         logger.info("[Phase1 %d/%d] Processing %s", i, len(url_targets), ticker)
-        ok_delta, err_delta = _process_one(conn, ticker, url)
+        ok_delta, err_delta = _process_one(conn, ticker, url, client=client, proxy=proxy)
         ok += ok_delta
         errors += err_delta
         if i < len(url_targets):
@@ -148,7 +156,7 @@ def scrape_all_edinet_reports(
 
             for i, (ticker, url) in enumerate(discovered_items, 1):
                 logger.info("[Phase2 %d/%d] Processing discovered %s", i, len(discovered_items), ticker)
-                ok_delta, err_delta = _process_one(conn, ticker, url)
+                ok_delta, err_delta = _process_one(conn, ticker, url, client=client, proxy=proxy)
                 ok += ok_delta
                 errors += err_delta
                 if i < len(discovered_items):

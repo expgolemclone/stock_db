@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from stock_db.sources.edinet.api_client import build_pdf_url, doc_id_from_url
+from unittest.mock import MagicMock
+
+from stock_db.sources.edinet.api_client import build_pdf_url, build_xbrl_url, doc_id_from_url, download_xbrl
 
 
 class TestDocIdFromUrl:
@@ -35,3 +37,39 @@ class TestBuildPdfUrl:
         url = build_pdf_url(doc_id)
 
         assert doc_id_from_url(url) == doc_id
+
+
+class TestBuildXbrlUrl:
+    def test_builds_viewer_url(self) -> None:
+        result = build_xbrl_url("S100VWVY")
+
+        assert result == "https://disclosure2.edinet-fsa.go.jp/WZEK0040.aspx?S100VWVY,,"
+
+
+class TestDownloadXbrl:
+    def test_saves_html_to_file(self, tmp_path: Path) -> None:
+        html = "<html><body>" + "x" * 200 + "</body></html>"
+        client = MagicMock()
+        client.evaluate.return_value = html
+
+        dest = download_xbrl(client, "S100TEST", tmp_path)
+
+        assert dest is not None
+        assert dest.name == "S100TEST.xhtml"
+        assert dest.read_text(encoding="utf-8") == html
+
+    def test_returns_none_on_empty_result(self, tmp_path: Path) -> None:
+        client = MagicMock()
+        client.evaluate.return_value = "<p>short</p>"
+
+        dest = download_xbrl(client, "S100TEST", tmp_path)
+
+        assert dest is None
+
+    def test_returns_none_on_exception(self, tmp_path: Path) -> None:
+        client = MagicMock()
+        client.evaluate.side_effect = RuntimeError("browser crashed")
+
+        dest = download_xbrl(client, "S100TEST", tmp_path)
+
+        assert dest is None

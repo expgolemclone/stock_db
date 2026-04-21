@@ -1,4 +1,4 @@
-"""Download EDINET securities report PDFs and scrape search results."""
+"""Download EDINET securities report PDFs, XBRL, and scrape search results."""
 
 from __future__ import annotations
 
@@ -16,6 +16,22 @@ logger = logging.getLogger("stock_db.sources.edinet.api_client")
 
 _PDF_URL_RE = re.compile(r"/searchdocument/pdf/([A-Za-z0-9]+)\.pdf")
 _SEARCH_BASE = "https://disclosure2.edinet-fsa.go.jp/EKW01Z01/wk110000"
+_XBRL_BASE_URL = "https://disclosure2.edinet-fsa.go.jp/WZEK0040.aspx"
+_DEFAULT_PDF_TIMEOUT = 120
+_DEFAULT_XBRL_TIMEOUT_MS = 120_000
+
+_EXTRACT_HONBUN_JS = """
+(async () => {
+  await new Promise(r => setTimeout(r, 5000));
+  const frame = document.getElementById('frame_honbun');
+  if (!frame) return null;
+  if (frame.srcdoc && frame.srcdoc.length > 100) return frame.srcdoc;
+  try {
+    return frame.contentDocument.documentElement.outerHTML;
+  } catch (_) { /* cross-origin fallback */ }
+  return frame.src || null;
+})()
+"""
 
 
 def doc_id_from_url(url: str) -> str | None:
@@ -24,7 +40,7 @@ def doc_id_from_url(url: str) -> str | None:
     return m.group(1) if m else None
 
 
-def download_pdf(url: str, dest_dir: Path, *, timeout: float = 120) -> Path:
+def download_pdf(url: str, dest_dir: Path, *, timeout: float = _DEFAULT_PDF_TIMEOUT) -> Path:
     """Download a PDF directly via requests. Returns the saved file path."""
     doc_id = doc_id_from_url(url)
     if doc_id is None:
@@ -44,6 +60,39 @@ def download_pdf(url: str, dest_dir: Path, *, timeout: float = 120) -> Path:
 def build_pdf_url(doc_id: str) -> str:
     """Build a standardized EDINET PDF URL from a docID."""
     return f"https://disclosure2dl.edinet-fsa.go.jp/searchdocument/pdf/{doc_id}.pdf"
+
+
+def build_xbrl_url(doc_id: str) -> str:
+    """Build EDINET document viewer URL for XBRL retrieval."""
+    return f"{_XBRL_BASE_URL}?{doc_id},,"
+
+
+def download_xbrl(
+    client: BrowserServiceClient,
+    doc_id: str,
+    dest_dir: Path,
+    *,
+    proxy: str | None = None,
+    timeout: int = _DEFAULT_XBRL_TIMEOUT_MS,
+) -> Path | None:
+    """Download iXBRL HTML from EDINET document viewer via browser service."""
+    url = build_xbrl_url(doc_id)
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    dest = dest_dir / f"{doc_id}.xhtml"
+
+    try:
+        result = client.evaluate(url, _EXTRACT_HONBUN_JS, proxy=proxy, timeout=timeout)
+    except (ValueError, RuntimeError, OSError) as exc:
+        logger.warning("XBRL evaluate failed for %s: %s", doc_id, exc)
+        return None
+
+    if not result or not isinstance(result, str) or len(result) < 100:
+        logger.warning("XBRL content too short for %s (%d chars)", doc_id, len(result) if result else 0)
+        return None
+
+    dest.write_text(result, encoding="utf-8")
+    logger.info("Saved XBRL %s -> %s (%d chars)", doc_id, dest, len(result))
+    return dest
 
 
 def search_documents_html(
