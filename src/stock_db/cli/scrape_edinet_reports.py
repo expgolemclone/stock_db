@@ -6,130 +6,156 @@ import argparse
 import logging
 import sqlite3
 import sys
-from datetime import date, timedelta
 from pathlib import Path
 
+import requests
+
+from stock_db.browser_client.client import BrowserServiceClient, BrowserServiceError
 from stock_db.paths import STOCKS_DB_PATH, VAR_DIR, cli_defaults, magic_numbers
-from stock_db.proxy_pool import random_delay
-from stock_db.sources.edinet.api_client import (
-    EdinetAPIError,
-    download_pdf,
-    filter_annual_reports,
-    list_documents,
-)
+from stock_db.proxy_pool import ProxyPool, random_delay
+from stock_db.sources.edinet.api_client import build_pdf_url, download_pdf
 from stock_db.sources.edinet.pdf_extractor import extract_markdown
+from stock_db.sources.edinet.search_scraper import batch_search_doc_ids
 from stock_db.storage.connection import get_connection
+from stock_db.storage.schema import init_db
 from stock_db.storage.sec_reports import get_processed_doc_ids, upsert_sec_report
-from stock_db.storage.stocks import get_all_tickers
+from stock_db.storage.stocks import get_all_tickers, upsert_company_metadata
 
 logger = logging.getLogger("stock_db.cli.scrape_edinet_reports")
 
 _EDINET_RAW_DIR = VAR_DIR / "raw" / "edinet"
 
 
-def _sec_code_to_ticker(sec_code: str) -> str | None:
-    """EDINET secCode (5-digit) -> 4-digit ticker."""
-    if len(sec_code) != 5:
-        return None
-    return sec_code[:4]
+def _build_pool(proxy_arg: str) -> ProxyPool:
+    if proxy_arg == "direct":
+        return ProxyPool.make_direct()
+    if proxy_arg.startswith("file:"):
+        return ProxyPool.from_file(Path(proxy_arg.removeprefix("file:")))
+    return ProxyPool.from_url(proxy_arg)
 
 
-def scrape_edinet_reports(
+def _process_one(conn: sqlite3.Connection, ticker: str, url: str) -> tuple[int, int]:
+    """Download PDF, extract text, save Markdown. Returns (ok, errors)."""
+    try:
+        pdf_path = download_pdf(url, _EDINET_RAW_DIR / "pdf" / ticker)
+        markdown = extract_markdown(pdf_path)
+
+        md_dir = _EDINET_RAW_DIR / ticker
+        md_dir.mkdir(parents=True, exist_ok=True)
+        md_path = md_dir / "latest.md"
+        md_path.write_text(markdown, encoding="utf-8")
+
+        doc_id = url.rsplit("/", 1)[-1].replace(".pdf", "")
+        upsert_sec_report(
+            conn,
+            ticker=ticker,
+            fiscal_year="latest",
+            doc_id=doc_id,
+            file_path=str(md_path),
+            page_count=len(markdown.split("\n\n")),
+            char_count=len(markdown),
+        )
+        upsert_company_metadata(conn, ticker, securities_report_url=url)
+        conn.commit()
+        logger.info("  %s: saved %s (%d chars)", ticker, md_path, len(markdown))
+        return 1, 0
+    except (requests.RequestException, OSError, ValueError) as exc:
+        logger.exception("  Error processing %s: %s", ticker, exc)
+        return 0, 1
+
+
+def scrape_all_edinet_reports(
     conn: sqlite3.Connection,
+    client: BrowserServiceClient,
+    tickers: list[str],
     *,
-    start_date: str,
-    end_date: str,
-    target_tickers: set[str] | None = None,
+    proxy: str | None = None,
     skip_existing: bool = True,
-    interval: float = 2.0,
+    interval: float = 1.0,
 ) -> tuple[int, int]:
-    """Download and extract EDINET reports for a date range.
+    """全銘柄の有報を取得・抽出。URLなし銘柄はEDINET検索で自動発見。
+
+    1. securities_report_urlあり銘柄: 直接PDFダウンロード
+    2. securities_report_urlなし銘柄: browser serviceでEDINET検索→docID発見→PDFダウンロード
 
     Returns: (ok_count, error_count)
     """
     existing_ids = get_processed_doc_ids(conn) if skip_existing else set()
 
-    current = date.fromisoformat(start_date)
-    end = date.fromisoformat(end_date)
+    # URLあり・なしを仕分け
+    has_url: dict[str, str] = {}
+    for row in conn.execute(
+        "SELECT ticker, securities_report_url FROM stocks "
+        "WHERE securities_report_url IS NOT NULL"
+    ).fetchall():
+        if row["ticker"] in set(tickers):
+            has_url[row["ticker"]] = row["securities_report_url"]
+
+    no_url_tickers = [t for t in tickers if t not in has_url]
+
+    logger.info(
+        "%d tickers total: %d with URL, %d without URL",
+        len(tickers), len(has_url), len(no_url_tickers),
+    )
+
     ok = 0
     errors = 0
 
-    while current <= end:
-        date_str = current.isoformat()
-        logger.info("Fetching document list for %s", date_str)
-
-        try:
-            all_docs = list_documents(date_str)
-        except (EdinetAPIError, ConnectionError) as exc:
-            logger.exception("Failed to list documents for %s: %s", date_str, exc)
-            errors += 1
-            current += timedelta(days=1)
-            continue
-
-        annual = filter_annual_reports(all_docs)
-        logger.info("  %d annual reports found for %s", len(annual), date_str)
-
-        for doc in annual:
-            doc_id = doc["docID"]
-            if doc_id in existing_ids:
-                logger.debug("  Skipping existing doc %s", doc_id)
-                continue
-
-            sec_code = doc.get("secCode", "")
-            ticker = _sec_code_to_ticker(sec_code)
-            if ticker is None:
-                logger.warning("  Skipping doc %s with invalid secCode: %s", doc_id, sec_code)
-                continue
-
-            if target_tickers is not None and ticker not in target_tickers:
-                continue
-
-            period_end = doc.get("periodEnd", "")
-            fiscal_year = period_end[:4] if len(period_end) >= 4 else "unknown"
-
-            try:
-                pdf_path = download_pdf(doc_id, _EDINET_RAW_DIR / "pdf" / ticker)
-                markdown = extract_markdown(pdf_path)
-
-                md_dir = _EDINET_RAW_DIR / ticker
-                md_dir.mkdir(parents=True, exist_ok=True)
-                md_path = md_dir / f"{fiscal_year}.md"
-                md_path.write_text(markdown, encoding="utf-8")
-
-                upsert_sec_report(
-                    conn,
-                    ticker=ticker,
-                    fiscal_year=fiscal_year,
-                    doc_id=doc_id,
-                    file_path=str(md_path),
-                    page_count=markdown.count("\n\n") + 1,
-                    char_count=len(markdown),
-                )
-                conn.commit()
-                logger.info("  %s (%s): saved %s", ticker, fiscal_year, md_path)
-                ok += 1
-                existing_ids.add(doc_id)
-            except (OSError, ValueError) as exc:
-                logger.exception("  Error processing doc %s for %s: %s", doc_id, ticker, exc)
-                errors += 1
-
+    # Phase 1: URLあり銘柄を処理
+    url_targets = [
+        (t, url) for t, url in has_url.items()
+        if url not in existing_ids
+    ]
+    if url_targets:
+        logger.info("Phase 1: Processing %d tickers with existing URLs", len(url_targets))
+    for i, (ticker, url) in enumerate(url_targets, 1):
+        logger.info("[Phase1 %d/%d] Processing %s", i, len(url_targets), ticker)
+        ok_delta, err_delta = _process_one(conn, ticker, url)
+        ok += ok_delta
+        errors += err_delta
+        if i < len(url_targets):
             random_delay(interval * 0.5, interval * 1.5)
 
-        current += timedelta(days=1)
+    # Phase 2: URLなし銘柄をEDINET検索で発見
+    if no_url_tickers:
+        # まだ未処理の銘柄のみ検索
+        processed_tickers = {t for t, _ in url_targets}
+        remaining = [t for t in no_url_tickers if t not in processed_tickers]
+        if remaining:
+            logger.info("Phase 2: Discovering %d tickers via EDINET search", len(remaining))
+            doc_id_map = batch_search_doc_ids(client, remaining, proxy=proxy, interval=interval)
+            logger.info("Discovered %d docIDs from EDINET search", len(doc_id_map))
 
-    logger.info("Done: %d ok, %d errors", ok, errors)
+            discovered_items = [
+                (ticker, build_pdf_url(doc_id))
+                for ticker, doc_id in doc_id_map.items()
+                if build_pdf_url(doc_id) not in existing_ids
+            ]
+
+            for i, (ticker, url) in enumerate(discovered_items, 1):
+                logger.info("[Phase2 %d/%d] Processing discovered %s", i, len(discovered_items), ticker)
+                ok_delta, err_delta = _process_one(conn, ticker, url)
+                ok += ok_delta
+                errors += err_delta
+                if i < len(discovered_items):
+                    random_delay(interval * 0.5, interval * 1.5)
+
+    logger.info("Total: %d ok, %d errors", ok, errors)
     return ok, errors
 
 
 def main() -> None:
     defaults = cli_defaults("scrape_edinet_reports")
+    browser_cfg = magic_numbers()["browser"]
     edinet_cfg = magic_numbers().get("edinet", {})
-    interval = edinet_cfg.get("interval_seconds", 2.0)
+    interval = edinet_cfg.get("interval_seconds", 1.0)
 
-    parser = argparse.ArgumentParser(description="Download and extract EDINET securities reports")
+    parser = argparse.ArgumentParser(description="Download and extract EDINET securities reports for all listed companies")
     parser.add_argument("--ticker", type=str, help="Single ticker to process")
-    parser.add_argument("--date", type=str, help="Specific date (YYYY-MM-DD)")
-    parser.add_argument("--days", type=int, default=30, help="Number of days to look back (default: 30)")
+    parser.add_argument(
+        "--proxy", type=str, default=defaults["proxy"],
+        help="direct | file:<path> | <proxy-url>",
+    )
     parser.add_argument(
         "--skip-existing", action="store_true", default=defaults.get("skip_existing", True),
         help="Skip already processed documents (default)",
@@ -141,28 +167,38 @@ def main() -> None:
 
     skip_existing = args.skip_existing and not args.force
 
-    today = date.today()
-    if args.date:
-        start_date = args.date
-        end_date = args.date
-    else:
-        end_date = today.isoformat()
-        start_date = (today - timedelta(days=args.days)).isoformat()
-
     conn: sqlite3.Connection = get_connection(STOCKS_DB_PATH)
+    init_db(conn)
     try:
-        target_tickers: set[str] | None = None
         if args.ticker:
-            target_tickers = {args.ticker}
+            tickers: list[str] = [args.ticker]
+        else:
+            tickers = get_all_tickers(conn)
 
-        ok, errors = scrape_edinet_reports(
-            conn,
-            start_date=start_date,
-            end_date=end_date,
-            target_tickers=target_tickers,
-            skip_existing=skip_existing,
-            interval=interval,
-        )
+        if not tickers:
+            print("No tickers to process", file=sys.stderr)
+            sys.exit(1)
+
+        pool: ProxyPool = _build_pool(args.proxy)
+        proxy_url: str | None = pool.get()
+        client_cfg = {
+            "pool_size": 1,
+            "page_timeout": browser_cfg.get("page_timeout", 30000),
+            "idle_timeout": browser_cfg.get("idle_timeout", 60000),
+            "startup_timeout": browser_cfg.get("startup_timeout", 30),
+            "headless": defaults.get("headless", True),
+            "disable_xvfb": defaults.get("disable_xvfb", True),
+            "challenge_poll_interval_ms": browser_cfg.get("challenge_poll_interval_ms", 500),
+            "challenge_clear_stable_ms": browser_cfg.get("challenge_clear_stable_ms", 2000),
+        }
+
+        with BrowserServiceClient(config=client_cfg) as client:
+            ok, errors = scrape_all_edinet_reports(
+                conn, client, tickers,
+                proxy=proxy_url,
+                skip_existing=skip_existing,
+                interval=interval,
+            )
 
         print(f"Done: {ok} ok, {errors} errors", file=sys.stderr)
         sys.exit(1 if errors > 0 else 0)

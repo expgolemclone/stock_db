@@ -10,6 +10,7 @@ dependencies = [
     "pysocks>=1.7,<2",
     "beautifulsoup4>=4.14.3,<5",
     "pypdf>=5.0,<6",
+    "pdfminer.six>=20250327,<20260000",
 ]
 
 [dependency-groups]
