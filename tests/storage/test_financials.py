@@ -6,6 +6,7 @@ from stock_db.storage.financials import (
     get_cached_periods,
     get_financial_dict,
     get_historical_items,
+    purge_financial_items_for_source,
     upsert_financial_item,
     upsert_financial_items_bulk,
 )
@@ -80,3 +81,17 @@ class TestFinancialItems:
         result = get_financial_dict(db_conn, "1234", "2024")
 
         assert result["custom_stmt"]["metric"] == 42.0
+
+    def test_purge_financial_items_for_source(self, db_conn: sqlite3.Connection) -> None:
+        upsert_financial_item(db_conn, "1234", "2024", "bs", "x", 1.0, "irbank_bs")
+        upsert_financial_item(db_conn, "1234", "2024", "pl", "y", 2.0, "irbank")
+        db_conn.commit()
+
+        deleted = purge_financial_items_for_source(db_conn, "irbank_bs")
+        db_conn.commit()
+
+        assert deleted == 1
+        rows = db_conn.execute(
+            "SELECT statement, item_name, source FROM financial_items ORDER BY statement, item_name"
+        ).fetchall()
+        assert [tuple(row) for row in rows] == [("pl", "y", "irbank")]

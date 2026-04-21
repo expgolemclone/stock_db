@@ -50,17 +50,31 @@ _PERIOD_RE = re.compile(r"(\d{4})年(\d{1,2})月")
 _PCT_VAL_RE = re.compile(r"([\d.]+)%\s*([\d兆億万]+)")
 _DETAIL_DATE_RE = re.compile(r"(\d{4})年(\d{1,2})月(\d{1,2})日")
 _DETAIL_INT_RE = re.compile(r"-?[\d,]+")
+_DETAIL_UNIT_RE = re.compile(r"[（(](円|千円|百万円|億円)[)）]")
 _THOUSAND_YEN = 1000.0
+_DETAIL_UNIT_SCALE: dict[str, float] = {
+    "円": 1.0,
+    "千円": 1_000.0,
+    "百万円": 1_000_000.0,
+    "億円": 100_000_000.0,
+}
 
 _DETAIL_DIRECT_MAP: dict[str, str] = {
     "現金及び預金": "cash_and_deposits",
+    "現金及び現金同等物（IFRS）": "cash_and_deposits",
     "流動資産計": "current_assets",
+    "流動資産合計": "current_assets",
     "投資有価証券": "investment_securities",
     "支払手形及び買掛金": "trade_payables",
+    "買掛金及びその他の短期債務": "trade_payables",
     "流動負債計": "current_liabilities",
+    "流動負債合計": "current_liabilities",
     "固定負債計": "non_current_liabilities",
+    "非流動負債合計": "non_current_liabilities",
     "株主資本合計": "stockholders_equity",
+    "親会社の所有者に帰属する持分（IFRS）": "stockholders_equity",
     "純資産の部合計": "net_assets",
+    "資本合計": "net_assets",
 }
 
 _DETAIL_SUM_MAP: dict[str, set[str]] = {
@@ -87,6 +101,7 @@ _DETAIL_SUM_MAP: dict[str, set[str]] = {
         "受取手形、売掛金及び契約資産",
         "電子記録債権",
         "契約資産",
+        "売掛金及びその他の短期債権",
     },
 }
 
@@ -121,15 +136,26 @@ def _parse_detail_period(text: str) -> str | None:
     return f"{m.group(1)}-{int(m.group(2)):02d}"
 
 
-def _parse_detail_value(text: str) -> float | None:
-    """Parse detailed BS numeric cell in thousand yen, preserving explicit zero."""
+def _parse_detail_value(text: str, scale: float) -> float | None:
+    """Parse detailed BS numeric cell, preserving explicit zero."""
     stripped = text.strip()
     if stripped in ("", "-", "—", "−", "－"):
         return None
     normalized = stripped.replace(",", "")
     if not _DETAIL_INT_RE.fullmatch(normalized):
         return None
-    return float(int(normalized)) * _THOUSAND_YEN
+    return float(int(normalized)) * scale
+
+
+def _detect_detail_scale(table: Tag) -> float:
+    caption = table.find("caption")
+    if caption is None:
+        return _THOUSAND_YEN
+    caption_text = caption.get_text(" ", strip=True)
+    match = _DETAIL_UNIT_RE.search(caption_text)
+    if match is None:
+        return _THOUSAND_YEN
+    return _DETAIL_UNIT_SCALE.get(match.group(1), _THOUSAND_YEN)
 
 
 def _table_rows(table: Tag) -> list[list[str]]:
@@ -298,6 +324,7 @@ def parse_latest_annual_bs_page(html: str) -> dict[str, dict[str, float | None]]
     latest_period = _parse_detail_period(header[latest_col_idx])
     if latest_period is None:
         return {}
+    scale = _detect_detail_scale(table)
 
     direct_items: dict[str, float | None] = {}
     summed_items: dict[str, float] = defaultdict(float)
@@ -309,7 +336,7 @@ def parse_latest_annual_bs_page(html: str) -> dict[str, dict[str, float | None]]
         label = row[0].strip()
         if not label:
             continue
-        value = _parse_detail_value(row[latest_col_idx])
+        value = _parse_detail_value(row[latest_col_idx], scale)
 
         direct_key = _DETAIL_DIRECT_MAP.get(label)
         if direct_key is not None:
