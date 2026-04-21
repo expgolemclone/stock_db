@@ -19,6 +19,38 @@ logger = logging.getLogger("stock_db.cli.scrape_edinet_watchdog")
 MAX_MEM_PCT = 70
 CHECK_INTERVAL = 30
 COOLDOWN_AFTER_KILL = 60
+_PID_FILE = Path("/tmp/scrape_edinet_watchdog.pid")
+
+
+def _kill_previous_instance() -> None:
+    """Kill a previous watchdog instance if one is running."""
+    if not _PID_FILE.exists():
+        return
+    try:
+        old_pid = int(_PID_FILE.read_text().strip())
+    except (ValueError, OSError):
+        logger.debug("Invalid PID file, ignoring")
+        return
+    try:
+        os.kill(old_pid, signal.SIGTERM)
+    except ProcessLookupError:
+        logger.debug("Previous instance PID %d already gone", old_pid)
+    else:
+        logger.info("Killed previous watchdog instance (PID %d)", old_pid)
+        time.sleep(2)
+
+
+def _write_pid() -> None:
+    """Write current PID to the PID file."""
+    _PID_FILE.write_text(str(os.getpid()))
+
+
+def _remove_pid() -> None:
+    """Remove the PID file on exit."""
+    try:
+        _PID_FILE.unlink()
+    except FileNotFoundError:
+        logger.debug("PID file already removed")
 
 
 def _mem_pct() -> float:
@@ -88,28 +120,33 @@ def _start_scrape() -> int:
 
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
+    _kill_previous_instance()
+    _write_pid()
     logger.info("Watchdog started (threshold: %d%%)", MAX_MEM_PCT)
 
-    while True:
-        mem = _mem_pct()
-        logger.info("Memory: %.0f%%", mem)
+    try:
+        while True:
+            mem = _mem_pct()
+            logger.info("Memory: %.0f%%", mem)
 
-        if mem >= MAX_MEM_PCT:
-            logger.warning("Memory %.0f%% >= %d%%", mem, MAX_MEM_PCT)
-            if _find_scrape_pids():
-                _kill_scrape()
-                logger.info("Cooling down %ds...", COOLDOWN_AFTER_KILL)
-                time.sleep(COOLDOWN_AFTER_KILL)
+            if mem >= MAX_MEM_PCT:
+                logger.warning("Memory %.0f%% >= %d%%", mem, MAX_MEM_PCT)
+                if _find_scrape_pids():
+                    _kill_scrape()
+                    logger.info("Cooling down %ds...", COOLDOWN_AFTER_KILL)
+                    time.sleep(COOLDOWN_AFTER_KILL)
 
-        if not _find_scrape_pids():
-            logger.info("Starting scrape-edinet-reports (skip_existing)...")
-            rc = _start_scrape()
-            if rc == 0:
-                logger.info("Scrape completed successfully.")
-                break
-            logger.warning("Scrape exited with code %d, will retry.", rc)
+            if not _find_scrape_pids():
+                logger.info("Starting scrape-edinet-reports (skip_existing)...")
+                rc = _start_scrape()
+                if rc == 0:
+                    logger.info("Scrape completed successfully.")
+                    break
+                logger.warning("Scrape exited with code %d, will retry.", rc)
 
-        time.sleep(CHECK_INTERVAL)
+            time.sleep(CHECK_INTERVAL)
+    finally:
+        _remove_pid()
 
     logger.info("Watchdog finished.")
 
