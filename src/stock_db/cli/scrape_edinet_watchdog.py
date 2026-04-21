@@ -109,16 +109,10 @@ def _kill_scrape() -> None:
         time.sleep(3)
 
 
-_PROXY_FILE = "var/proxies/socks5.txt"
-
-
 def _start_scrape() -> int:
     """Start scrape-edinet-reports (default skip_existing=true). Returns exit code."""
-    proxy_args: list[str] = []
-    if Path(_PROXY_FILE).exists():
-        proxy_args = ["--proxy", f"file:{_PROXY_FILE}"]
     proc = subprocess.run(
-        [sys.executable, "-m", "stock_db.cli.scrape_edinet_reports", *proxy_args],
+        [sys.executable, "-m", "stock_db.cli.scrape_edinet_reports"],
         cwd="/home/exp/projects/stock_db",
     )
     return proc.returncode

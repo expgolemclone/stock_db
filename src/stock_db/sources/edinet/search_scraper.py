@@ -43,6 +43,10 @@ class EdinetBlockError(RuntimeError):
     """Raised when EDINET returns a block/error page."""
 
 
+class DocIdExtractionError(RuntimeError):
+    """Raised when annual report link exists but docID extraction fails."""
+
+
 def _build_search_url(ticker: str) -> str:
     params = f"scc={ticker}&pfs=6&kbn=2&p=1"
     encoded = base64.b64encode(params.encode()).decode()
@@ -85,9 +89,15 @@ def search_annual_reports(
                 f"EDINET blocked the request for ticker {ticker}: '{indicator}' detected"
             )
 
-    # 有価証券報告書がなければ終了
-    if "有価証券報告書" not in resp.html:
-        logger.info("No annual report found for ticker %s", ticker)
+    # 検索結果なし
+    if "レコードがありません" in resp.html:
+        logger.info("No records found for ticker %s", ticker)
+        return None
+
+    # 有価証券報告書のリンクがなければ終了
+    import re
+    if not re.search(r'TeisyutuSyorui_Click[^>]*>[^<]*有価証券報告書', resp.html):
+        logger.info("No annual report link found for ticker %s", ticker)
         return None
 
     # evaluate でクリック→docID抽出
@@ -100,9 +110,10 @@ def search_annual_reports(
     doc_id = _extract_doc_id_from_url(result_url)
     if doc_id:
         logger.info("Found docID %s for ticker %s", doc_id, ticker)
-    else:
-        logger.info("Could not extract docID for ticker %s (result_url=%s)", ticker, result_url)
-    return doc_id
+        return doc_id
+    raise DocIdExtractionError(
+        f"Annual report link found for {ticker} but docID extraction failed (result_url={result_url})"
+    )
 
 
 def batch_search_doc_ids(

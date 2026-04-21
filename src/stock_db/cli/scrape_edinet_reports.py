@@ -4,20 +4,19 @@ from __future__ import annotations
 
 import argparse
 import logging
-import random
 import sqlite3
 import sys
-from pathlib import Path
 
 import requests
 
-from stock_db.browser_client.client import BrowserServiceClient, BrowserServiceError
+from stock_db.browser_client.client import BrowserServiceClient
 from stock_db.paths import STOCKS_DB_PATH, VAR_DIR, cli_defaults, magic_numbers
-from stock_db.proxy_pool import ProxyPool, random_delay
+from stock_db.proxy_pool import random_delay
 from stock_db.sources.edinet.api_client import build_pdf_url, doc_id_from_url, download_pdf
 from stock_db.sources.edinet.pdf_extractor import extract_markdown
 from stock_db.sources.edinet.search_scraper import (
     DEFAULT_INTERVAL_SECONDS,
+    DocIdExtractionError,
     EdinetBlockError,
     search_annual_reports,
 )
@@ -29,22 +28,6 @@ from stock_db.storage.stocks import get_all_tickers, upsert_company_metadata
 logger = logging.getLogger("stock_db.cli.scrape_edinet_reports")
 
 _EDINET_RAW_DIR = VAR_DIR / "raw" / "edinet"
-_MAX_PROXY_RETRIES = 3
-
-
-def _build_pool(proxy_arg: str) -> ProxyPool:
-    if proxy_arg == "direct":
-        return ProxyPool.make_direct()
-    if proxy_arg.startswith("file:"):
-        path = Path(proxy_arg.removeprefix("file:"))
-        protocol = "socks5" if "socks5" in path.name else "http"
-        pool = ProxyPool.from_file(path, protocol=protocol)
-        # ランダムな開始インデックスでブロック済みプロキシを回避
-        start = random.randint(0, max(pool.size - 1, 0))
-        for _ in range(start):
-            pool.rotate()
-        return pool
-    return ProxyPool.from_url(proxy_arg)
 
 
 def _process_one(conn: sqlite3.Connection, ticker: str, url: str) -> tuple[int, int]:
@@ -77,32 +60,12 @@ def _process_one(conn: sqlite3.Connection, ticker: str, url: str) -> tuple[int, 
         return 0, 1
 
 
-def _search_with_rotation(
-    client: BrowserServiceClient,
-    ticker: str,
-    proxy_pool: ProxyPool,
-) -> str | None:
-    """EDINET検索をプロキシローテーション付きで実行。全プロキシでブロックされたらEdinetBlockError。"""
-    for attempt in range(_MAX_PROXY_RETRIES):
-        proxy_url = proxy_pool.get()
-        logger.debug("  Searching %s via %s (attempt %d)", ticker, proxy_url, attempt + 1)
-        try:
-            return search_annual_reports(client, ticker, proxy=proxy_url)
-        except EdinetBlockError:
-            logger.warning("  Proxy %s blocked for %s, rotating", proxy_url, ticker)
-            proxy_pool.report_failure()
-
-    raise EdinetBlockError(
-        f"All {_MAX_PROXY_RETRIES} proxies blocked for ticker {ticker}"
-    )
-
-
 def scrape_all_edinet_reports(
     conn: sqlite3.Connection,
     client: BrowserServiceClient,
     tickers: list[str],
     *,
-    proxy_pool: ProxyPool | None = None,
+    proxy: str | None = None,
     skip_existing: bool = True,
     interval: float = DEFAULT_INTERVAL_SECONDS,
 ) -> tuple[int, int]:
@@ -116,7 +79,6 @@ def scrape_all_edinet_reports(
     Returns: (ok_count, error_count)
     """
     existing_ids = get_processed_doc_ids(conn) if skip_existing else set()
-    pool = proxy_pool or ProxyPool.make_direct()
 
     # URLあり・なしを仕分け
     has_url: dict[str, str] = {}
@@ -160,26 +122,18 @@ def scrape_all_edinet_reports(
             logger.info("Phase 2: Discovering %d tickers via EDINET search", len(remaining))
 
             doc_id_map: dict[str, str] = {}
-            blocked_tickers: list[str] = []
 
             for i, ticker in enumerate(remaining, 1):
                 logger.info("[Phase2 %d/%d] Searching %s", i, len(remaining), ticker)
-                try:
-                    doc_id = _search_with_rotation(client, ticker, pool)
-                    if doc_id:
-                        doc_id_map[ticker] = doc_id
-                        logger.info("  Found docID %s for %s", doc_id, ticker)
-                    else:
-                        logger.info("  No annual report found for %s", ticker)
-                except EdinetBlockError as exc:
-                    logger.warning("  Blocked after rotation: %s", exc)
-                    blocked_tickers.append(ticker)
+                doc_id = search_annual_reports(client, ticker, proxy=proxy)
+                if doc_id:
+                    doc_id_map[ticker] = doc_id
+                    logger.info("  Found docID %s for %s", doc_id, ticker)
+                else:
+                    logger.info("  No annual report found for %s", ticker)
 
                 if i < len(remaining):
                     random_delay(interval * 0.75, interval * 1.25)
-
-            if blocked_tickers:
-                logger.warning("Blocked on %d tickers: %s", len(blocked_tickers), blocked_tickers[:5])
 
             logger.info("Discovered %d docIDs from EDINET search", len(doc_id_map))
 
@@ -236,7 +190,6 @@ def main() -> None:
             print("No tickers to process", file=sys.stderr)
             sys.exit(1)
 
-        pool: ProxyPool = _build_pool(args.proxy)
         client_cfg = {
             "pool_size": 1,
             "page_timeout": browser_cfg.get("page_timeout", 30000),
@@ -251,16 +204,16 @@ def main() -> None:
         with BrowserServiceClient(config=client_cfg) as client:
             ok, errors = scrape_all_edinet_reports(
                 conn, client, tickers,
-                proxy_pool=pool,
+                proxy=args.proxy if args.proxy != "direct" else None,
                 skip_existing=skip_existing,
                 interval=interval,
             )
 
         print(f"Done: {ok} ok, {errors} errors", file=sys.stderr)
         sys.exit(1 if errors > 0 else 0)
-    except EdinetBlockError as exc:
-        logger.error("EDINET blocked: %s", exc)
-        print(f"BLOCKED: {exc}", file=sys.stderr)
+    except (EdinetBlockError, DocIdExtractionError) as exc:
+        logger.error("Scrape failed: %s", exc)
+        print(f"FAILED: {exc}", file=sys.stderr)
         sys.exit(1)
     finally:
         conn.close()

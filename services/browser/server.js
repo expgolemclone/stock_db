@@ -447,8 +447,20 @@ app.post("/evaluate", async (req, res) => {
     }
 
     await navigateWithChallengeWait(page, url, deadline);
+
+    // popup（window.open）のURLをキャプチャ
+    let capturedPopupUrl = null;
+    const popupHandler = async (popup) => {
+      capturedPopupUrl = popup.url();
+      try { await popup.close(); } catch (_) { /* ignore */ }
+    };
+    page.on("popup", popupHandler);
+
     const result = await page.evaluate(script);
-    res.json({ result, status: 200 });
+    page.off("popup", popupHandler);
+
+    // popupでキャプチャしたURLを優先して返す
+    res.json({ result: capturedPopupUrl || result, status: 200 });
   } catch (error) {
     await closeBrowser(key);
     res.status(502).json({ error: error.message, status: 502 });
