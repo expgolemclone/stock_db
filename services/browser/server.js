@@ -427,6 +427,42 @@ app.post("/download", async (req, res) => {
   }
 });
 
+app.post("/evaluate", async (req, res) => {
+  const { url, script, proxy, proxyType, proxyUsername, proxyPassword, timeout } = req.body;
+  if (!url || !script) {
+    return res.status(400).json({ error: "url and script are required" });
+  }
+
+  const proxyAddr = proxy || "direct";
+  const key = poolKey(proxyAddr, proxyUsername);
+  const pageTimeout = timeout || PAGE_TIMEOUT;
+  const deadline = Date.now() + pageTimeout;
+
+  let page = null;
+  try {
+    ({ page } = await openRequestPage(proxyAddr, proxyType, proxyUsername, proxyPassword));
+
+    if (proxyUsername && proxyPassword !== undefined) {
+      await page.authenticate({ username: proxyUsername, password: proxyPassword });
+    }
+
+    await navigateWithChallengeWait(page, url, deadline);
+    const result = await page.evaluate(script);
+    res.json({ result, status: 200 });
+  } catch (error) {
+    await closeBrowser(key);
+    res.status(502).json({ error: error.message, status: 502 });
+  } finally {
+    if (page) {
+      try {
+        await page.close();
+      } catch (error) {
+        console.debug("page.close() failed after evaluate:", error?.message || error);
+      }
+    }
+  }
+});
+
 app.post("/shutdown", async (_req, res) => {
   res.json({ status: "shutting_down" });
   await closeAllBrowsers();

@@ -19,6 +19,8 @@ from stock_db.paths import BROWSER_SERVICE_DIR, magic_numbers
 logger: logging.Logger = logging.getLogger("stock_db.browser.client")
 
 _NODE_EXECUTABLE: str = os.environ.get("NODE_PATH", "node")
+_BAD_GATEWAY_STATUS = 502
+_SHUTDOWN_TIMEOUT_SECONDS = 5
 
 
 class ProxyFields(TypedDict, total=False):
@@ -195,7 +197,40 @@ class BrowserServiceClient:
                 error=str(data["error"]) if data.get("error") is not None else None,
             )
         except requests.RequestException as exc:
-            return BrowserResponse(html=None, status=502, error=str(exc))
+            return BrowserResponse(html=None, status=_BAD_GATEWAY_STATUS, error=str(exc))
+
+    def evaluate(
+        self,
+        url: str,
+        script: str,
+        *,
+        proxy: str | None = None,
+        timeout: int | None = None,
+    ) -> object:
+        if not self.running:
+            raise BrowserServiceError("Browser service is not running")
+
+        effective_timeout: int = timeout if timeout is not None else self._config["page_timeout"]
+        body: dict[str, str | int | None] = {
+            "url": url,
+            "script": script,
+            "timeout": effective_timeout,
+            **build_proxy_fields(proxy),
+        }
+        try:
+            resp: requests.Response = requests.post(
+                f"{self._base_url}/evaluate",
+                json=body,
+                timeout=effective_timeout / 1000 + 10,
+            )
+            data: dict[str, object] = resp.json()
+            if resp.status_code != 200 or data.get("error"):
+                raise BrowserServiceError(
+                    str(data.get("error", resp.status_code))
+                )
+            return data.get("result")
+        except requests.RequestException as exc:
+            raise BrowserServiceError(f"Evaluate request failed: {exc}") from exc
 
     def download(
         self,
@@ -238,7 +273,7 @@ class BrowserServiceClient:
         if not self.running:
             return
         try:
-            requests.post(f"{self._base_url}/shutdown", timeout=5)
+            requests.post(f"{self._base_url}/shutdown", timeout=_SHUTDOWN_TIMEOUT_SECONDS)
         except requests.RequestException:
             logger.debug("Shutdown request failed", exc_info=True)
         self._kill()
@@ -248,7 +283,7 @@ class BrowserServiceClient:
         if self._process is not None:
             try:
                 self._process.terminate()
-                self._process.wait(timeout=5)
+                self._process.wait(timeout=_SHUTDOWN_TIMEOUT_SECONDS)
             except (subprocess.TimeoutExpired, OSError):
                 self._process.kill()
             self._process = None

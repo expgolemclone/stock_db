@@ -16,7 +16,13 @@ class ProxyUnavailableError(RuntimeError):
     pass
 
 
-def random_delay(min_s: float = 1.0, max_s: float = 5.0) -> None:
+DEFAULT_DELAY_MIN = 1.0
+DEFAULT_DELAY_MAX = 5.0
+
+
+def random_delay(
+    min_s: float = DEFAULT_DELAY_MIN, max_s: float = DEFAULT_DELAY_MAX,
+) -> None:
     time.sleep(random.uniform(min_s, max_s))
 
 
@@ -75,7 +81,7 @@ class ProxyPool:
         return cls([(host, "http", auth)])
 
     @classmethod
-    def from_file(cls, path: Path) -> ProxyPool:
+    def from_file(cls, path: Path, *, protocol: str = "http") -> ProxyPool:
         entries: list[tuple[str, str, str]] = []
         for line in path.read_text().splitlines():
             line = line.strip()
@@ -86,7 +92,7 @@ class ProxyPool:
                 host, port, user, pw = parts
                 entries.append((f"{host}:{port}", "http", f"{user}:{pw}"))
             elif len(parts) == 2:
-                entries.append((line, "http", ""))
+                entries.append((line, protocol, ""))
         return cls(entries)
 
     @classmethod
