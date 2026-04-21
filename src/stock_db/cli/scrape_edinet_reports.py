@@ -93,10 +93,10 @@ def scrape_all_edinet_reports(
     skip_existing: bool = True,
     interval: float = DEFAULT_INTERVAL_SECONDS,
 ) -> tuple[int, int]:
-    """全銘柄の有報を取得・抽出。URLなし銘柄はEDINET検索で自動発見。
+    """全銘柄の有報を取得・抽出。
 
-    1. securities_report_urlあり銘柄: 直接PDFダウンロード
-    2. securities_report_urlなし銘柄: browser serviceでEDINET検索→docID発見→PDFダウンロード
+    1. URLなし銘柄: browser serviceでEDINET検索→docID発見
+    2. 全銘柄(URLあり+発見済み): PDF/XBRLダウンロード
 
     Raises EdinetBlockError if EDINET blocks the search.
 
@@ -130,22 +130,49 @@ def scrape_all_edinet_reports(
     ok = 0
     errors = 0
 
-    # Phase 1: URLあり銘柄を処理 (PDF/XBRL個別スキップ)
+    # Phase 1: URLなし銘柄をEDINET検索でdocID発見
+    if no_url_tickers:
+        logger.info("Phase 1: Discovering %d tickers via EDINET search", len(no_url_tickers))
+
+        for i, ticker in enumerate(no_url_tickers, 1):
+            logger.info("[Phase1 %d/%d] Searching %s", i, len(no_url_tickers), ticker)
+            doc_id = search_annual_reports(client, ticker, proxy=proxy)
+            if doc_id:
+                url = build_pdf_url(doc_id)
+                upsert_company_metadata(conn, ticker, securities_report_url=url)
+                conn.commit()
+                logger.info("  Found docID %s for %s", doc_id, ticker)
+            else:
+                logger.info("  No annual report found for %s", ticker)
+
+            if i < len(no_url_tickers):
+                random_delay(interval * 0.75, interval * 1.25)
+
+    # URLあり銘柄を再取得（Phase 1で新規発見分を含む）
+    has_url = {}
+    for row in conn.execute(
+        "SELECT ticker, securities_report_url FROM stocks "
+        "WHERE securities_report_url IS NOT NULL"
+    ).fetchall():
+        if row["ticker"] in set(tickers):
+            has_url[row["ticker"]] = row["securities_report_url"]
+
+    # Phase 2: 全URLあり銘柄のPDF/XBRLダウンロード
     url_targets = [
         (t, url) for t, url in has_url.items()
         if doc_id_from_url(url) not in existing_ids
         or doc_id_from_url(url) not in xbrl_done_ids
     ]
     if url_targets:
-        logger.info("Phase 1: Processing %d tickers (PDF todo: %d, XBRL todo: %d)",
-                     len(url_targets),
-                     sum(1 for _, u in url_targets if doc_id_from_url(u) not in existing_ids),
-                     sum(1 for _, u in url_targets if doc_id_from_url(u) not in xbrl_done_ids))
+        pdf_todo = sum(1 for _, u in url_targets if doc_id_from_url(u) not in existing_ids)
+        xbrl_todo = sum(1 for _, u in url_targets if doc_id_from_url(u) not in xbrl_done_ids)
+        logger.info("Phase 2: Processing %d tickers (PDF todo: %d, XBRL todo: %d)",
+                     len(url_targets), pdf_todo, xbrl_todo)
     for i, (ticker, url) in enumerate(url_targets, 1):
         doc_id = doc_id_from_url(url)
         skip_pdf = doc_id in existing_ids
         skip_xbrl = doc_id in xbrl_done_ids
-        logger.info("[Phase1 %d/%d] Processing %s (skip_pdf=%s, skip_xbrl=%s)",
+        logger.info("[Phase2 %d/%d] Processing %s (skip_pdf=%s, skip_xbrl=%s)",
                      i, len(url_targets), ticker, skip_pdf, skip_xbrl)
         ok_delta, err_delta = _process_one(conn, ticker, url, client=client, proxy=proxy,
                                             skip_pdf=skip_pdf, skip_xbrl=skip_xbrl)
@@ -153,50 +180,6 @@ def scrape_all_edinet_reports(
         errors += err_delta
         if i < len(url_targets):
             random_delay(interval * 0.5, interval * 1.5)
-
-    # Phase 2: URLなし銘柄をEDINET検索で発見
-    if no_url_tickers:
-        processed_tickers = {t for t, _ in url_targets}
-        remaining = [t for t in no_url_tickers if t not in processed_tickers]
-        if remaining:
-            logger.info("Phase 2: Discovering %d tickers via EDINET search", len(remaining))
-
-            doc_id_map: dict[str, str] = {}
-
-            for i, ticker in enumerate(remaining, 1):
-                logger.info("[Phase2 %d/%d] Searching %s", i, len(remaining), ticker)
-                doc_id = search_annual_reports(client, ticker, proxy=proxy)
-                if doc_id:
-                    doc_id_map[ticker] = doc_id
-                    url = build_pdf_url(doc_id)
-                    upsert_company_metadata(conn, ticker, securities_report_url=url)
-                    conn.commit()
-                    logger.info("  Found docID %s for %s", doc_id, ticker)
-                else:
-                    logger.info("  No annual report found for %s", ticker)
-
-                if i < len(remaining):
-                    random_delay(interval * 0.75, interval * 1.25)
-
-            logger.info("Discovered %d docIDs from EDINET search", len(doc_id_map))
-
-            discovered_items = [
-                (ticker, build_pdf_url(doc_id), doc_id)
-                for ticker, doc_id in doc_id_map.items()
-                if doc_id not in existing_ids or doc_id not in xbrl_done_ids
-            ]
-
-            for i, (ticker, url, doc_id) in enumerate(discovered_items, 1):
-                skip_pdf = doc_id in existing_ids
-                skip_xbrl = doc_id in xbrl_done_ids
-                logger.info("[Phase2 %d/%d] Processing discovered %s (skip_pdf=%s, skip_xbrl=%s)",
-                             i, len(discovered_items), ticker, skip_pdf, skip_xbrl)
-                ok_delta, err_delta = _process_one(conn, ticker, url, client=client, proxy=proxy,
-                                                    skip_pdf=skip_pdf, skip_xbrl=skip_xbrl)
-                ok += ok_delta
-                errors += err_delta
-                if i < len(discovered_items):
-                    random_delay(interval * 0.5, interval * 1.5)
 
     logger.info("Total: %d ok, %d errors", ok, errors)
     return ok, errors
