@@ -69,39 +69,30 @@ def _mem_pct() -> float:
     return (used / total) * 100
 
 
-def _find_scrape_pids() -> list[int]:
-    """Find PIDs of running scrape_edinet_reports processes."""
-    pids: list[int] = []
-    for entry in os.listdir("/proc"):
-        if not entry.isdigit():
-            continue
-        try:
-            cmdline = Path(f"/proc/{entry}/cmdline").read_bytes().decode(errors="replace")
-        except (FileNotFoundError, PermissionError, ProcessLookupError):
-            continue
-        if "scrape_edinet_reports" in cmdline:
-            pids.append(int(entry))
-    return pids
 
-
-def _kill_proc(pid: int) -> None:
-    """Gracefully then forcefully kill a single process."""
+def _kill_proc_tree(proc: subprocess.Popen[bytes]) -> None:
+    """Kill entire process tree (child + grandchildren) via process group."""
+    pid = proc.pid
     try:
-        os.kill(pid, signal.SIGTERM)
+        proc.terminate()  # SIGTERM to process group
     except ProcessLookupError:
         logger.debug("PID %d already gone (SIGTERM)", pid)
         return
-    for _ in range(15):
-        try:
-            os.kill(pid, 0)
-        except ProcessLookupError:
-            logger.debug("PID %d exited gracefully", pid)
-            return
-        time.sleep(2)
     try:
-        os.kill(pid, signal.SIGKILL)
+        proc.wait(timeout=30)
+        logger.debug("PID %d exited gracefully", pid)
+        return
+    except subprocess.TimeoutExpired:
+        logger.debug("PID %d did not exit in 30s, SIGKILL", pid)
+    try:
+        proc.kill()  # SIGKILL to process group
     except ProcessLookupError:
         logger.debug("PID %d already gone (SIGKILL)", pid)
+        return
+    try:
+        proc.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        logger.warning("PID %d still alive after SIGKILL", pid)
 
 
 def main() -> None:
@@ -121,8 +112,7 @@ def main() -> None:
             # メモリ超過時はscrapeをkill
             if mem >= MAX_MEM_PCT and scrape_proc and scrape_proc.poll() is None:
                 logger.warning("Memory %.0f%% >= %d%%, killing scrape", mem, MAX_MEM_PCT)
-                _kill_proc(scrape_proc.pid)
-                scrape_proc.wait()
+                _kill_proc_tree(scrape_proc)
                 scrape_proc = None
                 logger.info("Cooling down %ds...", COOLDOWN_AFTER_KILL)
                 time.sleep(COOLDOWN_AFTER_KILL)
@@ -139,20 +129,19 @@ def main() -> None:
                     scrape_proc = None
                 elif time.monotonic() - scrape_start > SCRAPE_TIMEOUT:
                     logger.warning("Scrape timeout (%ds), killing", SCRAPE_TIMEOUT)
-                    _kill_proc(scrape_proc.pid)
-                    scrape_proc.wait()
+                    _kill_proc_tree(scrape_proc)
                     scrape_proc = None
 
             # scrape開始
             if scrape_proc is None:
                 logger.info("Starting scrape-edinet-reports...")
-                scrape_proc = subprocess.Popen(_SCRAPE_CMD, cwd=_SCRAPE_CWD)
+                scrape_proc = subprocess.Popen(_SCRAPE_CMD, cwd=_SCRAPE_CWD, start_new_session=True)
                 scrape_start = time.monotonic()
 
             time.sleep(CHECK_INTERVAL)
     finally:
         if scrape_proc and scrape_proc.poll() is None:
-            _kill_proc(scrape_proc.pid)
+            _kill_proc_tree(scrape_proc)
         _remove_pid()
 
     logger.info("Watchdog finished.")
