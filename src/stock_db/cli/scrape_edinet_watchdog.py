@@ -26,7 +26,34 @@ _SCRAPE_CWD = "/home/exp/projects/stock_db"
 
 
 def _kill_previous_instance() -> None:
-    """Kill a previous watchdog instance if one is running."""
+    """Kill a previous watchdog instance and any leftover scrape processes."""
+    my_pid = os.getpid()
+    my_ppid = os.getppid()
+
+    # Kill leftover scrape + server.js processes from prior sessions
+    leftovers: list[int] = []
+    for entry in os.listdir("/proc"):
+        if not entry.isdigit():
+            continue
+        pid = int(entry)
+        if pid == my_pid or pid == my_ppid:
+            continue
+        try:
+            cmdline = Path(f"/proc/{entry}/cmdline").read_bytes().decode(errors="replace")
+            if "scrape_edinet_reports" in cmdline or "server.js" in cmdline:
+                leftovers.append(pid)
+        except (FileNotFoundError, PermissionError, ProcessLookupError):
+            continue
+    if leftovers:
+        logger.info("Killing leftover processes: %s", leftovers)
+        for pid in leftovers:
+            try:
+                os.kill(pid, signal.SIGKILL)
+            except ProcessLookupError:
+                logger.debug("Leftover PID %d already gone", pid)
+        time.sleep(2)
+
+    # Kill previous watchdog instance
     if not _PID_FILE.exists():
         return
     try:
