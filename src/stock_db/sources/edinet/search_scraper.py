@@ -43,14 +43,46 @@ class EdinetBlockError(RuntimeError):
     """Raised when EDINET returns a block/error page."""
 
 
+class EdinetNoRecordsError(RuntimeError):
+    """Raised when EDINET returns consecutive 'no records' — search may be broken."""
+
+
 class DocIdExtractionError(RuntimeError):
     """Raised when annual report link exists but docID extraction fails."""
 
 
+_MAX_CONSECUTIVE_NO_RECORDS = 10
+_consecutive_no_records = 0
+
+
 def _build_search_url(ticker: str) -> str:
+    """証券コードで検索"""
     params = f"scc={ticker}&pfs=6&kbn=2&p=1"
     encoded = base64.b64encode(params.encode()).decode()
     return f"{_SEARCH_BASE_URL}?{encoded}"
+
+
+def _build_search_url_edinet(edinet_code: str) -> str:
+    """EDINETコードで検索"""
+    params = f"edc={edinet_code}&pfs=6&kbn=2&p=1"
+    encoded = base64.b64encode(params.encode()).decode()
+    return f"{_SEARCH_BASE_URL}?{encoded}"
+
+
+def _build_search_url_name(name: str) -> str:
+    """提出者名称で検索"""
+    params = f"nam={name}&pfs=6&kbn=2&p=1"
+    encoded = base64.b64encode(params.encode()).decode()
+    return f"{_SEARCH_BASE_URL}?{encoded}"
+
+
+_EDINET_CODE_RE = re.compile(r"E\d{5}")
+
+
+def _extract_edinet_code(html: str) -> str | None:
+    """検索結果HTMLからEDINETコード(E05453等)を抽出"""
+    m = _EDINET_CODE_RE.search(html)
+    return m.group(0) if m else None
 
 
 def _extract_doc_id_from_url(url: str | None) -> str | None:
@@ -61,27 +93,23 @@ def _extract_doc_id_from_url(url: str | None) -> str | None:
     return match.group(1) if match else None
 
 
-def search_annual_reports(
+def _fetch_and_check(
     client: BrowserServiceClient,
+    url: str,
     ticker: str,
     *,
     proxy: str | None = None,
-) -> str | None:
-    """Search EDINET for the latest annual report of a given ticker.
+) -> tuple[object, str | None]:
+    """URLをfetchしてブロック/レコードなしを検知。 (resp, edinet_code_or_None)"""
+    global _consecutive_no_records
 
-    Returns the docID if found, None if not found.
-    Raises EdinetBlockError if EDINET blocks the request.
-    """
-    url = _build_search_url(ticker)
-
-    # まずHTMLを取得してブロック検知
     resp = client.fetch(url, proxy=proxy)
     if resp.error:
         logger.warning("Search failed for %s: %s", ticker, resp.error)
-        return None
+        return resp, None
     if resp.html is None:
         logger.warning("Empty HTML for %s", ticker)
-        return None
+        return resp, None
 
     for indicator in _BLOCK_INDICATORS:
         if indicator in resp.html:
@@ -89,18 +117,33 @@ def search_annual_reports(
                 f"EDINET blocked the request for ticker {ticker}: '{indicator}' detected"
             )
 
-    # 検索結果なし
     if "レコードがありません" in resp.html:
-        logger.info("No records found for ticker %s", ticker)
-        return None
+        _consecutive_no_records += 1
+        logger.info("No records (consecutive: %d) for %s", _consecutive_no_records, ticker)
+        if _consecutive_no_records >= _MAX_CONSECUTIVE_NO_RECORDS:
+            raise EdinetNoRecordsError(
+                f"{_consecutive_no_records} consecutive 'no records' — search may be broken"
+            )
+        return resp, None
 
-    # 有価証券報告書のリンクがなければ終了
-    import re
-    if not re.search(r'TeisyutuSyorui_Click[^>]*>[^<]*有価証券報告書', resp.html):
+    _consecutive_no_records = 0
+    found_edinet = _extract_edinet_code(resp.html) if resp.html else None
+    return resp, found_edinet
+
+
+def _try_extract_doc_id(
+    client: BrowserServiceClient,
+    url: str,
+    ticker: str,
+    html: str,
+    *,
+    proxy: str | None = None,
+) -> str | None:
+    """検索結果HTMLから有価証券報告書リンクをクリックしてdocID抽出"""
+    if not re.search(r'TeisyutuSyorui_Click[^>]*>[^<]*有価証券報告書', html):
         logger.info("No annual report link found for ticker %s", ticker)
         return None
 
-    # evaluate でクリック→docID抽出
     try:
         result_url = client.evaluate(url, _EXTRACT_DOC_ID_JS, proxy=proxy, timeout=_DOCID_EXTRACTION_TIMEOUT_MS)
     except (ValueError, RuntimeError, OSError) as exc:
@@ -109,11 +152,55 @@ def search_annual_reports(
 
     doc_id = _extract_doc_id_from_url(result_url)
     if doc_id:
-        logger.info("Found docID %s for ticker %s", doc_id, ticker)
         return doc_id
     raise DocIdExtractionError(
         f"Annual report link found for {ticker} but docID extraction failed (result_url={result_url})"
     )
+
+
+def search_annual_reports(
+    client: BrowserServiceClient,
+    ticker: str,
+    *,
+    proxy: str | None = None,
+    edinet_code: str | None = None,
+    company_name: str | None = None,
+) -> tuple[str | None, str | None]:
+    """Search EDINET for the latest annual report of a given ticker.
+
+    Returns (doc_id, edinet_code_or_None).
+    Raises EdinetBlockError / EdinetNoRecordsError / DocIdExtractionError.
+    """
+    # 1. EDINETコードで検索 (DBにあれば)
+    if edinet_code:
+        url = _build_search_url_edinet(edinet_code)
+        resp, found_edinet = _fetch_and_check(client, url, ticker, proxy=proxy)
+        if resp.html and "レコードがありません" not in (resp.html or ""):
+            doc_id = _try_extract_doc_id(client, url, ticker, resp.html, proxy=proxy)
+            if doc_id:
+                logger.info("Found docID %s for ticker %s via EDINET code", doc_id, ticker)
+                return doc_id, found_edinet or edinet_code
+
+    # 2. 証券コードで検索
+    url = _build_search_url(ticker)
+    resp, found_edinet = _fetch_and_check(client, url, ticker, proxy=proxy)
+    if resp.html and "レコードがありません" not in (resp.html or ""):
+        doc_id = _try_extract_doc_id(client, url, ticker, resp.html, proxy=proxy)
+        if doc_id:
+            logger.info("Found docID %s for ticker %s via ticker code", doc_id, ticker)
+            return doc_id, found_edinet
+
+    # 3. 提出者名称でフォールバック
+    if company_name and resp.html and "レコードがありません" in (resp.html or ""):
+        url = _build_search_url_name(company_name)
+        resp, found_edinet = _fetch_and_check(client, url, ticker, proxy=proxy)
+        if resp.html and "レコードがありません" not in (resp.html or ""):
+            doc_id = _try_extract_doc_id(client, url, ticker, resp.html, proxy=proxy)
+            if doc_id:
+                logger.info("Found docID %s for ticker %s via company name", doc_id, ticker)
+                return doc_id, found_edinet
+
+    return None, found_edinet
 
 
 def batch_search_doc_ids(
@@ -122,23 +209,27 @@ def batch_search_doc_ids(
     *,
     proxy: str | None = None,
     interval: float = DEFAULT_INTERVAL_SECONDS,
-) -> dict[str, str]:
-    """Search EDINET for multiple tickers and return {ticker: docID} mapping.
+) -> tuple[dict[str, str], dict[str, str]]:
+    """Search EDINET for multiple tickers.
 
-    Only returns results for tickers where a docID was found.
+    Returns ({ticker: docID}, {ticker: edinet_code}) mappings.
+    Only returns entries where a value was found.
     Raises EdinetBlockError immediately if EDINET blocks any request.
     """
     from stock_db.proxy_pool import random_delay
 
-    results: dict[str, str] = {}
+    doc_ids: dict[str, str] = {}
+    edinet_codes: dict[str, str] = {}
 
     for i, ticker in enumerate(tickers, 1):
         logger.info("[%d/%d] Searching %s", i, len(tickers), ticker)
-        doc_id = search_annual_reports(client, ticker, proxy=proxy)
+        doc_id, found_edinet = search_annual_reports(client, ticker, proxy=proxy)
         if doc_id:
-            results[ticker] = doc_id
+            doc_ids[ticker] = doc_id
+        if found_edinet:
+            edinet_codes[ticker] = found_edinet
 
         if i < len(tickers):
             random_delay(interval * 0.75, interval * 1.25)
 
-    return results
+    return doc_ids, edinet_codes

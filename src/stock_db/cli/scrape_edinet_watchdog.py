@@ -19,7 +19,10 @@ logger = logging.getLogger("stock_db.cli.scrape_edinet_watchdog")
 MAX_MEM_PCT = 70
 CHECK_INTERVAL = 30
 COOLDOWN_AFTER_KILL = 60
+SCRAPE_TIMEOUT = 1800  # 30分
 _PID_FILE = Path("/tmp/scrape_edinet_watchdog.pid")
+_SCRAPE_CMD = [sys.executable, "-m", "stock_db.cli.scrape_edinet_reports"]
+_SCRAPE_CWD = "/home/exp/projects/stock_db"
 
 
 def _kill_previous_instance() -> None:
@@ -109,43 +112,52 @@ def _kill_scrape() -> None:
         time.sleep(3)
 
 
-def _start_scrape() -> int:
-    """Start scrape-edinet-reports (default skip_existing=true). Returns exit code."""
-    proc = subprocess.run(
-        [sys.executable, "-m", "stock_db.cli.scrape_edinet_reports"],
-        cwd="/home/exp/projects/stock_db",
-    )
-    return proc.returncode
-
-
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
     _kill_previous_instance()
     _write_pid()
-    logger.info("Watchdog started (threshold: %d%%)", MAX_MEM_PCT)
+    logger.info("Watchdog started (threshold: %d%%, timeout: %ds)", MAX_MEM_PCT, SCRAPE_TIMEOUT)
+
+    scrape_proc: subprocess.Popen[bytes] | None = None
+    scrape_start: float = 0.0
 
     try:
         while True:
             mem = _mem_pct()
             logger.info("Memory: %.0f%%", mem)
 
-            if mem >= MAX_MEM_PCT:
-                logger.warning("Memory %.0f%% >= %d%%", mem, MAX_MEM_PCT)
-                if _find_scrape_pids():
-                    _kill_scrape()
-                    logger.info("Cooling down %ds...", COOLDOWN_AFTER_KILL)
-                    time.sleep(COOLDOWN_AFTER_KILL)
+            # メモリ超過時はscrapeをkill
+            if mem >= MAX_MEM_PCT and scrape_proc and scrape_proc.poll() is None:
+                logger.warning("Memory %.0f%% >= %d%%, killing scrape", mem, MAX_MEM_PCT)
+                _kill_scrape()
+                scrape_proc = None
+                logger.info("Cooling down %ds...", COOLDOWN_AFTER_KILL)
+                time.sleep(COOLDOWN_AFTER_KILL)
 
-            if not _find_scrape_pids():
-                logger.info("Starting scrape-edinet-reports (skip_existing)...")
-                rc = _start_scrape()
-                if rc == 0:
-                    logger.info("Scrape completed successfully.")
-                    break
-                logger.warning("Scrape exited with code %d, will retry.", rc)
+            # scrape終了確認
+            if scrape_proc is not None:
+                rc = scrape_proc.poll()
+                if rc is not None:
+                    if rc == 0:
+                        logger.info("Scrape completed successfully.")
+                        break
+                    logger.warning("Scrape exited with code %d, will retry.", rc)
+                    scrape_proc = None
+                elif time.monotonic() - scrape_start > SCRAPE_TIMEOUT:
+                    logger.warning("Scrape timeout (%ds), killing", SCRAPE_TIMEOUT)
+                    _kill_scrape()
+                    scrape_proc = None
+
+            # scrape開始
+            if scrape_proc is None:
+                logger.info("Starting scrape-edinet-reports...")
+                scrape_proc = subprocess.Popen(_SCRAPE_CMD, cwd=_SCRAPE_CWD)
+                scrape_start = time.monotonic()
 
             time.sleep(CHECK_INTERVAL)
     finally:
+        if scrape_proc and scrape_proc.poll() is None:
+            _kill_scrape()
         _remove_pid()
 
     logger.info("Watchdog finished.")

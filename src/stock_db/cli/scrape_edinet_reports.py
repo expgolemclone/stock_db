@@ -19,12 +19,13 @@ from stock_db.sources.edinet.search_scraper import (
     DEFAULT_INTERVAL_SECONDS,
     DocIdExtractionError,
     EdinetBlockError,
+    EdinetNoRecordsError,
     search_annual_reports,
 )
 from stock_db.storage.connection import get_connection
 from stock_db.storage.schema import init_db
 from stock_db.storage.sec_reports import get_processed_doc_ids, upsert_sec_report
-from stock_db.storage.stocks import get_all_tickers, upsert_company_metadata
+from stock_db.storage.stocks import get_all_tickers, get_edinet_code, get_stock_names, upsert_company_metadata, upsert_stock
 
 logger = logging.getLogger("stock_db.cli.scrape_edinet_reports")
 
@@ -133,16 +134,24 @@ def scrape_all_edinet_reports(
     # Phase 1: URLなし銘柄をEDINET検索でdocID発見
     if no_url_tickers:
         logger.info("Phase 1: Discovering %d tickers via EDINET search", len(no_url_tickers))
+        names = get_stock_names(conn)
 
         for i, ticker in enumerate(no_url_tickers, 1):
             logger.info("[Phase1 %d/%d] Searching %s", i, len(no_url_tickers), ticker)
-            doc_id = search_annual_reports(client, ticker, proxy=proxy)
+            doc_id, found_edinet = search_annual_reports(
+                client, ticker, proxy=proxy,
+                edinet_code=get_edinet_code(conn, ticker),
+                company_name=names.get(ticker),
+            )
+            if found_edinet:
+                upsert_stock(conn, ticker, names.get(ticker, ""), "", "", edinet_code=found_edinet)
             if doc_id:
                 url = build_pdf_url(doc_id)
                 upsert_company_metadata(conn, ticker, securities_report_url=url)
                 conn.commit()
-                logger.info("  Found docID %s for %s", doc_id, ticker)
+                logger.info("  Found docID %s for %s (edinet=%s)", doc_id, ticker, found_edinet)
             else:
+                conn.commit()
                 logger.info("  No annual report found for %s", ticker)
 
             if i < len(no_url_tickers):
@@ -241,7 +250,7 @@ def main() -> None:
 
         print(f"Done: {ok} ok, {errors} errors", file=sys.stderr)
         sys.exit(1 if errors > 0 else 0)
-    except (EdinetBlockError, DocIdExtractionError) as exc:
+    except (EdinetBlockError, DocIdExtractionError, EdinetNoRecordsError) as exc:
         logger.error("Scrape failed: %s", exc)
         print(f"FAILED: {exc}", file=sys.stderr)
         sys.exit(1)
