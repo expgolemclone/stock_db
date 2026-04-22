@@ -89,17 +89,19 @@ def _kill_proc(pid: int) -> None:
     try:
         os.kill(pid, signal.SIGTERM)
     except ProcessLookupError:
+        logger.debug("PID %d already gone (SIGTERM)", pid)
         return
     for _ in range(15):
         try:
             os.kill(pid, 0)
         except ProcessLookupError:
+            logger.debug("PID %d exited gracefully", pid)
             return
         time.sleep(2)
     try:
         os.kill(pid, signal.SIGKILL)
     except ProcessLookupError:
-        pass
+        logger.debug("PID %d already gone (SIGKILL)", pid)
 
 
 def main() -> None:
