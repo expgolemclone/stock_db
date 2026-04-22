@@ -71,28 +71,75 @@ def _mem_pct() -> float:
 
 
 def _kill_proc_tree(proc: subprocess.Popen[bytes]) -> None:
-    """Kill entire process tree (child + grandchildren) via process group."""
+    """Kill child and all descendants in the same session.
+
+    Grandchildren (browser server, chrome) often create their own PGID,
+    so os.killpg alone is insufficient. After killing the direct child,
+    scan /proc for orphaned descendants in the same session and force-kill them.
+    """
     pid = proc.pid
     try:
-        proc.terminate()  # SIGTERM to process group
+        proc.terminate()
     except ProcessLookupError:
         logger.debug("PID %d already gone (SIGTERM)", pid)
+        _kill_orphans(pid)
         return
     try:
         proc.wait(timeout=30)
         logger.debug("PID %d exited gracefully", pid)
-        return
     except subprocess.TimeoutExpired:
         logger.debug("PID %d did not exit in 30s, SIGKILL", pid)
+        try:
+            proc.kill()
+        except ProcessLookupError:
+            logger.debug("PID %d already gone (SIGKILL)", pid)
+        try:
+            proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            logger.warning("PID %d still alive after SIGKILL", pid)
+    _kill_orphans(pid)
+
+
+def _kill_orphans(session_leader_pid: int) -> None:
+    """Force-kill orphaned browser server processes (PPID=1, re-parented by init).
+
+    Grandchildren like browser/server.js call setsid() on parent death,
+    creating a new session, so SID-based matching fails. Instead, find
+    server.js processes whose parent is init (PID 1) and were started
+    around the same time as the scrape process.
+    """
+    orphans: list[int] = []
     try:
-        proc.kill()  # SIGKILL to process group
-    except ProcessLookupError:
-        logger.debug("PID %d already gone (SIGKILL)", pid)
+        scrape_start_time = int(Path(f"/proc/{session_leader_pid}/stat").read_text().split(" ")[21])
+    except (ValueError, OSError):
+        # scrape already gone, can't determine starttime — use a wide window
+        scrape_start_time = 0
+
+    for entry in os.listdir("/proc"):
+        if not entry.isdigit() or int(entry) == os.getpid():
+            continue
+        try:
+            cmdline = Path(f"/proc/{entry}/cmdline").read_bytes().decode(errors="replace")
+            stat = Path(f"/proc/{entry}/stat").read_text().split(" ")
+            ppid = int(stat[3])
+            if ppid != 1:
+                continue
+            if "server.js" not in cmdline:
+                continue
+            # Only kill if started after the scrape (within same timeframe)
+            start_time = int(stat[21])
+            if scrape_start_time == 0 or start_time >= scrape_start_time - 100:
+                orphans.append(int(entry))
+        except (ValueError, OSError):
+            continue
+    if not orphans:
         return
-    try:
-        proc.wait(timeout=5)
-    except subprocess.TimeoutExpired:
-        logger.warning("PID %d still alive after SIGKILL", pid)
+    logger.info("Killing %d orphaned server.js processes: %s", len(orphans), orphans)
+    for opid in orphans:
+        try:
+            os.kill(opid, signal.SIGKILL)
+        except ProcessLookupError:
+            logger.debug("Orphan PID %d already gone", opid)
 
 
 def main() -> None:
