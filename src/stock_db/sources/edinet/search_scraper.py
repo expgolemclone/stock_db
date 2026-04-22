@@ -38,7 +38,7 @@ class DocIdExtractionError(RuntimeError):
     """Raised when annual report link exists but docID extraction fails."""
 
 
-_MAX_CONSECUTIVE_NO_RECORDS = 10
+_MAX_CONSECUTIVE_NO_RECORDS = 100
 _consecutive_no_records = 0
 
 
