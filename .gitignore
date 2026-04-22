@@ -24,7 +24,8 @@ services/**/node_modules/
 !var/
 !var/.gitkeep
 !var/db/
-!var/db/*.db
+# var/db/*.db  -- 一時的に無視（全銘柄スクレイプ完了後に再有効化）
+var/db/*.db
 !var/reference/
 !var/reference/*.csv
 
