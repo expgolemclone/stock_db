@@ -112,7 +112,7 @@ def _kill_orphans(session_leader_pid: int) -> None:
     try:
         scrape_start_time = int(Path(f"/proc/{session_leader_pid}/stat").read_text().split(" ")[21])
     except (ValueError, OSError):
-        # scrape already gone, can't determine starttime — use a wide window
+        logger.debug("Cannot read starttime for PID %d, using wide window", session_leader_pid)
         scrape_start_time = 0
 
     for entry in os.listdir("/proc"):
