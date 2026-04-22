@@ -122,6 +122,7 @@ def main() -> None:
             if mem >= MAX_MEM_PCT and scrape_proc and scrape_proc.poll() is None:
                 logger.warning("Memory %.0f%% >= %d%%, killing scrape", mem, MAX_MEM_PCT)
                 _kill_proc(scrape_proc.pid)
+                scrape_proc.wait()
                 scrape_proc = None
                 logger.info("Cooling down %ds...", COOLDOWN_AFTER_KILL)
                 time.sleep(COOLDOWN_AFTER_KILL)
@@ -130,6 +131,7 @@ def main() -> None:
             if scrape_proc is not None:
                 rc = scrape_proc.poll()
                 if rc is not None:
+                    scrape_proc.wait()
                     if rc == 0:
                         logger.info("Scrape completed successfully.")
                         break
@@ -138,6 +140,7 @@ def main() -> None:
                 elif time.monotonic() - scrape_start > SCRAPE_TIMEOUT:
                     logger.warning("Scrape timeout (%ds), killing", SCRAPE_TIMEOUT)
                     _kill_proc(scrape_proc.pid)
+                    scrape_proc.wait()
                     scrape_proc = None
 
             # scrape開始

@@ -144,7 +144,10 @@ def scrape_all_edinet_reports(
                 company_name=names.get(ticker),
             )
             if found_edinet:
-                upsert_stock(conn, ticker, names.get(ticker, ""), "", "", edinet_code=found_edinet)
+                try:
+                    upsert_stock(conn, ticker, names.get(ticker, ""), "", "", edinet_code=found_edinet)
+                except sqlite3.IntegrityError:
+                    logger.warning("  EDINET code %s already assigned to another ticker, skipping", found_edinet)
             if doc_id:
                 url = build_pdf_url(doc_id)
                 upsert_company_metadata(conn, ticker, securities_report_url=url)

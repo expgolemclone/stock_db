@@ -76,13 +76,13 @@ def _build_search_url_name(name: str) -> str:
     return f"{_SEARCH_BASE_URL}?{encoded}"
 
 
-_EDINET_CODE_RE = re.compile(r"E\d{5}")
+_EDINET_CODE_RE = re.compile(r">\s*(E\d{5})\s*<")
 
 
 def _extract_edinet_code(html: str) -> str | None:
-    """検索結果HTMLからEDINETコード(E05453等)を抽出"""
+    """検索結果テーブルの<td>内からEDINETコード(E05453等)を抽出"""
     m = _EDINET_CODE_RE.search(html)
-    return m.group(0) if m else None
+    return m.group(1) if m else None
 
 
 def _extract_doc_id_from_url(url: str | None) -> str | None:
