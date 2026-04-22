@@ -1,8 +1,13 @@
-"""Scrape EDINET search results to find securities report docIDs via browser service."""
+"""Scrape EDINET search results to find securities report docIDs via browser service.
+
+Uses GeneXus form interaction (input → checkbox → search button → PostBack)
+then clicks the annual report link to capture the docID URL — all within a
+single evaluate() call so the PostBack results are not lost.
+"""
 
 from __future__ import annotations
 
-import base64
+import json
 import logging
 import re
 from typing import TYPE_CHECKING
@@ -12,31 +17,13 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger("stock_db.sources.edinet.search_scraper")
 
-_SEARCH_BASE_URL = "https://disclosure2.edinet-fsa.go.jp/weee0050.aspx"
+_SEARCH_FORM_URL = "https://disclosure2.edinet-fsa.go.jp/weee0050.aspx"
 _BLOCK_INDICATORS = ("規定外操作", "エラー画面", "Message code")
 DEFAULT_INTERVAL_SECONDS = 2.0
-_DOCID_EXTRACTION_TIMEOUT_MS = 60000
+_POSTBACK_WAIT_MS = 25000
+_DOCID_CAPTURE_WAIT_MS = 5000
 
-_EXTRACT_DOC_ID_JS = """
-(async () => {
-  let capturedUrl = null;
-  const originalOpen = window.open;
-  window.open = (url) => { capturedUrl = url; return null; };
-
-  const links = document.querySelectorAll('a[onclick]');
-  for (const link of links) {
-    const text = link.textContent.trim();
-    if (text.includes('有価証券報告書')) {
-      link.click();
-      break;
-    }
-  }
-
-  await new Promise(r => setTimeout(r, 5000));
-  window.open = originalOpen;
-  return capturedUrl;
-})()
-"""
+_EDINET_CODE_RE = re.compile(r">\s*(E\d{5})\s*<")
 
 
 class EdinetBlockError(RuntimeError):
@@ -55,107 +42,152 @@ _MAX_CONSECUTIVE_NO_RECORDS = 10
 _consecutive_no_records = 0
 
 
-def _build_search_url(ticker: str) -> str:
-    """証券コードで検索"""
-    params = f"scc={ticker}&pfs=6&kbn=2&p=1"
-    encoded = base64.b64encode(params.encode()).decode()
-    return f"{_SEARCH_BASE_URL}?{encoded}"
+def _build_search_and_extract_js(
+    *,
+    search_ticker: str | None = None,
+    edinet_code: str | None = None,
+    company_name: str | None = None,
+) -> str:
+    """Build JS that: fills form → clicks search → waits PostBack → clicks yuhou link.
 
+    Returns JSON {capturedUrl, edinetCode, noRecords, blocked}.
+    """
+    if edinet_code:
+        field_id = "vD_TEISYUTUSYA_EDINET"
+        value = edinet_code
+    elif search_ticker:
+        field_id = "vD_TEISYUTUSYA_SYOUKEN"
+        value = search_ticker
+    elif company_name:
+        field_id = "vD_TEISYUTUSYA_MEISYOU"
+        value = company_name
+    else:
+        msg = "At least one of ticker, edinet_code, or company_name is required"
+        raise ValueError(msg)
 
-def _build_search_url_edinet(edinet_code: str) -> str:
-    """EDINETコードで検索"""
-    params = f"edc={edinet_code}&pfs=6&kbn=2&p=1"
-    encoded = base64.b64encode(params.encode()).decode()
-    return f"{_SEARCH_BASE_URL}?{encoded}"
+    escaped = value.replace("\\", "\\\\").replace("'", "\\'")
 
+    return rf"""
+(async () => {{
+    const input = document.querySelector('#{field_id}');
+    input.focus();
+    input.value = '{escaped}';
+    input.dispatchEvent(new Event('focus', {{ bubbles: true }}));
+    input.dispatchEvent(new Event('input', {{ bubbles: true }}));
+    input.dispatchEvent(new Event('change', {{ bubbles: true }}));
+    input.dispatchEvent(new Event('blur', {{ bubbles: true }}));
 
-def _build_search_url_name(name: str) -> str:
-    """提出者名称で検索"""
-    params = f"nam={name}&pfs=6&kbn=2&p=1"
-    encoded = base64.b64encode(params.encode()).decode()
-    return f"{_SEARCH_BASE_URL}?{encoded}"
+    const cb = document.querySelector('#W0277vCHKSYORUI1');
+    if (cb && !cb.checked) cb.click();
 
+    document.querySelector('#BTNBTNSEARCHTEISYUTUSYA').click();
+    await new Promise(r => setTimeout(r, {_POSTBACK_WAIT_MS}));
 
-_EDINET_CODE_RE = re.compile(r">\s*(E\d{5})\s*<")
+    // レコードなし確認
+    if (document.body.innerText.includes('\u30EC\u30B3\u30FC\u30C9\u304C\u3042\u308A\u307E\u305B\u3093')) {{
+        return JSON.stringify({{noRecords: true}});
+    }}
 
+    // ブロック確認
+    const blockWords = ['\u898F\u5B9A\u5916\u64CD\u4F5C', '\u30A8\u30E9\u30FC\u753B\u9762', 'Message code'];
+    for (const w of blockWords) {{
+        if (document.body.innerText.includes(w)) {{
+            return JSON.stringify({{blocked: w}});
+        }}
+    }}
 
-def _extract_edinet_code(html: str) -> str | None:
-    """検索結果テーブルの<td>内からEDINETコード(E05453等)を抽出"""
-    m = _EDINET_CODE_RE.search(html)
-    return m.group(1) if m else None
+    // EDINETコード抽出
+    const edinetMatch = document.body.innerHTML.match(/>\\s*(E\\d{{5}})\\s*</);
+    const edinetCode = edinetMatch ? edinetMatch[1] : null;
+
+    // 有価証券報告書リンクをクリックしてdocID URLをキャプチャ
+    let capturedUrl = null;
+    const originalOpen = window.open;
+    window.open = (url) => {{ capturedUrl = url; return null; }};
+
+    const links = document.querySelectorAll('a[onclick]');
+    for (const link of links) {{
+        const text = link.textContent.trim();
+        if (text.includes('\u6709\u4FA1\u8A3C\u5238\u5831\u544A\u66F8') && !text.includes('\u8A02\u6B63')) {{
+            link.click();
+            break;
+        }}
+    }}
+
+    await new Promise(r => setTimeout(r, {_DOCID_CAPTURE_WAIT_MS}));
+    window.open = originalOpen;
+
+    return JSON.stringify({{capturedUrl, edinetCode}});
+}})()"""
 
 
 def _extract_doc_id_from_url(url: str | None) -> str | None:
-    """docIDをWZEK0040.aspxのURLから抽出。例: WZEK0040.aspx?S100VWVY,, → S100VWVY"""
+    """docIDをWZEK0040.aspxのURLから抽出。例: ./WZEK0040.aspx?S100VWVY,, → S100VWVY"""
     if not url:
         return None
     match = re.match(r"^[^?]*\?([A-Za-z0-9]+)", url)
     return match.group(1) if match else None
 
 
-def _fetch_and_check(
+def _run_search(
     client: BrowserServiceClient,
-    url: str,
     ticker: str,
     *,
     proxy: str | None = None,
-) -> tuple[object, str | None]:
-    """URLをfetchしてブロック/レコードなしを検知。 (resp, edinet_code_or_None)"""
+    search_ticker: str | None = None,
+    edinet_code: str | None = None,
+    company_name: str | None = None,
+) -> tuple[str | None, str | None, str | None]:
+    """Execute search + extract in one evaluate call.
+
+    Returns (doc_id, edinet_code, error_type).
+    error_type: 'no_records' | 'blocked' | 'extraction_failed' | None
+    """
     global _consecutive_no_records
 
-    resp = client.fetch(url, proxy=proxy)
-    if resp.error:
-        logger.warning("Search failed for %s: %s", ticker, resp.error)
-        return resp, None
-    if resp.html is None:
-        logger.warning("Empty HTML for %s", ticker)
-        return resp, None
+    js = _build_search_and_extract_js(
+        search_ticker=search_ticker, edinet_code=edinet_code, company_name=company_name,
+    )
+    try:
+        result = client.evaluate(_SEARCH_FORM_URL, js, proxy=proxy, timeout=120000)
+    except (ValueError, RuntimeError, OSError) as exc:
+        logger.warning("Search evaluate failed for %s: %s", ticker, exc)
+        return None, None, None
 
-    for indicator in _BLOCK_INDICATORS:
-        if indicator in resp.html:
-            raise EdinetBlockError(
-                f"EDINET blocked the request for ticker {ticker}: '{indicator}' detected"
-            )
+    try:
+        data = json.loads(str(result))
+    except (json.JSONDecodeError, TypeError):
+        logger.warning("Invalid JSON from search for %s: %s", ticker, str(result)[:200])
+        return None, None, None
 
-    if "レコードがありません" in resp.html:
+    # ブロック検知
+    if data.get("blocked"):
+        raise EdinetBlockError(
+            f"EDINET blocked the request for ticker {ticker}: '{data['blocked']}' detected"
+        )
+
+    # レコードなし
+    if data.get("noRecords"):
         _consecutive_no_records += 1
         logger.info("No records (consecutive: %d) for %s", _consecutive_no_records, ticker)
         if _consecutive_no_records >= _MAX_CONSECUTIVE_NO_RECORDS:
             raise EdinetNoRecordsError(
                 f"{_consecutive_no_records} consecutive 'no records' — search may be broken"
             )
-        return resp, None
+        return None, None, "no_records"
 
     _consecutive_no_records = 0
-    found_edinet = _extract_edinet_code(resp.html) if resp.html else None
-    return resp, found_edinet
 
+    doc_id = _extract_doc_id_from_url(data.get("capturedUrl"))
+    edinet = data.get("edinetCode")
 
-def _try_extract_doc_id(
-    client: BrowserServiceClient,
-    url: str,
-    ticker: str,
-    html: str,
-    *,
-    proxy: str | None = None,
-) -> str | None:
-    """検索結果HTMLから有価証券報告書リンクをクリックしてdocID抽出"""
-    if not re.search(r'TeisyutuSyorui_Click[^>]*>[^<]*有価証券報告書', html):
-        logger.info("No annual report link found for ticker %s", ticker)
-        return None
+    if not doc_id and data.get("capturedUrl"):
+        raise DocIdExtractionError(
+            f"Annual report link found for {ticker} but docID extraction failed "
+            f"(capturedUrl={data['capturedUrl']})"
+        )
 
-    try:
-        result_url = client.evaluate(url, _EXTRACT_DOC_ID_JS, proxy=proxy, timeout=_DOCID_EXTRACTION_TIMEOUT_MS)
-    except (ValueError, RuntimeError, OSError) as exc:
-        logger.warning("Evaluate failed for %s: %s", ticker, exc)
-        return None
-
-    doc_id = _extract_doc_id_from_url(result_url)
-    if doc_id:
-        return doc_id
-    raise DocIdExtractionError(
-        f"Annual report link found for {ticker} but docID extraction failed (result_url={result_url})"
-    )
+    return doc_id, edinet, None
 
 
 def search_annual_reports(
@@ -173,32 +205,30 @@ def search_annual_reports(
     """
     # 1. EDINETコードで検索 (DBにあれば)
     if edinet_code:
-        url = _build_search_url_edinet(edinet_code)
-        resp, found_edinet = _fetch_and_check(client, url, ticker, proxy=proxy)
-        if resp.html and "レコードがありません" not in (resp.html or ""):
-            doc_id = _try_extract_doc_id(client, url, ticker, resp.html, proxy=proxy)
-            if doc_id:
-                logger.info("Found docID %s for ticker %s via EDINET code", doc_id, ticker)
-                return doc_id, found_edinet or edinet_code
+        doc_id, found_edinet, err = _run_search(
+            client, ticker, proxy=proxy, edinet_code=edinet_code,
+        )
+        if doc_id:
+            logger.info("Found docID %s for ticker %s via EDINET code", doc_id, ticker)
+            return doc_id, found_edinet or edinet_code
+        if err != "no_records":
+            return None, found_edinet
 
     # 2. 証券コードで検索
-    url = _build_search_url(ticker)
-    resp, found_edinet = _fetch_and_check(client, url, ticker, proxy=proxy)
-    if resp.html and "レコードがありません" not in (resp.html or ""):
-        doc_id = _try_extract_doc_id(client, url, ticker, resp.html, proxy=proxy)
+    doc_id, found_edinet, err = _run_search(
+        client, ticker, proxy=proxy, search_ticker=ticker,
+    )
+    if doc_id:
+        logger.info("Found docID %s for ticker %s via ticker code", doc_id, ticker)
+        return doc_id, found_edinet
+    if err == "no_records" and company_name:
+        # 3. 提出者名称でフォールバック
+        doc_id, found_edinet, err = _run_search(
+            client, ticker, proxy=proxy, company_name=company_name,
+        )
         if doc_id:
-            logger.info("Found docID %s for ticker %s via ticker code", doc_id, ticker)
+            logger.info("Found docID %s for ticker %s via company name", doc_id, ticker)
             return doc_id, found_edinet
-
-    # 3. 提出者名称でフォールバック
-    if company_name and resp.html and "レコードがありません" in (resp.html or ""):
-        url = _build_search_url_name(company_name)
-        resp, found_edinet = _fetch_and_check(client, url, ticker, proxy=proxy)
-        if resp.html and "レコードがありません" not in (resp.html or ""):
-            doc_id = _try_extract_doc_id(client, url, ticker, resp.html, proxy=proxy)
-            if doc_id:
-                logger.info("Found docID %s for ticker %s via company name", doc_id, ticker)
-                return doc_id, found_edinet
 
     return None, found_edinet
 
