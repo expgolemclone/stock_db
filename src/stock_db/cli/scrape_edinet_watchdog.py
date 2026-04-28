@@ -19,7 +19,7 @@ logger = logging.getLogger("stock_db.cli.scrape_edinet_watchdog")
 MAX_MEM_PCT = 70
 CHECK_INTERVAL = 30
 COOLDOWN_AFTER_KILL = 60
-SCRAPE_TIMEOUT = 1800  # 30分
+_SCRAPE_TIMEOUT_ENV = "STOCK_DB_EDINET_WATCHDOG_TIMEOUT_SECONDS"
 _PID_FILE = Path("/tmp/scrape_edinet_watchdog.pid")
 _SCRAPE_CMD = [sys.executable, "-m", "stock_db.cli.scrape_edinet_reports"]
 _SCRAPE_CWD = "/home/exp/projects/stock_db"
@@ -94,6 +94,26 @@ def _mem_pct() -> float:
     available = info.get("MemAvailable", info["MemFree"] + info.get("Buffers", 0) + info.get("Cached", 0))
     used = total - available
     return (used / total) * 100
+
+
+def _scrape_timeout_seconds() -> int | None:
+    raw = os.environ.get(_SCRAPE_TIMEOUT_ENV)
+    if raw is None or raw.strip() == "":
+        return None
+    try:
+        timeout = int(raw)
+    except ValueError:
+        logger.warning("Invalid %s=%r; disabling scrape timeout", _SCRAPE_TIMEOUT_ENV, raw)
+        return None
+    if timeout <= 0:
+        return None
+    return timeout
+
+
+def _timeout_expired(
+    scrape_start: float, *, now: float, timeout_seconds: int | None,
+) -> bool:
+    return timeout_seconds is not None and now - scrape_start > timeout_seconds
 
 
 
@@ -173,7 +193,9 @@ def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
     _kill_previous_instance()
     _write_pid()
-    logger.info("Watchdog started (threshold: %d%%, timeout: %ds)", MAX_MEM_PCT, SCRAPE_TIMEOUT)
+    scrape_timeout = _scrape_timeout_seconds()
+    timeout_label = "disabled" if scrape_timeout is None else f"{scrape_timeout}s"
+    logger.info("Watchdog started (threshold: %d%%, timeout: %s)", MAX_MEM_PCT, timeout_label)
 
     scrape_proc: subprocess.Popen[bytes] | None = None
     scrape_start: float = 0.0
@@ -201,8 +223,10 @@ def main() -> None:
                         break
                     logger.warning("Scrape exited with code %d, will retry.", rc)
                     scrape_proc = None
-                elif time.monotonic() - scrape_start > SCRAPE_TIMEOUT:
-                    logger.warning("Scrape timeout (%ds), killing", SCRAPE_TIMEOUT)
+                elif _timeout_expired(
+                    scrape_start, now=time.monotonic(), timeout_seconds=scrape_timeout,
+                ):
+                    logger.warning("Scrape timeout (%ds), killing", scrape_timeout)
                     _kill_proc_tree(scrape_proc)
                     scrape_proc = None
 
