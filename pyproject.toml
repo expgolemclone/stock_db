@@ -8,7 +8,9 @@ dependencies = [
     "truststore>=0.9,<1",
     "brotli>=1.1,<2",
     "pysocks>=1.7,<2",
-    "beautifulsoup4>=4.14.3",
+    "beautifulsoup4>=4.14.3,<5",
+    "pypdf>=5.0,<6",
+    "pdfminer.six>=20250327,<20260000",
 ]
 
 [dependency-groups]
@@ -20,6 +22,9 @@ dev = [
 fetch-irbank-files = "stock_db.cli.fetch_irbank_files:main"
 generate-validation-site-list = "stock_db.cli.generate_validation_site_list:main"
 scrape-irbank-bs = "stock_db.cli.scrape_irbank_bs:main"
+purge-irbank-bs = "stock_db.cli.purge_irbank_bs:main"
+scrape-edinet-reports = "stock_db.cli.scrape_edinet_reports:main"
+report-edinet-progress = "stock_db.cli.report_edinet_progress:main"
 
 [build-system]
 requires = ["hatchling"]

@@ -61,6 +61,15 @@ def replace_financial_items_for_source(
         upsert_financial_items_bulk(conn, rows)
 
 
+def purge_financial_items_for_source(
+    conn: sqlite3.Connection,
+    source: str,
+) -> int:
+    cursor = conn.execute(
+        "DELETE FROM financial_items WHERE source = ?",
+        (source,),
+    )
+    return cursor.rowcount
 def get_financial_dict(
     conn: sqlite3.Connection,
     ticker: str,

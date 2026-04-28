@@ -14,3 +14,9 @@ skip_existing = true
 pool_size = 1
 headless = false
 disable_xvfb = true
+
+[scrape_edinet_reports]
+proxy = "direct"
+skip_existing = true
+headless = false
+disable_xvfb = true
