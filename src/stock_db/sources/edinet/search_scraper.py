@@ -80,6 +80,15 @@ def _build_search_and_extract_js(
     const cb = document.querySelector('#W0277vCHKSYORUI1');
     if (cb && !cb.checked) cb.click();
 
+    // EDINET defaults to "past 1 year", which misses delisted/merged issuers
+    // whose latest annual report is older. Force "all period" before searching.
+    const kikan = document.querySelector('#vD_KIKAN');
+    if (kikan) {{
+        kikan.value = '7';
+        kikan.dispatchEvent(new Event('change', {{ bubbles: true }}));
+        kikan.dispatchEvent(new Event('blur', {{ bubbles: true }}));
+    }}
+
     document.querySelector('#BTNBTNSEARCHTEISYUTUSYA').click();
     await new Promise(r => setTimeout(r, {_POSTBACK_WAIT_MS}));
 
@@ -211,8 +220,6 @@ def search_annual_reports(
         if doc_id:
             logger.info("Found docID %s for ticker %s via EDINET code", doc_id, ticker)
             return doc_id, found_edinet or edinet_code
-        if err != "no_records":
-            return None, found_edinet
 
     # 2. 証券コードで検索
     doc_id, found_edinet, err = _run_search(
