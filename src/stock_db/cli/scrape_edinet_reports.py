@@ -24,7 +24,11 @@ from stock_db.sources.edinet.search_scraper import (
 )
 from stock_db.storage.connection import get_connection
 from stock_db.storage.schema import init_db
-from stock_db.storage.sec_reports import get_processed_doc_ids, upsert_sec_report
+from stock_db.storage.sec_reports import (
+    get_processed_doc_ids,
+    sync_edinet_raw_to_db,
+    upsert_sec_report,
+)
 from stock_db.storage.stocks import get_all_tickers, get_edinet_code, get_stock_names, upsert_company_metadata, upsert_stock
 
 logger = logging.getLogger("stock_db.cli.scrape_edinet_reports")
@@ -223,6 +227,15 @@ def main() -> None:
     conn: sqlite3.Connection = get_connection(STOCKS_DB_PATH)
     init_db(conn)
     try:
+        synced_reports, synced_urls = sync_edinet_raw_to_db(conn, _EDINET_RAW_DIR)
+        if synced_reports or synced_urls:
+            conn.commit()
+            logger.info(
+                "Recovered %d sec_reports rows and %d securities_report_url values from raw EDINET files",
+                synced_reports,
+                synced_urls,
+            )
+
         if args.ticker:
             tickers: list[str] = [args.ticker]
         else:
