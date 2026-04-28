@@ -24,6 +24,7 @@ generate-validation-site-list = "stock_db.cli.generate_validation_site_list:main
 scrape-irbank-bs = "stock_db.cli.scrape_irbank_bs:main"
 purge-irbank-bs = "stock_db.cli.purge_irbank_bs:main"
 scrape-edinet-reports = "stock_db.cli.scrape_edinet_reports:main"
+report-edinet-progress = "stock_db.cli.report_edinet_progress:main"
 
 [build-system]
 requires = ["hatchling"]
