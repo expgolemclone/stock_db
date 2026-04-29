@@ -36,6 +36,10 @@ async function normalizeSeedPage(seedPage) {
 function buildConnectOptions(options) {
   return {
     ...options,
+    connectOption: {
+      ...(options.connectOption || {}),
+      protocolTimeout: 600_000,
+    },
     customConfig: {
       ...(options.customConfig || {}),
       handleSIGINT: false,

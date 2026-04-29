@@ -19,18 +19,52 @@ _PDF_URL_RE = re.compile(r"/searchdocument/pdf/([A-Za-z0-9]+)\.pdf")
 _SEARCH_BASE = "https://disclosure2.edinet-fsa.go.jp/EKW01Z01/wk110000"
 _XBRL_BASE_URL = "https://disclosure2.edinet-fsa.go.jp/WZEK0040.aspx"
 _DEFAULT_PDF_TIMEOUT = 120
-_DEFAULT_XBRL_TIMEOUT_MS = 120_000
+_DEFAULT_XBRL_TIMEOUT_MS = 300_000
 
 _EXTRACT_HONBUN_JS = """
 (async () => {
-  const frame = document.getElementById('frame_honbun');
+  let frame = document.getElementById('frame_honbun');
   if (!frame) return null;
-  for (let i = 0; i < 20; i++) {
+  for (let i = 0; i < 30; i++) {
     await new Promise(r => setTimeout(r, 1000));
-    const content = frame.srcdoc || '';
-    if (content.length > 100) return content;
+    frame = document.getElementById('frame_honbun');
+    if ((frame?.srcdoc || '').length > 100) break;
   }
-  return null;
+  const initial = frame?.srcdoc || '';
+  if (initial.length < 100) return null;
+
+  const mokuji = document.getElementById('frame_mokuji');
+  if (!mokuji || !mokuji.srcdoc) return initial;
+
+  const links = [...mokuji.srcdoc.matchAll(/linkclicknew\\('([^']+)'\\)/g)];
+  const files = [...new Set(links.map(m => m[1].split('#')[0]))];
+  if (files.length <= 1) return initial;
+
+  function bodyOf(html) {
+    const m = html.match(/<body[^>]*>([\\s\\S]*)<\\/body>/i);
+    return m ? m[1] : html;
+  }
+
+  const xmlDecl = initial.match(/^<\\?xml[^?]*\\?>/)?.[0] || '';
+  const htmlOpen = initial.match(/<html[^>]*>/)?.[0] || '<html>';
+  const headBlock = initial.match(/<head[^>]*>([\\s\\S]*?)<\\/head>/)?.[0] || '<head></head>';
+
+  const bodies = [bodyOf(initial)];
+
+  for (let i = 1; i < files.length; i++) {
+    document.getElementById('TXTURL').innerHTML = files[i];
+    document.getElementById('BTNMOKUJILINK').click();
+    await new Promise(r => setTimeout(r, 3000));
+    const curFrame = document.getElementById('frame_honbun');
+    const cur = curFrame?.srcdoc || '';
+    if (cur.length > 100) {
+      bodies.push(bodyOf(cur));
+    }
+  }
+
+  const combined = xmlDecl + '\\n' + htmlOpen + '\\n' + headBlock + '\\n<body>'
+    + bodies.join('\\n') + '</body>\\n</html>';
+  return combined;
 })()
 """
 
