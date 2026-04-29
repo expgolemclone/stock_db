@@ -27,12 +27,14 @@ stock_db/
       client.py            # BrowserServiceClient（ブラウザサービスの Python クライアント）
     cli/
       scrape_irbank_bs.py  # IR BANK B/S スクレイピング CLI
-      scrape_edinet_reports.py # EDINET 有報取得 CLI
+      scrape_edinet_reports.py # EDINET 有報取得 CLI（3並列・ThreadPoolExecutor）
+      scrape_edinet_watchdog.py # メモリ監視付き watchdog ラッパー
       fetch_irbank_files.py # IR BANK JSON ダウンロード CLI
       purge_irbank_bs.py   # IR BANK B/S データ削除 CLI
       generate_validation_site_list.py
     sources/edinet/
       api_client.py        # EDINET API v2 クライアント（書類一覧・PDF取得）
+      search_scraper.py    # EDINET 検索フォーム経由で docID 発見（スレッドセーフ）
       pdf_extractor.py     # PDF → Markdown テキスト抽出
     sources/irbank/
       bs_parser.py         # B/S ページ HTML パーサー
@@ -98,6 +100,7 @@ SQLite を使用。WAL モード・外部キー制約有効。
 |---|---|
 | `api_client` | EDINET API v2 で書類一覧取得・PDFダウンロード |
 | `pdf_extractor` | pypdf で PDF からテキスト抽出し Markdown に変換 |
+| `search_scraper` | EDINET 検索フォーム経由で有報 docID を発見（スレッドセーフ） |
 
 ### ProxyPool
 

@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import threading
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -40,6 +41,20 @@ class DocIdExtractionError(RuntimeError):
 
 _MAX_CONSECUTIVE_NO_RECORDS = 100
 _consecutive_no_records = 0
+_no_records_lock = threading.Lock()
+
+
+def _increment_no_records() -> int:
+    global _consecutive_no_records
+    with _no_records_lock:
+        _consecutive_no_records += 1
+        return _consecutive_no_records
+
+
+def _reset_no_records() -> None:
+    global _consecutive_no_records
+    with _no_records_lock:
+        _consecutive_no_records = 0
 
 
 def _build_search_and_extract_js(
@@ -177,15 +192,15 @@ def _run_search(
 
     # レコードなし
     if data.get("noRecords"):
-        _consecutive_no_records += 1
-        logger.info("No records (consecutive: %d) for %s", _consecutive_no_records, ticker)
-        if _consecutive_no_records >= _MAX_CONSECUTIVE_NO_RECORDS:
+        count = _increment_no_records()
+        logger.info("No records (consecutive: %d) for %s", count, ticker)
+        if count >= _MAX_CONSECUTIVE_NO_RECORDS:
             raise EdinetNoRecordsError(
-                f"{_consecutive_no_records} consecutive 'no records' — search may be broken"
+                f"{count} consecutive 'no records' — search may be broken"
             )
         return None, None, "no_records"
 
-    _consecutive_no_records = 0
+    _reset_no_records()
 
     doc_id = _extract_doc_id_from_url(data.get("capturedUrl"))
     edinet = data.get("edinetCode")

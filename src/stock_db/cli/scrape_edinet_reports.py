@@ -6,13 +6,14 @@ import argparse
 import logging
 import sqlite3
 import sys
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 import requests
 
 from stock_db.browser_client.client import BrowserServiceClient
 from stock_db.paths import STOCKS_DB_PATH, VAR_DIR, cli_defaults, magic_numbers
-from stock_db.proxy_pool import random_delay
 from stock_db.sources.edinet.api_client import build_pdf_url, doc_id_from_url, download_pdf, download_xbrl
 from stock_db.sources.edinet.pdf_extractor import extract_markdown
 from stock_db.sources.edinet.search_scraper import (
@@ -34,6 +35,8 @@ from stock_db.storage.stocks import get_all_tickers, get_edinet_code, get_stock_
 logger = logging.getLogger("stock_db.cli.scrape_edinet_reports")
 
 _EDINET_RAW_DIR = VAR_DIR / "raw" / "edinet"
+_WORKERS = 3
+_db_lock = threading.Lock()
 
 
 def _process_one(conn: sqlite3.Connection, ticker: str, url: str, *, client: BrowserServiceClient | None = None, proxy: str | None = None, skip_pdf: bool = False, skip_xbrl: bool = False) -> tuple[int, int]:
@@ -71,18 +74,19 @@ def _process_one(conn: sqlite3.Connection, ticker: str, url: str, *, client: Bro
             if xbrl_dest is not None:
                 xbrl_path = str(xbrl_dest)
 
-        upsert_sec_report(
-            conn,
-            ticker=ticker,
-            fiscal_year="latest",
-            doc_id=doc_id,
-            file_path=md_path or "",
-            xbrl_path=xbrl_path,
-            page_count=page_count,
-            char_count=char_count,
-        )
-        upsert_company_metadata(conn, ticker, securities_report_url=url)
-        conn.commit()
+        with _db_lock:
+            upsert_sec_report(
+                conn,
+                ticker=ticker,
+                fiscal_year="latest",
+                doc_id=doc_id,
+                file_path=md_path or "",
+                xbrl_path=xbrl_path,
+                page_count=page_count,
+                char_count=char_count,
+            )
+            upsert_company_metadata(conn, ticker, securities_report_url=url)
+            conn.commit()
         return 1, 0
     except (requests.RequestException, OSError, ValueError) as exc:
         logger.exception("  Error processing %s: %s", ticker, exc)
@@ -137,32 +141,37 @@ def scrape_all_edinet_reports(
 
     # Phase 1: URLなし銘柄をEDINET検索でdocID発見
     if no_url_tickers:
-        logger.info("Phase 1: Discovering %d tickers via EDINET search", len(no_url_tickers))
+        logger.info("Phase 1: Discovering %d tickers via EDINET search (%d workers)", len(no_url_tickers), _WORKERS)
         names = get_stock_names(conn)
+        edinet_codes = {t: get_edinet_code(conn, t) for t in no_url_tickers}
 
-        for i, ticker in enumerate(no_url_tickers, 1):
-            logger.info("[Phase1 %d/%d] Searching %s", i, len(no_url_tickers), ticker)
-            doc_id, found_edinet = search_annual_reports(
+        def _search_worker(ticker: str) -> tuple[str, str | None, str | None]:
+            return ticker, *search_annual_reports(
                 client, ticker, proxy=proxy,
-                edinet_code=get_edinet_code(conn, ticker),
+                edinet_code=edinet_codes.get(ticker),
                 company_name=names.get(ticker),
             )
-            if found_edinet:
-                try:
-                    upsert_stock(conn, ticker, names.get(ticker, ""), "", "", edinet_code=found_edinet)
-                except sqlite3.IntegrityError:
-                    logger.warning("  EDINET code %s already assigned to another ticker, skipping", found_edinet)
-            if doc_id:
-                url = build_pdf_url(doc_id)
-                upsert_company_metadata(conn, ticker, securities_report_url=url)
-                conn.commit()
-                logger.info("  Found docID %s for %s (edinet=%s)", doc_id, ticker, found_edinet)
-            else:
-                conn.commit()
-                logger.info("  No annual report found for %s", ticker)
 
-            if i < len(no_url_tickers):
-                random_delay(interval * 0.75, interval * 1.25)
+        with ThreadPoolExecutor(max_workers=_WORKERS) as executor:
+            futures = {executor.submit(_search_worker, t): t for t in no_url_tickers}
+            done_count = 0
+            for future in as_completed(futures):
+                done_count += 1
+                ticker, doc_id, found_edinet = future.result()
+                logger.info("[Phase1 %d/%d] %s: docID=%s edinet=%s",
+                            done_count, len(no_url_tickers), ticker, doc_id, found_edinet)
+                with _db_lock:
+                    if found_edinet:
+                        try:
+                            upsert_stock(conn, ticker, names.get(ticker, ""), "", "", edinet_code=found_edinet)
+                        except sqlite3.IntegrityError:
+                            logger.warning("  EDINET code %s already assigned to another ticker, skipping", found_edinet)
+                    if doc_id:
+                        url = build_pdf_url(doc_id)
+                        upsert_company_metadata(conn, ticker, securities_report_url=url)
+                    conn.commit()
+                if not doc_id:
+                    logger.info("  No annual report found for %s", ticker)
 
     # URLあり銘柄を再取得（Phase 1で新規発見分を含む）
     has_url = {}
@@ -182,20 +191,32 @@ def scrape_all_edinet_reports(
     if url_targets:
         pdf_todo = sum(1 for _, u in url_targets if doc_id_from_url(u) not in existing_ids)
         xbrl_todo = sum(1 for _, u in url_targets if doc_id_from_url(u) not in xbrl_done_ids)
-        logger.info("Phase 2: Processing %d tickers (PDF todo: %d, XBRL todo: %d)",
-                     len(url_targets), pdf_todo, xbrl_todo)
-    for i, (ticker, url) in enumerate(url_targets, 1):
+        logger.info("Phase 2: Processing %d tickers (PDF todo: %d, XBRL todo: %d, workers: %d)",
+                     len(url_targets), pdf_todo, xbrl_todo, _WORKERS)
+
+    def _download_worker(ticker: str, url: str) -> tuple[int, int]:
         doc_id = doc_id_from_url(url)
         skip_pdf = doc_id in existing_ids
         skip_xbrl = doc_id in xbrl_done_ids
-        logger.info("[Phase2 %d/%d] Processing %s (skip_pdf=%s, skip_xbrl=%s)",
-                     i, len(url_targets), ticker, skip_pdf, skip_xbrl)
-        ok_delta, err_delta = _process_one(conn, ticker, url, client=client, proxy=proxy,
-                                            skip_pdf=skip_pdf, skip_xbrl=skip_xbrl)
-        ok += ok_delta
-        errors += err_delta
-        if i < len(url_targets):
-            random_delay(interval * 0.5, interval * 1.5)
+        logger.info("[Phase2] Processing %s (skip_pdf=%s, skip_xbrl=%s)", ticker, skip_pdf, skip_xbrl)
+        return _process_one(conn, ticker, url, client=client, proxy=proxy,
+                            skip_pdf=skip_pdf, skip_xbrl=skip_xbrl)
+
+    with ThreadPoolExecutor(max_workers=_WORKERS) as executor:
+        futures = {executor.submit(_download_worker, t, u): (t, u) for t, u in url_targets}
+        done_count = 0
+        for future in as_completed(futures):
+            done_count += 1
+            ticker, url = futures[future]
+            try:
+                ok_delta, err_delta = future.result()
+            except (requests.RequestException, OSError, ValueError) as exc:
+                logger.exception("[Phase2 %d/%d] %s failed: %s", done_count, len(url_targets), ticker, exc)
+                err_delta = 1
+                ok_delta = 0
+            with _db_lock:
+                ok += ok_delta
+                errors += err_delta
 
     logger.info("Total: %d ok, %d errors", ok, errors)
     return ok, errors
@@ -246,7 +267,7 @@ def main() -> None:
             sys.exit(1)
 
         client_cfg = {
-            "pool_size": 1,
+            "pool_size": _WORKERS,
             "page_timeout": browser_cfg.get("page_timeout", 30000),
             "idle_timeout": browser_cfg.get("idle_timeout", 60000),
             "startup_timeout": browser_cfg.get("startup_timeout", 30),
