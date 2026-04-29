@@ -7,6 +7,7 @@ single evaluate() call so the PostBack results are not lost.
 
 from __future__ import annotations
 
+import html
 import json
 import logging
 import re
@@ -76,7 +77,7 @@ def _build_search_and_extract_js(
         value = search_ticker
     elif company_name:
         field_id = "vD_TEISYUTUSYA_MEISYOU"
-        value = company_name
+        value = html.unescape(company_name)
     else:
         msg = "At least one of ticker, edinet_code, or company_name is required"
         raise ValueError(msg)
@@ -250,7 +251,7 @@ def search_annual_reports(
     if doc_id:
         logger.info("Found docID %s for ticker %s via ticker code", doc_id, ticker)
         return doc_id, found_edinet
-    if err == "no_records" and company_name:
+    if company_name:
         # 3. 提出者名称でフォールバック
         doc_id, found_edinet, err = _run_search(
             client, ticker, proxy=proxy, company_name=company_name,

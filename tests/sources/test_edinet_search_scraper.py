@@ -24,6 +24,12 @@ class TestBuildSearchAndExtractJs:
         assert "document.querySelector('#vD_TEISYUTUSYA_MEISYOU')" in js
         assert "value = 'ピックルスコーポレーション'" in js
 
+    def test_decodes_html_entities_in_company_name(self) -> None:
+        js = _build_search_and_extract_js(company_name="ビッグツリーテクノロジー&amp;コンサルティング")
+
+        assert "value = 'ビッグツリーテクノロジー&コンサルティング'" in js
+        assert "&amp;" not in js
+
 
 class TestExtractDocIdFromUrl:
     def test_extracts_doc_id(self) -> None:
@@ -84,3 +90,42 @@ class TestSearchAnnualReports:
             ("1352", None, None, True),
         ]
         assert before_request_calls == 2
+
+    def test_falls_back_to_company_name_even_on_non_no_records_error(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        calls: list[tuple[str | None, str | None, str | None]] = []
+        responses = iter([
+            (None, None, None),
+            ("S100TEST2", "E00001", None),
+        ])
+
+        def fake_run_search(
+            client: object,
+            ticker: str,
+            *,
+            proxy: str | None = None,
+            search_ticker: str | None = None,
+            edinet_code: str | None = None,
+            company_name: str | None = None,
+            before_request: object = None,
+        ) -> tuple[str | None, str | None, str | None]:
+            calls.append((search_ticker, edinet_code, company_name))
+            return next(responses)
+
+        monkeypatch.setattr(
+            "stock_db.sources.edinet.search_scraper._run_search", fake_run_search,
+        )
+
+        doc_id, found_edinet = search_annual_reports(
+            types.SimpleNamespace(),
+            "8306",
+            company_name="三菱UFJフィナンシャル・グループ",
+        )
+
+        assert doc_id == "S100TEST2"
+        assert found_edinet == "E00001"
+        assert calls == [
+            ("8306", None, None),
+            (None, None, "三菱UFJフィナンシャル・グループ"),
+        ]
