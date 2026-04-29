@@ -29,7 +29,8 @@ from stock_db.sources.edinet.search_scraper import (
 from stock_db.storage.connection import get_connection
 from stock_db.storage.schema import init_db
 from stock_db.storage.sec_reports import (
-    get_processed_doc_ids,
+    get_processed_report_keys,
+    get_processed_xbrl_report_keys,
     sync_edinet_raw_to_db,
     upsert_sec_report,
 )
@@ -82,22 +83,28 @@ class _RequestThrottle:
 
 def _load_existing_report_artifacts(
     conn: sqlite3.Connection,
-    doc_ids: set[str],
-) -> dict[str, _ExistingReportArtifacts]:
-    if not doc_ids:
+    report_keys: set[tuple[str, str]],
+) -> dict[tuple[str, str], _ExistingReportArtifacts]:
+    if not report_keys:
         return {}
 
-    placeholders = ",".join("?" for _ in doc_ids)
+    pairs_sql = " OR ".join("(ticker = ? AND doc_id = ?)" for _ in report_keys)
+    params = tuple(
+        value
+        for ticker, doc_id in sorted(report_keys)
+        for value in (ticker, doc_id)
+    )
     rows = conn.execute(
         f"""
         SELECT doc_id, file_path, xbrl_path, page_count, char_count
+             , ticker
         FROM sec_reports
-        WHERE doc_id IN ({placeholders})
+        WHERE {pairs_sql}
         """,
-        tuple(sorted(doc_ids)),
+        params,
     ).fetchall()
     return {
-        row["doc_id"]: _ExistingReportArtifacts(
+        (row["ticker"], row["doc_id"]): _ExistingReportArtifacts(
             file_path=row["file_path"],
             xbrl_path=row["xbrl_path"],
             page_count=row["page_count"],
@@ -185,14 +192,11 @@ def scrape_all_edinet_reports(
 
     Returns: (ok_count, error_count)
     """
-    existing_ids = get_processed_doc_ids(conn) if skip_existing else set()
-    xbrl_done_ids: set[str] = set()
+    existing_report_keys: set[tuple[str, str]] = set()
+    xbrl_done_keys: set[tuple[str, str]] = set()
     if skip_existing:
-        xbrl_done_ids = {
-            r["doc_id"] for r in conn.execute(
-                "SELECT doc_id FROM sec_reports WHERE xbrl_path IS NOT NULL"
-            ).fetchall()
-        }
+        existing_report_keys = get_processed_report_keys(conn)
+        xbrl_done_keys = get_processed_xbrl_report_keys(conn)
     throttle = _RequestThrottle(interval)
 
     # URLあり・なしを仕分け
@@ -260,23 +264,34 @@ def scrape_all_edinet_reports(
     # Phase 2: 全URLあり銘柄のPDF/XBRLダウンロード
     url_targets = [
         (t, url) for t, url in has_url.items()
-        if doc_id_from_url(url) not in existing_ids
-        or doc_id_from_url(url) not in xbrl_done_ids
+        if (t, doc_id_from_url(url) or "") not in existing_report_keys
+        or (t, doc_id_from_url(url) or "") not in xbrl_done_keys
     ]
     existing_artifacts = _load_existing_report_artifacts(
         conn,
-        {doc_id for _, url in url_targets if (doc_id := doc_id_from_url(url)) is not None},
+        {
+            (ticker, doc_id)
+            for ticker, url in url_targets
+            if (doc_id := doc_id_from_url(url)) is not None
+        },
     )
     if url_targets:
-        pdf_todo = sum(1 for _, u in url_targets if doc_id_from_url(u) not in existing_ids)
-        xbrl_todo = sum(1 for _, u in url_targets if doc_id_from_url(u) not in xbrl_done_ids)
+        pdf_todo = sum(
+            1 for ticker, url in url_targets
+            if (ticker, doc_id_from_url(url) or "") not in existing_report_keys
+        )
+        xbrl_todo = sum(
+            1 for ticker, url in url_targets
+            if (ticker, doc_id_from_url(url) or "") not in xbrl_done_keys
+        )
         logger.info("Phase 2: Processing %d tickers (PDF todo: %d, XBRL todo: %d, workers: %d)",
                      len(url_targets), pdf_todo, xbrl_todo, _WORKERS)
 
     def _download_worker(ticker: str, url: str) -> _DownloadedReportArtifacts:
         doc_id = doc_id_from_url(url)
-        skip_pdf = doc_id in existing_ids
-        skip_xbrl = doc_id in xbrl_done_ids
+        report_key = (ticker, doc_id or "")
+        skip_pdf = report_key in existing_report_keys
+        skip_xbrl = report_key in xbrl_done_keys
         logger.info("[Phase2] Processing %s (skip_pdf=%s, skip_xbrl=%s)", ticker, skip_pdf, skip_xbrl)
         return _process_one(
             ticker,
@@ -285,7 +300,7 @@ def scrape_all_edinet_reports(
             proxy=proxy,
             skip_pdf=skip_pdf,
             skip_xbrl=skip_xbrl,
-            existing=existing_artifacts.get(doc_id) if doc_id is not None else None,
+            existing=existing_artifacts.get((ticker, doc_id)) if doc_id is not None else None,
             before_request=throttle.wait,
         )
 

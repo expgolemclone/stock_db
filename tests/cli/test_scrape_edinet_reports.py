@@ -201,3 +201,75 @@ class TestScrapeAllEdinetReports:
         assert row["page_count"] == 7
         assert row["char_count"] == 77
         conn.close()
+
+    def test_skip_existing_is_scoped_per_ticker_not_global_doc_id(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        db_path = tmp_path / "stocks.db"
+        conn = _build_db(db_path)
+        request_times: list[float] = []
+        request_lock = threading.Lock()
+
+        upsert_stock(conn, "1111", "Current", "Sector", "Prime")
+        upsert_company_metadata(
+            conn,
+            "1111",
+            securities_report_url="https://disclosure2dl.edinet-fsa.go.jp/searchdocument/pdf/S100DUP1.pdf",
+        )
+        upsert_stock(conn, "9999", "Legacy", "Sector", "Prime")
+        upsert_sec_report(
+            conn,
+            ticker="9999",
+            fiscal_year="latest",
+            doc_id="S100DUP1",
+            file_path=str((tmp_path / "legacy.md").resolve()),
+            xbrl_path=str((tmp_path / "legacy.xhtml").resolve()),
+            page_count=3,
+            char_count=30,
+        )
+        conn.commit()
+
+        def fake_get(url: str, *, timeout: float, stream: bool) -> _FakePdfResponse:
+            del url, timeout, stream
+            with request_lock:
+                request_times.append(time.monotonic())
+            return _FakePdfResponse()
+
+        monkeypatch.setattr("stock_db.sources.edinet.api_client.requests.get", fake_get)
+        monkeypatch.setattr(
+            scrape_edinet_reports,
+            "extract_markdown",
+            lambda pdf_path: f"markdown for {Path(pdf_path).stem}",
+        )
+        monkeypatch.setattr(
+            scrape_edinet_reports,
+            "_EDINET_RAW_DIR",
+            tmp_path / "var" / "raw" / "edinet",
+        )
+
+        ok, errors = scrape_edinet_reports.scrape_all_edinet_reports(
+            conn,
+            _EvaluateClient(request_times, request_lock),
+            ["1111"],
+            skip_existing=True,
+            interval=0.0,
+        )
+
+        assert ok == 1
+        assert errors == 0
+
+        rows = conn.execute(
+            """
+            SELECT ticker, doc_id, file_path, xbrl_path
+            FROM sec_reports
+            WHERE doc_id = 'S100DUP1'
+            ORDER BY ticker
+            """
+        ).fetchall()
+        assert [(row["ticker"], row["doc_id"]) for row in rows] == [
+            ("1111", "S100DUP1"),
+            ("9999", "S100DUP1"),
+        ]
+        assert Path(rows[0]["file_path"]).is_file()
+        assert Path(rows[0]["xbrl_path"]).is_file()
+        conn.close()

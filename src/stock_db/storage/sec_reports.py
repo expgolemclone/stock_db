@@ -39,8 +39,7 @@ def upsert_sec_report(
             (ticker, fiscal_year, doc_id, doc_type, file_path, xbrl_path,
              page_count, char_count, source, updated_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(doc_id) DO UPDATE SET
-            ticker      = excluded.ticker,
+        ON CONFLICT(ticker, doc_id) DO UPDATE SET
             fiscal_year = excluded.fiscal_year,
             doc_type    = excluded.doc_type,
             file_path   = excluded.file_path,
@@ -58,6 +57,18 @@ def upsert_sec_report(
 def get_processed_doc_ids(conn: sqlite3.Connection) -> set[str]:
     rows = conn.execute("SELECT doc_id FROM sec_reports").fetchall()
     return {r["doc_id"] for r in rows}
+
+
+def get_processed_report_keys(conn: sqlite3.Connection) -> set[tuple[str, str]]:
+    rows = conn.execute("SELECT ticker, doc_id FROM sec_reports").fetchall()
+    return {(r["ticker"], r["doc_id"]) for r in rows}
+
+
+def get_processed_xbrl_report_keys(conn: sqlite3.Connection) -> set[tuple[str, str]]:
+    rows = conn.execute(
+        "SELECT ticker, doc_id FROM sec_reports WHERE xbrl_path IS NOT NULL"
+    ).fetchall()
+    return {(r["ticker"], r["doc_id"]) for r in rows}
 
 
 def get_sec_reports_for_ticker(
@@ -129,7 +140,7 @@ def sync_edinet_raw_to_db(
 ) -> tuple[int, int]:
     reports = _discover_raw_edinet_reports(raw_dir)
     existing_reports = {
-        row["doc_id"]: row
+        (row["ticker"], row["doc_id"]): row
         for row in conn.execute(
             """
             SELECT ticker, doc_id, file_path, xbrl_path, page_count, char_count
@@ -156,7 +167,7 @@ def sync_edinet_raw_to_db(
     synced_urls = 0
 
     for report in reports:
-        current = existing_reports.get(report.doc_id)
+        current = existing_reports.get((report.ticker, report.doc_id))
         if current is None or (
             current["ticker"] != report.ticker
             or current["file_path"] != report.file_path

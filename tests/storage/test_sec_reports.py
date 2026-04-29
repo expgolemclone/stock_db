@@ -6,6 +6,7 @@ from pathlib import Path
 from stock_db.sources.edinet.api_client import build_pdf_url
 from stock_db.storage.sec_reports import (
     get_processed_doc_ids,
+    get_processed_report_keys,
     get_sec_reports_for_ticker,
     sync_edinet_raw_to_db,
     upsert_sec_report,
@@ -82,6 +83,37 @@ class TestSecReports:
         assert rows[0]["file_path"] == "var/raw/edinet/7203/2024_v2.md"
         assert rows[0]["page_count"] == 150
 
+    def test_allows_same_doc_id_for_different_tickers(self, db_conn: sqlite3.Connection) -> None:
+        upsert_sec_report(
+            db_conn,
+            ticker="1111",
+            fiscal_year="latest",
+            doc_id="S100DUP01",
+            file_path="var/raw/edinet/1111/latest.md",
+        )
+        upsert_sec_report(
+            db_conn,
+            ticker="2222",
+            fiscal_year="latest",
+            doc_id="S100DUP01",
+            file_path="var/raw/edinet/2222/latest.md",
+        )
+        db_conn.commit()
+
+        rows = db_conn.execute(
+            """
+            SELECT ticker, doc_id, file_path
+            FROM sec_reports
+            WHERE doc_id = 'S100DUP01'
+            ORDER BY ticker
+            """
+        ).fetchall()
+
+        assert [(row["ticker"], row["doc_id"], row["file_path"]) for row in rows] == [
+            ("1111", "S100DUP01", "var/raw/edinet/1111/latest.md"),
+            ("2222", "S100DUP01", "var/raw/edinet/2222/latest.md"),
+        ]
+
     def test_get_returns_empty_for_missing_ticker(self, db_conn: sqlite3.Connection) -> None:
         result = get_sec_reports_for_ticker(db_conn, "9999")
 
@@ -91,6 +123,28 @@ class TestSecReports:
         result = get_processed_doc_ids(db_conn)
 
         assert result == set()
+
+    def test_get_processed_report_keys(self, db_conn: sqlite3.Connection) -> None:
+        upsert_sec_report(
+            db_conn,
+            ticker="1111",
+            fiscal_year="latest",
+            doc_id="S100DUP01",
+            file_path="var/raw/edinet/1111/latest.md",
+        )
+        upsert_sec_report(
+            db_conn,
+            ticker="2222",
+            fiscal_year="latest",
+            doc_id="S100DUP01",
+            file_path="var/raw/edinet/2222/latest.md",
+        )
+        db_conn.commit()
+
+        assert get_processed_report_keys(db_conn) >= {
+            ("1111", "S100DUP01"),
+            ("2222", "S100DUP01"),
+        }
 
     def test_upsert_with_xbrl_path(self, db_conn: sqlite3.Connection) -> None:
         upsert_sec_report(

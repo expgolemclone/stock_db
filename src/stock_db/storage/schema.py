@@ -47,17 +47,19 @@ CREATE TABLE IF NOT EXISTS prices (
 CREATE TABLE IF NOT EXISTS sec_reports (
     ticker       TEXT    NOT NULL,
     fiscal_year  TEXT    NOT NULL,
-    doc_id       TEXT    PRIMARY KEY,
+    doc_id       TEXT    NOT NULL,
     doc_type     TEXT    NOT NULL DEFAULT 'annual_report',
     file_path    TEXT    NOT NULL,
     xbrl_path    TEXT,
     page_count   INTEGER,
     char_count   INTEGER,
     source       TEXT    NOT NULL DEFAULT 'edinet',
-    updated_at   TEXT    NOT NULL
+    updated_at   TEXT    NOT NULL,
+    PRIMARY KEY (ticker, doc_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_sr_ticker ON sec_reports (ticker);
+CREATE INDEX IF NOT EXISTS idx_sr_doc_id ON sec_reports (doc_id);
 """
 
 
@@ -135,6 +137,60 @@ def _rebuild_prices_without_legacy_shares(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
+def _rebuild_sec_reports_with_composite_pk(conn: sqlite3.Connection) -> None:
+    conn.executescript(
+        """
+        CREATE TABLE sec_reports__new (
+            ticker       TEXT    NOT NULL,
+            fiscal_year  TEXT    NOT NULL,
+            doc_id       TEXT    NOT NULL,
+            doc_type     TEXT    NOT NULL DEFAULT 'annual_report',
+            file_path    TEXT    NOT NULL,
+            xbrl_path    TEXT,
+            page_count   INTEGER,
+            char_count   INTEGER,
+            source       TEXT    NOT NULL DEFAULT 'edinet',
+            updated_at   TEXT    NOT NULL,
+            PRIMARY KEY (ticker, doc_id)
+        );
+
+        INSERT INTO sec_reports__new (
+            ticker,
+            fiscal_year,
+            doc_id,
+            doc_type,
+            file_path,
+            xbrl_path,
+            page_count,
+            char_count,
+            source,
+            updated_at
+        )
+        SELECT
+            ticker,
+            fiscal_year,
+            doc_id,
+            doc_type,
+            file_path,
+            xbrl_path,
+            page_count,
+            char_count,
+            source,
+            updated_at
+        FROM sec_reports;
+
+        DROP TABLE sec_reports;
+        ALTER TABLE sec_reports__new RENAME TO sec_reports;
+        """
+    )
+    conn.commit()
+
+
+def _table_info(conn: sqlite3.Connection, table: str) -> list[sqlite3.Row]:
+    rows = conn.execute(f"PRAGMA table_info({table})").fetchall()  # noqa: S608
+    return list(rows)
+
+
 def _migrate(conn: sqlite3.Connection) -> None:
     stock_cols = _table_columns(conn, "stocks")
     if stock_cols:
@@ -168,6 +224,11 @@ def _migrate(conn: sqlite3.Connection) -> None:
     if sr_cols and "xbrl_path" not in sr_cols:
         conn.execute("ALTER TABLE sec_reports ADD COLUMN xbrl_path TEXT")
         conn.commit()
+        sr_cols = _table_columns(conn, "sec_reports")
+    if sr_cols:
+        sr_pk = {row[1]: row[5] for row in _table_info(conn, "sec_reports")}
+        if sr_pk.get("doc_id") == 1 and sr_pk.get("ticker", 0) == 0:
+            _rebuild_sec_reports_with_composite_pk(conn)
 
 
 def init_db(conn: sqlite3.Connection) -> None:
