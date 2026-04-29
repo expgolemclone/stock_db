@@ -16,13 +16,14 @@
   - `market_cap` テーブルを削除
   - `prices.shares_outstanding` 列を削除
   - `stocks.address_source_urls` 列を削除
+  - `var/reference/all_stocks.csv` から `8462` を削除し、`254A` を追加
+  - `var/backup/stocks.db.before_trash_purge_20260429_181039` を削除
 - cleanup 後の主な状態:
   - `stocks`: 4478 行
   - `financial_items`: 2,181,045 行
   - `sec_reports`: 3178 行
   - `financial_items.statement='_status'`: 3 行のまま維持
 - 残件:
-  - `var/reference/all_stocks.csv` は `8462` を含み `254A` を含まない
   - `var/raw/edinet` と `sec_reports` の不整合は未対応
 
 以下は cleanup 前の監査内容。

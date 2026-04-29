@@ -23,9 +23,11 @@
   - `.pytest_cache`, `test-results/**`, `src/tests の __pycache__`, `.cache/structural-clone-index.json`
   - `var/proxies/http_jp.txt`, `var/proxies/socks5.txt.bak`
   - `var/backup/stocks.db.before_raw_restore_20260429_1`
+- 追加 cleanup 実施:
+  - `var/reference/all_stocks.csv` から `8462` を削除し、`254A` を追加
+  - `var/backup/stocks.db.before_trash_purge_20260429_181039` を削除
 - cleanup 後も残すもの:
   - `.venv`, `services/browser/node_modules`
-  - `var/reference/all_stocks.csv` の `8462` / `254A` 差分
   - `var/raw/edinet` と `sec_reports` の同期不整合
   - `financial_items` の `_status` 3 行
 
