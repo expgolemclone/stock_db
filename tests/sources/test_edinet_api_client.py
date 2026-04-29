@@ -73,3 +73,18 @@ class TestDownloadXbrl:
         dest = download_xbrl(client, "S100TEST", tmp_path)
 
         assert dest is None
+
+    def test_calls_before_request_hook(self, tmp_path: Path) -> None:
+        client = MagicMock()
+        client.evaluate.return_value = "<html><body>" + ("x" * 200) + "</body></html>"
+        calls: list[str] = []
+
+        dest = download_xbrl(
+            client,
+            "S100TEST",
+            tmp_path,
+            before_request=lambda: calls.append("called"),
+        )
+
+        assert dest is not None
+        assert calls == ["called"]

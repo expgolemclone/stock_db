@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import re
+from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -40,7 +41,13 @@ def doc_id_from_url(url: str) -> str | None:
     return m.group(1) if m else None
 
 
-def download_pdf(url: str, dest_dir: Path, *, timeout: float = _DEFAULT_PDF_TIMEOUT) -> Path:
+def download_pdf(
+    url: str,
+    dest_dir: Path,
+    *,
+    timeout: float = _DEFAULT_PDF_TIMEOUT,
+    before_request: Callable[[], None] | None = None,
+) -> Path:
     """Download a PDF directly via requests. Returns the saved file path."""
     doc_id = doc_id_from_url(url)
     if doc_id is None:
@@ -48,6 +55,8 @@ def download_pdf(url: str, dest_dir: Path, *, timeout: float = _DEFAULT_PDF_TIME
 
     dest_dir.mkdir(parents=True, exist_ok=True)
     dest = dest_dir / f"{doc_id}.pdf"
+    if before_request is not None:
+        before_request()
     resp = requests.get(url, timeout=timeout, stream=True)
     resp.raise_for_status()
     with open(dest, "wb") as f:
@@ -74,6 +83,7 @@ def download_xbrl(
     *,
     proxy: str | None = None,
     timeout: int = _DEFAULT_XBRL_TIMEOUT_MS,
+    before_request: Callable[[], None] | None = None,
 ) -> Path | None:
     """Download iXBRL HTML from EDINET document viewer via browser service."""
     url = build_xbrl_url(doc_id)
@@ -81,6 +91,8 @@ def download_xbrl(
     dest = dest_dir / f"{doc_id}.xhtml"
 
     try:
+        if before_request is not None:
+            before_request()
         result = client.evaluate(url, _EXTRACT_HONBUN_JS, proxy=proxy, timeout=timeout)
     except (ValueError, RuntimeError, OSError) as exc:
         logger.warning("XBRL evaluate failed for %s: %s", doc_id, exc)

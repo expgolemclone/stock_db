@@ -39,7 +39,8 @@ class TestSearchAnnualReports:
     def test_falls_back_when_edinet_code_search_has_records_but_no_doc_id(
         self, monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        calls: list[tuple[str | None, str | None, str | None]] = []
+        calls: list[tuple[str | None, str | None, str | None, bool]] = []
+        before_request_calls = 0
         responses = iter([
             (None, "E99999", None),
             ("S100TEST1", "E00017", None),
@@ -53,21 +54,33 @@ class TestSearchAnnualReports:
             search_ticker: str | None = None,
             edinet_code: str | None = None,
             company_name: str | None = None,
+            before_request: object = None,
         ) -> tuple[str | None, str | None, str | None]:
-            calls.append((search_ticker, edinet_code, company_name))
+            nonlocal before_request_calls
+            calls.append((search_ticker, edinet_code, company_name, before_request is not None))
+            if before_request is not None:
+                before_request()
+                before_request_calls += 1
             return next(responses)
 
         monkeypatch.setattr(
             "stock_db.sources.edinet.search_scraper._run_search", fake_run_search,
         )
 
+        def before_request() -> None:
+            return None
+
         doc_id, found_edinet = search_annual_reports(
-            types.SimpleNamespace(), "1352", edinet_code="E06845",
+            types.SimpleNamespace(),
+            "1352",
+            edinet_code="E06845",
+            before_request=before_request,
         )
 
         assert doc_id == "S100TEST1"
         assert found_edinet == "E00017"
         assert calls == [
-            (None, "E06845", None),
-            ("1352", None, None),
+            (None, "E06845", None, True),
+            ("1352", None, None, True),
         ]
+        assert before_request_calls == 2

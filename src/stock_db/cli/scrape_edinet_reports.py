@@ -6,9 +6,12 @@ import argparse
 import logging
 import sqlite3
 import sys
+import time
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Callable
 
 import requests
 
@@ -36,61 +39,132 @@ logger = logging.getLogger("stock_db.cli.scrape_edinet_reports")
 
 _EDINET_RAW_DIR = VAR_DIR / "raw" / "edinet"
 _WORKERS = 3
-_db_lock = threading.Lock()
 
 
-def _process_one(conn: sqlite3.Connection, ticker: str, url: str, *, client: BrowserServiceClient | None = None, proxy: str | None = None, skip_pdf: bool = False, skip_xbrl: bool = False) -> tuple[int, int]:
-    """Download PDF/XBRL, save. Returns (ok, errors)."""
-    try:
-        doc_id = url.rsplit("/", 1)[-1].replace(".pdf", "")
-        md_path: str | None = None
-        xbrl_path: str | None = None
-        page_count: int | None = None
-        char_count: int | None = None
+@dataclass(frozen=True, slots=True)
+class _ExistingReportArtifacts:
+    file_path: str
+    xbrl_path: str | None
+    page_count: int | None
+    char_count: int | None
 
-        if not skip_pdf:
-            pdf_path = download_pdf(url, _EDINET_RAW_DIR / "pdf" / ticker)
-            markdown = extract_markdown(pdf_path)
 
-            md_dir = _EDINET_RAW_DIR / ticker
-            md_dir.mkdir(parents=True, exist_ok=True)
-            md_path = str(md_dir / "latest.md")
-            Path(md_path).write_text(markdown, encoding="utf-8")
-            page_count = len(markdown.split("\n\n"))
-            char_count = len(markdown)
-            logger.info("  %s: saved %s (%d chars)", ticker, md_path, len(markdown))
-        else:
-            existing = conn.execute(
-                "SELECT file_path, page_count, char_count FROM sec_reports WHERE doc_id = ?",
-                (doc_id,),
-            ).fetchone()
-            if existing:
-                md_path = existing["file_path"]
-                page_count = existing["page_count"]
-                char_count = existing["char_count"]
+@dataclass(frozen=True, slots=True)
+class _DownloadedReportArtifacts:
+    ticker: str
+    url: str
+    doc_id: str
+    file_path: str
+    xbrl_path: str | None
+    page_count: int | None
+    char_count: int | None
 
-        if not skip_xbrl and client is not None:
-            xbrl_dest = download_xbrl(client, doc_id, _EDINET_RAW_DIR / "xbrl" / ticker, proxy=proxy)
-            if xbrl_dest is not None:
-                xbrl_path = str(xbrl_dest)
 
-        with _db_lock:
-            upsert_sec_report(
-                conn,
-                ticker=ticker,
-                fiscal_year="latest",
-                doc_id=doc_id,
-                file_path=md_path or "",
-                xbrl_path=xbrl_path,
-                page_count=page_count,
-                char_count=char_count,
-            )
-            upsert_company_metadata(conn, ticker, securities_report_url=url)
-            conn.commit()
-        return 1, 0
-    except (requests.RequestException, OSError, ValueError) as exc:
-        logger.exception("  Error processing %s: %s", ticker, exc)
-        return 0, 1
+class _RequestThrottle:
+    def __init__(self, interval_seconds: float) -> None:
+        self._interval_seconds = max(interval_seconds, 0.0)
+        self._lock = threading.Lock()
+        self._next_request_at = 0.0
+
+    def wait(self) -> None:
+        if self._interval_seconds <= 0:
+            return
+
+        with self._lock:
+            now = time.monotonic()
+            scheduled = max(now, self._next_request_at)
+            self._next_request_at = scheduled + self._interval_seconds
+
+        delay = scheduled - now
+        if delay > 0:
+            time.sleep(delay)
+
+
+def _load_existing_report_artifacts(
+    conn: sqlite3.Connection,
+    doc_ids: set[str],
+) -> dict[str, _ExistingReportArtifacts]:
+    if not doc_ids:
+        return {}
+
+    placeholders = ",".join("?" for _ in doc_ids)
+    rows = conn.execute(
+        f"""
+        SELECT doc_id, file_path, xbrl_path, page_count, char_count
+        FROM sec_reports
+        WHERE doc_id IN ({placeholders})
+        """,
+        tuple(sorted(doc_ids)),
+    ).fetchall()
+    return {
+        row["doc_id"]: _ExistingReportArtifacts(
+            file_path=row["file_path"],
+            xbrl_path=row["xbrl_path"],
+            page_count=row["page_count"],
+            char_count=row["char_count"],
+        )
+        for row in rows
+    }
+
+
+def _process_one(
+    ticker: str,
+    url: str,
+    *,
+    client: BrowserServiceClient | None = None,
+    proxy: str | None = None,
+    skip_pdf: bool = False,
+    skip_xbrl: bool = False,
+    existing: _ExistingReportArtifacts | None = None,
+    before_request: Callable[[], None] | None = None,
+) -> _DownloadedReportArtifacts:
+    """Download PDF/XBRL and return the artifacts for main-thread persistence."""
+    doc_id = doc_id_from_url(url)
+    if doc_id is None:
+        raise ValueError(f"Cannot extract docID from URL: {url}")
+
+    file_path = existing.file_path if existing is not None else ""
+    xbrl_path = existing.xbrl_path if existing is not None else None
+    page_count = existing.page_count if existing is not None else None
+    char_count = existing.char_count if existing is not None else None
+
+    if not skip_pdf:
+        pdf_path = download_pdf(
+            url,
+            _EDINET_RAW_DIR / "pdf" / ticker,
+            before_request=before_request,
+        )
+        markdown = extract_markdown(pdf_path)
+
+        md_dir = _EDINET_RAW_DIR / ticker
+        md_dir.mkdir(parents=True, exist_ok=True)
+        md_path = md_dir / "latest.md"
+        md_path.write_text(markdown, encoding="utf-8")
+        file_path = str(md_path.resolve())
+        page_count = len(markdown.split("\n\n"))
+        char_count = len(markdown)
+        logger.info("  %s: saved %s (%d chars)", ticker, file_path, len(markdown))
+
+    if not skip_xbrl and client is not None:
+        xbrl_dest = download_xbrl(
+            client,
+            doc_id,
+            _EDINET_RAW_DIR / "xbrl" / ticker,
+            proxy=proxy,
+            before_request=before_request,
+        )
+        if xbrl_dest is not None:
+            xbrl_path = str(xbrl_dest)
+
+    return _DownloadedReportArtifacts(
+        ticker=ticker,
+        url=url,
+        doc_id=doc_id,
+        file_path=file_path,
+        xbrl_path=xbrl_path,
+        page_count=page_count,
+        char_count=char_count,
+    )
 
 
 def scrape_all_edinet_reports(
@@ -119,6 +193,7 @@ def scrape_all_edinet_reports(
                 "SELECT doc_id FROM sec_reports WHERE xbrl_path IS NOT NULL"
             ).fetchall()
         }
+    throttle = _RequestThrottle(interval)
 
     # URLあり・なしを仕分け
     has_url: dict[str, str] = {}
@@ -150,6 +225,7 @@ def scrape_all_edinet_reports(
                 client, ticker, proxy=proxy,
                 edinet_code=edinet_codes.get(ticker),
                 company_name=names.get(ticker),
+                before_request=throttle.wait,
             )
 
         with ThreadPoolExecutor(max_workers=_WORKERS) as executor:
@@ -160,16 +236,15 @@ def scrape_all_edinet_reports(
                 ticker, doc_id, found_edinet = future.result()
                 logger.info("[Phase1 %d/%d] %s: docID=%s edinet=%s",
                             done_count, len(no_url_tickers), ticker, doc_id, found_edinet)
-                with _db_lock:
-                    if found_edinet:
-                        try:
-                            upsert_stock(conn, ticker, names.get(ticker, ""), "", "", edinet_code=found_edinet)
-                        except sqlite3.IntegrityError:
-                            logger.warning("  EDINET code %s already assigned to another ticker, skipping", found_edinet)
-                    if doc_id:
-                        url = build_pdf_url(doc_id)
-                        upsert_company_metadata(conn, ticker, securities_report_url=url)
-                    conn.commit()
+                if found_edinet:
+                    try:
+                        upsert_stock(conn, ticker, names.get(ticker, ""), "", "", edinet_code=found_edinet)
+                    except sqlite3.IntegrityError:
+                        logger.warning("  EDINET code %s already assigned to another ticker, skipping", found_edinet)
+                if doc_id:
+                    url = build_pdf_url(doc_id)
+                    upsert_company_metadata(conn, ticker, securities_report_url=url)
+                conn.commit()
                 if not doc_id:
                     logger.info("  No annual report found for %s", ticker)
 
@@ -188,19 +263,31 @@ def scrape_all_edinet_reports(
         if doc_id_from_url(url) not in existing_ids
         or doc_id_from_url(url) not in xbrl_done_ids
     ]
+    existing_artifacts = _load_existing_report_artifacts(
+        conn,
+        {doc_id for _, url in url_targets if (doc_id := doc_id_from_url(url)) is not None},
+    )
     if url_targets:
         pdf_todo = sum(1 for _, u in url_targets if doc_id_from_url(u) not in existing_ids)
         xbrl_todo = sum(1 for _, u in url_targets if doc_id_from_url(u) not in xbrl_done_ids)
         logger.info("Phase 2: Processing %d tickers (PDF todo: %d, XBRL todo: %d, workers: %d)",
                      len(url_targets), pdf_todo, xbrl_todo, _WORKERS)
 
-    def _download_worker(ticker: str, url: str) -> tuple[int, int]:
+    def _download_worker(ticker: str, url: str) -> _DownloadedReportArtifacts:
         doc_id = doc_id_from_url(url)
         skip_pdf = doc_id in existing_ids
         skip_xbrl = doc_id in xbrl_done_ids
         logger.info("[Phase2] Processing %s (skip_pdf=%s, skip_xbrl=%s)", ticker, skip_pdf, skip_xbrl)
-        return _process_one(conn, ticker, url, client=client, proxy=proxy,
-                            skip_pdf=skip_pdf, skip_xbrl=skip_xbrl)
+        return _process_one(
+            ticker,
+            url,
+            client=client,
+            proxy=proxy,
+            skip_pdf=skip_pdf,
+            skip_xbrl=skip_xbrl,
+            existing=existing_artifacts.get(doc_id) if doc_id is not None else None,
+            before_request=throttle.wait,
+        )
 
     with ThreadPoolExecutor(max_workers=_WORKERS) as executor:
         futures = {executor.submit(_download_worker, t, u): (t, u) for t, u in url_targets}
@@ -209,14 +296,25 @@ def scrape_all_edinet_reports(
             done_count += 1
             ticker, url = futures[future]
             try:
-                ok_delta, err_delta = future.result()
+                result = future.result()
             except (requests.RequestException, OSError, ValueError) as exc:
                 logger.exception("[Phase2 %d/%d] %s failed: %s", done_count, len(url_targets), ticker, exc)
-                err_delta = 1
-                ok_delta = 0
-            with _db_lock:
-                ok += ok_delta
-                errors += err_delta
+                errors += 1
+                continue
+
+            upsert_sec_report(
+                conn,
+                ticker=result.ticker,
+                fiscal_year="latest",
+                doc_id=result.doc_id,
+                file_path=result.file_path,
+                xbrl_path=result.xbrl_path,
+                page_count=result.page_count,
+                char_count=result.char_count,
+            )
+            upsert_company_metadata(conn, result.ticker, securities_report_url=result.url)
+            conn.commit()
+            ok += 1
 
     logger.info("Total: %d ok, %d errors", ok, errors)
     return ok, errors
