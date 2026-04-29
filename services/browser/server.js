@@ -1,4 +1,5 @@
 import express from "express";
+import { randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -24,6 +25,7 @@ const CHALLENGE_CLEAR_STABLE_MS = parseInt(
   process.env.BROWSER_CHALLENGE_CLEAR_STABLE_MS || "1000",
   10,
 );
+const STOOQ_SESSION_TTL_MS = 5 * 60 * 1000;
 const HAS_NATIVE_DISPLAY = Boolean(process.env.DISPLAY);
 const HAS_XVFB = detectXvfb();
 
@@ -49,6 +51,7 @@ const browserPool = new Map();
 
 /** @type {Map<string, Promise<BrowserEntry>>} in-flight connect() calls */
 const pendingConnections = new Map();
+const stooqSessions = new Map();
 let xvfbFallbackWarned = false;
 
 function parseBoolean(rawValue, defaultValue) {
@@ -212,13 +215,47 @@ async function closeAllBrowsers() {
   await Promise.allSettled(closeTasks);
 }
 
+async function closeStooqSession(sessionId) {
+  const session = stooqSessions.get(sessionId);
+  if (!session) {
+    return;
+  }
+
+  stooqSessions.delete(sessionId);
+  try {
+    await session.page.close();
+  } catch (error) {
+    console.debug("page.close() failed during Stooq session cleanup:", error?.message || error);
+  }
+}
+
+async function closeAllStooqSessions() {
+  const closeTasks = [...stooqSessions.keys()].map((sessionId) => closeStooqSession(sessionId));
+  await Promise.allSettled(closeTasks);
+}
+
+function touchStooqSession(sessionId) {
+  const session = stooqSessions.get(sessionId);
+  if (session) {
+    session.lastUsed = Date.now();
+  }
+  return session;
+}
+
 setInterval(async () => {
   const now = Date.now();
+
   // Map イテレーション中の変更を避けるため keys を配列化
   for (const key of [...browserPool.keys()]) {
     const entry = browserPool.get(key);
     if (entry && now - entry.lastUsed > IDLE_TIMEOUT) {
       await closeBrowser(key);
+    }
+  }
+
+  for (const [sessionId, session] of [...stooqSessions.entries()]) {
+    if (now - session.lastUsed > STOOQ_SESSION_TTL_MS) {
+      await closeStooqSession(sessionId);
     }
   }
 }, 30_000);
@@ -317,6 +354,105 @@ async function waitForDownload(dir, filesBefore, timeout) {
     }
   }
   throw new Error(`Download timed out after ${timeout}ms`);
+}
+
+async function findLatestStooqDailyLink(page) {
+  const latest = await page.evaluate(() => {
+    const anchor = document.querySelector('a[href*="db/d/?d="][href*="&t=d"]');
+    if (!(anchor instanceof HTMLAnchorElement)) {
+      return null;
+    }
+
+    const row = anchor.closest("tr");
+    const label = anchor.textContent?.trim() || "";
+    const listedDate = row?.cells?.[0]?.textContent?.trim() || "";
+    return {
+      downloadUrl: anchor.href,
+      label,
+      listedDate,
+    };
+  });
+
+  if (!latest) {
+    throw new Error("Latest Stooq daily link not found");
+  }
+
+  const match = latest.downloadUrl.match(/[?&]d=(\d{8})\b/);
+  if (!match) {
+    throw new Error(`Unexpected Stooq daily URL: ${latest.downloadUrl}`);
+  }
+
+  return {
+    date: match[1],
+    label: latest.label || latest.listedDate,
+    downloadUrl: latest.downloadUrl,
+  };
+}
+
+async function openStooqCaptcha(page, downloadUrl, deadline) {
+  await page.evaluate((href) => window.cpt_g(href, 1, 1), downloadUrl);
+
+  await page.waitForFunction(
+    () => {
+      const dialog = document.getElementById("cpt");
+      const captcha = document.querySelector("#cpt_cd img");
+      if (!dialog || !captcha) {
+        return false;
+      }
+      const visible = window.getComputedStyle(dialog).display !== "none";
+      return visible && captcha.complete && captcha.naturalWidth > 0 && captcha.naturalHeight > 0;
+    },
+    { timeout: remainingTimeout(deadline) },
+  );
+
+  const captchaHandle = await page.$("#cpt_cd img");
+  if (!captchaHandle) {
+    throw new Error("Stooq CAPTCHA image not found");
+  }
+
+  const captchaImageBase64 = await captchaHandle.screenshot({ encoding: "base64" });
+  await captchaHandle.dispose();
+  return captchaImageBase64;
+}
+
+async function approveStooqCaptcha(page, captchaCode, deadline) {
+  const normalizedCode = String(captchaCode || "").trim().toLowerCase();
+  if (!/^[0-9a-z]{4}$/.test(normalizedCode)) {
+    throw new Error("Invalid Stooq CAPTCHA code");
+  }
+
+  await page.waitForSelector('input[name="cpt_t"]', { timeout: remainingTimeout(deadline) });
+  await page.$eval(
+    'input[name="cpt_t"]',
+    (input, value) => {
+      input.value = value;
+    },
+    normalizedCode,
+  );
+  await page.evaluate(() => {
+    const alertRow = document.getElementById("cpt_al");
+    if (alertRow) {
+      alertRow.style.display = "none";
+    }
+  });
+  await page.evaluate(() => window.cpt_a());
+
+  await page.waitForFunction(
+    () => {
+      const approved = window.ap === 1 && document.getElementById("cpt_gh");
+      const alertRow = document.getElementById("cpt_al");
+      const rejected = window.ap !== 1
+        && alertRow
+        && window.getComputedStyle(alertRow).display !== "none";
+      return approved || rejected;
+    },
+    { timeout: remainingTimeout(deadline) },
+  );
+
+  const approved = await page.evaluate(() => window.ap === 1);
+  if (!approved) {
+    throw new Error("Stooq CAPTCHA rejected");
+  }
 }
 
 const app = express();
@@ -475,8 +611,110 @@ app.post("/evaluate", async (req, res) => {
   }
 });
 
+app.post("/stooq/prepare-daily-download", async (req, res) => {
+  const pageTimeout = req.body.timeout || PAGE_TIMEOUT;
+  const key = poolKey("direct");
+  const deadline = Date.now() + pageTimeout;
+  let page = null;
+
+  try {
+    ({ page } = await openRequestPage("direct"));
+    await navigateWithChallengeWait(page, "https://stooq.com/db/", deadline);
+
+    const latest = await findLatestStooqDailyLink(page);
+    const captchaImageBase64 = await openStooqCaptcha(page, latest.downloadUrl, deadline);
+    const sessionId = randomUUID();
+
+    stooqSessions.set(sessionId, {
+      key,
+      page,
+      lastUsed: Date.now(),
+    });
+    page = null;
+
+    res.json({
+      sessionId,
+      date: latest.date,
+      label: latest.label,
+      downloadUrl: latest.downloadUrl,
+      captchaImageBase64,
+      status: 200,
+    });
+  } catch (error) {
+    await closeBrowser(key);
+    res.status(502).json({ error: error.message, status: 502 });
+  } finally {
+    if (page) {
+      try {
+        await page.close();
+      } catch (error) {
+        console.debug("page.close() failed after Stooq prepare:", error?.message || error);
+      }
+    }
+  }
+});
+
+app.post("/stooq/complete-daily-download", async (req, res) => {
+  const {
+    sessionId,
+    captchaCode,
+    downloadDir,
+    timeout,
+  } = req.body;
+  if (!sessionId || !captchaCode || !downloadDir) {
+    return res.status(400).json({
+      error: "sessionId, captchaCode and downloadDir are required",
+    });
+  }
+
+  const session = touchStooqSession(sessionId);
+  if (!session) {
+    return res.status(404).json({ error: `Unknown Stooq session: ${sessionId}` });
+  }
+
+  const pageTimeout = timeout || PAGE_TIMEOUT;
+  const deadline = Date.now() + pageTimeout;
+  const { key, page } = session;
+
+  try {
+    if (!existsSync(downloadDir)) {
+      mkdirSync(downloadDir, { recursive: true });
+    }
+    const filesBefore = new Set(readdirSync(downloadDir));
+
+    const client = await page.createCDPSession();
+    await client.send("Page.setDownloadBehavior", {
+      behavior: "allow",
+      downloadPath: downloadDir,
+    });
+
+    await approveStooqCaptcha(page, captchaCode, deadline);
+    await page.waitForSelector("#cpt_gh", { timeout: remainingTimeout(deadline) });
+    await page.click("#cpt_gh");
+
+    const filePath = await waitForDownload(downloadDir, filesBefore, remainingTimeout(deadline));
+    res.json({ filePath, status: 200 });
+  } catch (error) {
+    await closeBrowser(key);
+    res.status(502).json({ error: error.message, status: 502 });
+  } finally {
+    await closeStooqSession(sessionId);
+  }
+});
+
+app.post("/stooq/close-session", async (req, res) => {
+  const { sessionId } = req.body;
+  if (!sessionId) {
+    return res.status(400).json({ error: "sessionId is required" });
+  }
+
+  await closeStooqSession(sessionId);
+  return res.json({ status: 200 });
+});
+
 app.post("/shutdown", async (_req, res) => {
   res.json({ status: "shutting_down" });
+  await closeAllStooqSessions();
   await closeAllBrowsers();
   process.exit(0);
 });
@@ -488,6 +726,7 @@ const server = app.listen(0, "127.0.0.1", () => {
 
 for (const signal of ["SIGTERM", "SIGINT"]) {
   process.on(signal, async () => {
+    await closeAllStooqSessions();
     await closeAllBrowsers();
     server.close();
     process.exit(0);

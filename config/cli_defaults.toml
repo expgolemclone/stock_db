@@ -20,3 +20,9 @@ proxy = "direct"
 skip_existing = true
 headless = false
 disable_xvfb = true
+
+[scrape_stooq_prices]
+pool_size = 1
+headless = false
+disable_xvfb = true
+output_dir = "var/raw/stooq"

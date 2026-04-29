@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 from unittest.mock import patch
 
-from stock_db.paths import BROWSER_SERVICE_DIR, PROJECT_ROOT, VAR_DIR
+from stock_db.paths import BROWSER_SERVICE_DIR, PROJECT_ROOT, STOOQ_DIR, VAR_DIR
 
 
 class TestProjectRoot:
@@ -28,3 +28,8 @@ class TestVarDir:
 class TestBrowserServiceDir:
     def test_points_to_services_browser(self) -> None:
         assert BROWSER_SERVICE_DIR == PROJECT_ROOT / "services" / "browser"
+
+
+class TestStooqDir:
+    def test_default_is_under_var_raw(self) -> None:
+        assert STOOQ_DIR == PROJECT_ROOT / "var" / "raw" / "stooq"

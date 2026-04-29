@@ -61,6 +61,15 @@ class BrowserResponse:
     error: str | None
 
 
+@dataclass(frozen=True, slots=True)
+class StooqDailyDownloadSession:
+    session_id: str
+    date: str
+    label: str
+    download_url: str
+    captcha_png_base64: str
+
+
 class BrowserServiceError(RuntimeError):
     pass
 
@@ -268,6 +277,82 @@ class BrowserServiceClient:
             return str(data["filePath"])
         except requests.RequestException as exc:
             raise BrowserServiceError(f"Download request failed: {exc}") from exc
+
+    def prepare_stooq_daily_download(
+        self,
+        *,
+        timeout: int | None = None,
+    ) -> StooqDailyDownloadSession:
+        if not self.running:
+            raise BrowserServiceError("Browser service is not running")
+
+        effective_timeout: int = timeout if timeout is not None else self._config["page_timeout"]
+        body: dict[str, int] = {"timeout": effective_timeout}
+        try:
+            resp: requests.Response = requests.post(
+                f"{self._base_url}/stooq/prepare-daily-download",
+                json=body,
+                timeout=effective_timeout / 1000 + 10,
+            )
+            data: dict[str, object] = resp.json()
+            if resp.status_code != 200 or data.get("error"):
+                raise BrowserServiceError(
+                    f"Stooq prepare failed: {data.get('error', resp.status_code)}"
+                )
+            return StooqDailyDownloadSession(
+                session_id=str(data["sessionId"]),
+                date=str(data["date"]),
+                label=str(data["label"]),
+                download_url=str(data["downloadUrl"]),
+                captcha_png_base64=str(data["captchaImageBase64"]),
+            )
+        except requests.RequestException as exc:
+            raise BrowserServiceError(f"Stooq prepare request failed: {exc}") from exc
+
+    def complete_stooq_daily_download(
+        self,
+        session_id: str,
+        captcha_code: str,
+        download_dir: str,
+        *,
+        timeout: int | None = None,
+    ) -> str:
+        if not self.running:
+            raise BrowserServiceError("Browser service is not running")
+
+        effective_timeout: int = timeout if timeout is not None else self._config["page_timeout"]
+        body: dict[str, str | int] = {
+            "sessionId": session_id,
+            "captchaCode": captcha_code,
+            "downloadDir": download_dir,
+            "timeout": effective_timeout,
+        }
+        try:
+            resp: requests.Response = requests.post(
+                f"{self._base_url}/stooq/complete-daily-download",
+                json=body,
+                timeout=effective_timeout / 1000 + 10,
+            )
+            data: dict[str, object] = resp.json()
+            if resp.status_code != 200 or data.get("error"):
+                raise BrowserServiceError(
+                    f"Stooq download failed: {data.get('error', resp.status_code)}"
+                )
+            return str(data["filePath"])
+        except requests.RequestException as exc:
+            raise BrowserServiceError(f"Stooq download request failed: {exc}") from exc
+
+    def close_stooq_session(self, session_id: str) -> None:
+        if not self.running:
+            return
+        try:
+            requests.post(
+                f"{self._base_url}/stooq/close-session",
+                json={"sessionId": session_id},
+                timeout=_SHUTDOWN_TIMEOUT_SECONDS,
+            )
+        except requests.RequestException:
+            logger.debug("Stooq session cleanup failed", exc_info=True)
 
     def shutdown(self) -> None:
         if not self.running:

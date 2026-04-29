@@ -3,6 +3,18 @@ revision = 3
 requires-python = ">=3.11"
 
 [[package]]
+name = "2captcha-python"
+version = "1.5.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "requests" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/40/8e/9126266b3f2020abfc8c058cbb8228a922cdbf6832f38e79b0005bb9f7b5/2captcha_python-1.5.1.tar.gz", hash = "sha256:6d4f496794f67b312c6e33b7a1b1c3cc24c40cf64b6d62c2595d0e35f91ace7c", size = 29437, upload-time = "2025-01-09T14:19:09.488Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/43/07/1da144b72c6d931fafb6f86d81ac12ba957ba6ac71209ac1d7b8c8eba954/2captcha_python-1.5.1-py3-none-any.whl", hash = "sha256:d0a914fac273a2b24500e8f08274a5401822a113622371fa5408aa2726824c27", size = 17834, upload-time = "2025-01-09T14:19:07.82Z" },
+]
+
+[[package]]
 name = "beautifulsoup4"
 version = "4.14.3"
 source = { registry = "https://pypi.org/simple" }
@@ -429,6 +441,7 @@ name = "stock-db"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "2captcha-python" },
     { name = "beautifulsoup4" },
     { name = "brotli" },
     { name = "pdfminer-six" },
@@ -445,6 +458,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "2captcha-python", specifier = ">=1.5,<2" },
     { name = "beautifulsoup4", specifier = ">=4.14.3,<5" },
     { name = "brotli", specifier = ">=1.1,<2" },
     { name = "pdfminer-six", specifier = ">=20250327,<20260000" },

@@ -9,6 +9,7 @@ PROJECT_ROOT: Path = Path(__file__).resolve().parent.parent.parent
 VAR_DIR: Path = Path(os.environ.get("STOCK_DB_VAR_DIR", str(PROJECT_ROOT / "var")))
 STOCKS_DB_PATH: Path = VAR_DIR / "db" / "stocks.db"
 IRBANK_DIR: Path = VAR_DIR / "raw" / "irbank"
+STOOQ_DIR: Path = VAR_DIR / "raw" / "stooq"
 BROWSER_SERVICE_DIR: Path = PROJECT_ROOT / "services" / "browser"
 
 

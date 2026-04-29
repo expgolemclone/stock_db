@@ -131,3 +131,71 @@ class TestBrowserServiceClientInit:
             assert "start_new_session" not in kwargs
         else:
             assert kwargs["start_new_session"] is True
+
+
+class _FakeRunningProcess:
+    def poll(self) -> None:
+        return None
+
+
+class _FakeResponse:
+    def __init__(self, status_code: int, payload: dict[str, object]) -> None:
+        self.status_code = status_code
+        self._payload = payload
+
+    def json(self) -> dict[str, object]:
+        return self._payload
+
+
+class TestBrowserServiceClientStooq:
+    def test_prepare_stooq_daily_download(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        captured: dict[str, object] = {}
+
+        def fake_post(url: str, *, json: dict[str, object], timeout: float) -> _FakeResponse:
+            captured["url"] = url
+            captured["json"] = json
+            captured["timeout"] = timeout
+            return _FakeResponse(
+                200,
+                {
+                    "sessionId": "session-1",
+                    "date": "20260429",
+                    "label": "0429_d",
+                    "downloadUrl": "https://stooq.com/db/d/?d=20260429&t=d",
+                    "captchaImageBase64": "Y2FwdGNoYQ==",
+                },
+            )
+
+        monkeypatch.setattr(client_module.requests, "post", fake_post)
+
+        svc = BrowserServiceClient(config=_TEST_CONFIG, browser_service_dir="/tmp/browser-service")
+        svc._process = _FakeRunningProcess()
+        svc._base_url = "http://127.0.0.1:43210"
+
+        session = svc.prepare_stooq_daily_download()
+
+        assert session.session_id == "session-1"
+        assert session.date == "20260429"
+        assert session.label == "0429_d"
+        assert session.download_url == "https://stooq.com/db/d/?d=20260429&t=d"
+        assert session.captcha_png_base64 == "Y2FwdGNoYQ=="
+        assert captured["url"] == "http://127.0.0.1:43210/stooq/prepare-daily-download"
+        assert captured["json"] == {"timeout": 5000}
+        assert captured["timeout"] == 15.0
+
+    def test_complete_stooq_daily_download_raises_on_error(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        def fake_post(url: str, *, json: dict[str, object], timeout: float) -> _FakeResponse:
+            del url, json, timeout
+            return _FakeResponse(502, {"error": "captcha rejected"})
+
+        monkeypatch.setattr(client_module.requests, "post", fake_post)
+
+        svc = BrowserServiceClient(config=_TEST_CONFIG, browser_service_dir="/tmp/browser-service")
+        svc._process = _FakeRunningProcess()
+        svc._base_url = "http://127.0.0.1:43210"
+
+        with pytest.raises(BrowserServiceError, match="Stooq download failed: captcha rejected"):
+            svc.complete_stooq_daily_download("session-1", "D1TY", "/tmp/downloads")

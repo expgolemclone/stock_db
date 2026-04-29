@@ -45,3 +45,11 @@ class TestCliDefaults:
         assert defaults["pool_size"] == 1
         assert defaults["headless"] is False
         assert defaults["disable_xvfb"] is True
+
+    def test_scrape_stooq_prices_defaults(self) -> None:
+        defaults = cli_defaults("scrape_stooq_prices")
+
+        assert defaults["pool_size"] == 1
+        assert defaults["headless"] is False
+        assert defaults["disable_xvfb"] is True
+        assert defaults["output_dir"] == "var/raw/stooq"
