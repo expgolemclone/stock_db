@@ -3,6 +3,7 @@ read README.md
 ## stooq
 
 - stooqの日次価格取得はbrowser service経由で行い, CAPTCHAはローカルOCRで解くこと.
+- CAPTCHA関連の失敗時は新しいCAPTCHAを取り直して最大3回までretryすること.
 - stooqの日次価格取り込みでは`prices.close`のみを使い, `prices.volume`は保存しないこと.
 
 proxy関連は完全に廃止。
