@@ -65,6 +65,13 @@ def ingest_daily_prices(conn: sqlite3.Connection, file_path: Path) -> int:
                 continue
 
             price_date = row[2].strip()
+            if price_date == "":
+                continue
+
+            close_raw = row[7].strip()
+            if close_raw == "":
+                continue
+
             try:
                 normalized_date = datetime.strptime(price_date, "%Y%m%d").date().isoformat()
             except ValueError as exc:
@@ -72,7 +79,7 @@ def ingest_daily_prices(conn: sqlite3.Connection, file_path: Path) -> int:
                     f"Invalid Date value on line {line_number}: {price_date!r}"
                 ) from exc
 
-            close = _parse_close(row[7], line_number=line_number)
+            close = _parse_close(close_raw, line_number=line_number)
             upsert_price(conn, ticker, normalized_date, close, None)
             imported += 1
 

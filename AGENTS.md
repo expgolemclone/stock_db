@@ -2,7 +2,7 @@ read README.md
 
 ## stooq
 
-- stooqの日次価格取得はbrowser service経由で行い, CAPTCHAは`STOCK_DB_2CAPTCHA_API_KEY`を使って2Captchaで解くこと.
+- stooqの日次価格取得はbrowser service経由で行い, CAPTCHAはローカルOCRで解くこと.
 - stooqの日次価格取り込みでは`prices.close`のみを使い, `prices.volume`は保存しないこと.
 
 proxy関連は完全に廃止。

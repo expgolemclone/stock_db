@@ -13,3 +13,9 @@ uv run scrape-edinet-reports --ticker 7203
 ```
 
 全銘柄を対象にする場合は `--ticker` を外す。
+
+stooqの日次価格を取り込む:
+
+```bash
+uv run scrape-stooq-prices
+```
