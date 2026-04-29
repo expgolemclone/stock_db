@@ -28,6 +28,8 @@ services/**/node_modules/
 var/db/*.db
 !var/reference/
 !var/reference/*.csv
+!var/reports/
+!var/reports/*.md
 
 __pycache__/
 *.pyc
