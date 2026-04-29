@@ -104,7 +104,7 @@ SQLite を使用。WAL モード・外部キー制約有効。
 |---|---|
 | `api_client` | EDINET API v2 で書類一覧取得・PDFダウンロード |
 | `pdf_extractor` | pypdf で PDF からテキスト抽出し Markdown に変換 |
-| `search_scraper` | EDINET 検索フォーム経由で有報 docID を発見（スレッドセーフ） |
+| `search_scraper` | EDINET 検索フォーム経由で有報 docID を発見（スレッドセーフ）。HTML entity デコード・企業名フォールバック付き |
 
 ### ProxyPool
 
