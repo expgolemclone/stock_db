@@ -3,9 +3,36 @@
 監査日時: 2026-04-29 JST
 
 目的:
+
 - `stock_db` 配下にある不要データ候補を、削除実行ではなく棚卸し目的で一覧化する。
 
+## 実施結果 (2026-04-29 18:11 JST)
+
+- DB backup 作成:
+  - `var/backup/stocks.db.before_trash_purge_20260429_181039`
+- DB cleanup 実施:
+  - `financial_items.source='yfinance'` 148 行を purge
+  - `ticker='8462'` の `stocks` 1 行と `financial_items` 448 行を purge
+  - `market_cap` テーブルを削除
+  - `prices.shares_outstanding` 列を削除
+  - `stocks.address_source_urls` 列を削除
+- tracked file cleanup 実施:
+  - `var/reference/proxies/webshare.txt` を repo から削除
+- local artifact cleanup 実施:
+  - `var/log/*.pid`, `var/log/*.log`, `var/tmp/**`, `var/reports/*.tsv`, `.playwright-mcp/**`
+  - `.pytest_cache`, `test-results/**`, `src/tests の __pycache__`, `.cache/structural-clone-index.json`
+  - `var/proxies/http_jp.txt`, `var/proxies/socks5.txt.bak`
+  - `var/backup/stocks.db.before_raw_restore_20260429_1`
+- cleanup 後も残すもの:
+  - `.venv`, `services/browser/node_modules`
+  - `var/reference/all_stocks.csv` の `8462` / `254A` 差分
+  - `var/raw/edinet` と `sec_reports` の同期不整合
+  - `financial_items` の `_status` 3 行
+
+以下は cleanup 前に作成した監査メモ。上の実施結果を優先する。
+
 監査時点の前提:
+
 - `uv run python -m stock_db.cli.scrape_edinet_watchdog`
 - `/home/exp/projects/stock_db/.venv/bin/python3 -m stock_db.cli.scrape_edinet_reports`
 - `node /home/exp/projects/stock_db/services/browser/server.js`
@@ -13,30 +40,31 @@
 上の 3 プロセスが稼働中だった。実行中プロセスが参照する可能性のある再生成物は `停止後に削除可` として分離した。
 
 判定基準:
+
 - `確定`: 再生成可能、または stale で、本体データ整合性に影響しない。
 - `停止後に削除可`: 再生成可能だが、監査時点では稼働中プロセスが使っている可能性がある。
 - `要確認`: 機微情報、参照マスタ、または DB 整合性に関わるので、削除前に意図確認が必要。
 
 ## 要約
 
-| 対象 | 区分 | 確度 | 規模 | 根拠 | 推奨アクション |
-| --- | --- | --- | --- | --- | --- |
-| `var/log/*.pid` | stale 実行痕跡 | 確定 | 7 files | 記録された PID はすべて dead | 削除 |
-| `var/tmp/**` | debug/probe 生成物 | 確定 | 32 files, 7.3M | Playwright/XBRL 調査の一時出力 | 削除 |
-| `var/reports/**` | レポートスナップショット | 確定 | 33 files, 3.0M | 進捗確認用 TSV の世代蓄積 | 削除または外部保管 |
-| `.playwright-mcp/**` | MCP 実行ログ | 確定 | 31 files, 644K | ローカル観測ログで本体ではない | 削除 |
-| `.pytest_cache`, `test-results`, `__pycache__`, `.cache/structural-clone-index.json` | キャッシュ | 確定 | 小 | すべて再生成可能 | 削除 |
-| `var/log/*.log` | 過去実行ログ | 確定 | 10 files, 16M | 2026-04-24 から 2026-04-28 の過去 run ログ | 不要なら削除 |
-| `var/backup/stocks.db.before_raw_restore_20260429_1` | ワンオフ backup | 確定 | 372M | 2026-04-29 raw restore 前の退避 DB | rollback 不要なら削除 |
-| `.venv` | ローカル実行環境 | 停止後に削除可 | 46M | 現在 `scrape_edinet_reports` が利用中 | 停止後に削除し再作成可 |
-| `services/browser/node_modules` | npm 依存 | 停止後に削除可 | 53M, 4351 files | 現在 `server.js` が利用中 | 停止後に削除し `npm install` |
-| `var/db/stocks.db-wal`, `var/db/stocks.db-shm` | SQLite 一時ファイル | 停止後に削除可 | 2 files | 現在 scrape 実行中で WAL 運用中 | 停止後に削除可 |
-| `var/reference/proxies/webshare.txt` | 平文認証情報 | 要確認 | 1 file, tracked | Git 追跡済みの認証付き proxy 一覧 | repo から除去し secrets 化 |
-| `var/proxies/http_jp.txt`, `var/proxies/socks5.txt.bak` | 手動 proxy リスト | 要確認 | 2 files | コードから固定参照なし、手動用途の可能性 | 利用有無確認後に削除 |
-| `financial_items.source='yfinance'` | 仕様不明 DB 行 | 要確認 | 148 rows, 6 tickers | 読み出し側が `source` 非限定で混入する | 用途確認後に purge |
-| `stocks.ticker='8462'` と関連 `financial_items` | stale DB 行 | 要確認 | 1 stock row, 448 financial rows | 2024-09-27 上場廃止銘柄が残存 | 参照マスタ方針確認後に purge |
-| `var/reference/all_stocks.csv` の `8462` / `254A` 差分 | stale 参照マスタ | 要確認 | 1 stale, 1 missing | CSV に `8462` はあるが `254A` はない | CSV 更新 |
-| `var/raw/edinet` と `sec_reports` の不整合 | 整合性問題 | 要確認 | 4 tickers + 1 missing field | raw-only / DB-only / field 欠落あり | sync 方針決定後に整理 |
+| 対象                                                                                 | 区分                     | 確度           | 規模                            | 根拠                                       | 推奨アクション               |
+| ------------------------------------------------------------------------------------ | ------------------------ | -------------- | ------------------------------- | ------------------------------------------ | ---------------------------- |
+| `var/log/*.pid`                                                                      | stale 実行痕跡           | 確定           | 7 files                         | 記録された PID はすべて dead               | 削除                         |
+| `var/tmp/**`                                                                         | debug/probe 生成物       | 確定           | 32 files, 7.3M                  | Playwright/XBRL 調査の一時出力             | 削除                         |
+| `var/reports/**`                                                                     | レポートスナップショット | 確定           | 33 files, 3.0M                  | 進捗確認用 TSV の世代蓄積                  | 削除または外部保管           |
+| `.playwright-mcp/**`                                                                 | MCP 実行ログ             | 確定           | 31 files, 644K                  | ローカル観測ログで本体ではない             | 削除                         |
+| `.pytest_cache`, `test-results`, `__pycache__`, `.cache/structural-clone-index.json` | キャッシュ               | 確定           | 小                              | すべて再生成可能                           | 削除                         |
+| `var/log/*.log`                                                                      | 過去実行ログ             | 確定           | 10 files, 16M                   | 2026-04-24 から 2026-04-28 の過去 run ログ | 不要なら削除                 |
+| `var/backup/stocks.db.before_raw_restore_20260429_1`                                 | ワンオフ backup          | 確定           | 372M                            | 2026-04-29 raw restore 前の退避 DB         | rollback 不要なら削除        |
+| `.venv`                                                                              | ローカル実行環境         | 停止後に削除可 | 46M                             | 現在 `scrape_edinet_reports` が利用中      | 停止後に削除し再作成可       |
+| `services/browser/node_modules`                                                      | npm 依存                 | 停止後に削除可 | 53M, 4351 files                 | 現在 `server.js` が利用中                  | 停止後に削除し `npm install` |
+| `var/db/stocks.db-wal`, `var/db/stocks.db-shm`                                       | SQLite 一時ファイル      | 停止後に削除可 | 2 files                         | 現在 scrape 実行中で WAL 運用中            | 停止後に削除可               |
+| `var/reference/proxies/webshare.txt`                                                 | 平文認証情報             | 要確認         | 1 file, tracked                 | Git 追跡済みの認証付き proxy 一覧          | repo から除去し secrets 化   |
+| `var/proxies/http_jp.txt`, `var/proxies/socks5.txt.bak`                              | 手動 proxy リスト        | 要確認         | 2 files                         | コードから固定参照なし、手動用途の可能性   | 利用有無確認後に削除         |
+| `financial_items.source='yfinance'`                                                  | 仕様不明 DB 行           | 要確認         | 148 rows, 6 tickers             | 読み出し側が `source` 非限定で混入する     | 用途確認後に purge           |
+| `stocks.ticker='8462'` と関連 `financial_items`                                      | stale DB 行              | 要確認         | 1 stock row, 448 financial rows | 2024-09-27 上場廃止銘柄が残存              | 参照マスタ方針確認後に purge |
+| `var/reference/all_stocks.csv` の `8462` / `254A` 差分                               | stale 参照マスタ         | 要確認         | 1 stale, 1 missing              | CSV に `8462` はあるが `254A` はない       | CSV 更新                     |
+| `var/raw/edinet` と `sec_reports` の不整合                                           | 整合性問題               | 要確認         | 4 tickers + 1 missing field     | raw-only / DB-only / field 欠落あり        | sync 方針決定後に整理        |
 
 ## 確定で不要
 
@@ -101,13 +129,6 @@
   - 53M, 4351 files
   - 監査時点で `services/browser/server.js` が利用中。
 - 推奨: 実行停止後なら削除可。必要時に再作成できる。
-
-### 2. SQLite WAL 一時ファイル
-
-- `var/db/stocks.db-wal`
-- `var/db/stocks.db-shm`
-- 根拠: `stocks.db` は WAL 運用中で、監査時点でも scrape が稼働していた。
-- 推奨: 稼働中は削除しない。全プロセス停止後に不要なら削除可。
 
 ## 要確認だが不要候補
 
@@ -184,24 +205,13 @@
 - 推奨:
   - `sync_edinet_raw_to_db` の前提と運用方針を見直してから個別整理。
 
-## 保持対象
-
-以下は今回 `trash` 扱いしない。
-
-- `var/db/stocks.db`
-  - 本体 DB。
-- `var/raw/edinet` の大半
-  - 4.0G あるが、raw 本体の大部分は `sec_reports` の実体であり、丸ごと削除対象ではない。
-- `var/reference/all_stocks.csv` 本体
-  - stale 差分はあるが、ファイル全体は参照マスタなので削除ではなく更新対象。
-
 ## 優先順位
 
 1. 先に消してよい
    `var/log/*.pid`, `var/tmp/**`, `var/reports/**`, `.playwright-mcp/**`, cache 類
 2. 次に判断する
-   `var/backup/stocks.db.before_raw_restore_20260429_1`, `var/log/*.log`
+   `var/log/*.log`
 3. 方針確認が必要
    `webshare.txt`, `yfinance` 残留行, `8462`, `all_stocks.csv` 差分, EDINET 同期不整合
 4. 稼働停止後に整理
-   `.venv`, `services/browser/node_modules`, `stocks.db-wal`, `stocks.db-shm`
+   `.venv`, `services/browser/node_modules`

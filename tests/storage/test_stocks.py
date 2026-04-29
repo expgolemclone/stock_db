@@ -107,13 +107,11 @@ class TestCompanyMetadata:
         upsert_company_metadata(
             db_conn, "1234",
             securities_report_url="https://example.com/report.pdf",
-            address_source_urls='["https://irbank.net/1234/ir"]',
         )
         db_conn.commit()
 
         row = db_conn.execute("SELECT * FROM stocks WHERE ticker='1234'").fetchone()
         assert row["securities_report_url"] == "https://example.com/report.pdf"
-        assert row["address_source_urls"] == '["https://irbank.net/1234/ir"]'
 
     def test_upsert_metadata_preserves_existing_fields(self, db_conn: sqlite3.Connection) -> None:
         upsert_stock(db_conn, "1234", "テスト", "情報通信", "東証プライム")

@@ -5,7 +5,6 @@ from pathlib import Path
 from stock_db.cli.inspect_stock_db import main
 from stock_db.storage.connection import get_connection
 from stock_db.storage.financials import upsert_financial_item
-from stock_db.storage.market_caps import upsert_market_cap
 from stock_db.storage.prices import upsert_price
 from stock_db.storage.schema import init_db
 from stock_db.storage.sec_reports import upsert_sec_report
@@ -17,7 +16,6 @@ def _build_db(db_path: Path) -> None:
     init_db(conn)
     upsert_stock(conn, "7203", "Toyota", "Auto", "Prime", edinet_code="E12345")
     upsert_price(conn, "7203", "2026-04-21", 3000.0, 100)
-    upsert_market_cap(conn, "7203", "kabutan", 10_000_000_000, "2026-04-21")
     upsert_sec_report(
         conn,
         ticker="7203",
@@ -44,7 +42,6 @@ class TestInspectStockDb:
         assert rc == 0
         assert "[stocks]" in captured.out
         assert "[prices]" in captured.out
-        assert "[market_cap]" in captured.out
         assert "[sec_reports]" in captured.out
         assert "[financial_items]" in captured.out
         assert '"ticker": "7203"' in captured.out

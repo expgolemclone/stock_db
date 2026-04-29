@@ -68,16 +68,14 @@ def upsert_company_metadata(
     ticker: str,
     *,
     securities_report_url: str | None = None,
-    address_source_urls: str | None = None,
 ) -> None:
     now = utc_now_iso()
     conn.execute(
         """
         UPDATE stocks SET
             securities_report_url = COALESCE(?, stocks.securities_report_url),
-            address_source_urls   = COALESCE(?, stocks.address_source_urls),
             updated_at            = ?
         WHERE ticker = ?
         """,
-        (securities_report_url, address_source_urls, now, ticker),
+        (securities_report_url, now, ticker),
     )

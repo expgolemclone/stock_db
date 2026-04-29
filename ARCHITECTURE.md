@@ -45,7 +45,6 @@ stock_db/
       sec_reports.py       # sec_reports テーブル CRUD
       stocks.py            # stocks テーブル CRUD
       prices.py            # prices テーブル CRUD
-      market_caps.py       # market_cap テーブル CRUD
     tools/
       validation_site_list.py
   var/
@@ -62,7 +61,6 @@ IR BANK JSON API ──ダウンロード──→ downloader ──→ financia
 EDINET API v2 ──PDF取得──→ pdf_extractor ──→ sec_reports + Markdown
                                                   stocks
                                                   prices
-                                                  market_cap
 ```
 
 ## Key Components
@@ -92,7 +90,7 @@ Windows 対応済み（PTY の代わりに PIPE を使用）。
 ### Storage Layer
 
 SQLite を使用。WAL モード・外部キー制約有効。
-5テーブル: `stocks`, `financial_items`, `prices`, `market_cap`, `sec_reports`
+4テーブル: `stocks`, `financial_items`, `prices`, `sec_reports`
 
 ### EDINET Sources
 

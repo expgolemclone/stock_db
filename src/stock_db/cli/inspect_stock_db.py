@@ -72,16 +72,6 @@ def main(argv: Sequence[str] | None = None) -> int:
             """,
             (args.ticker, args.limit),
         ).fetchall()
-        market_cap_rows = conn.execute(
-            """
-            SELECT ticker, source, value_yen, fetched_at
-            FROM market_cap
-            WHERE ticker = ?
-            ORDER BY fetched_at DESC, source
-            LIMIT ?
-            """,
-            (args.ticker, args.limit),
-        ).fetchall()
         sec_report_rows = conn.execute(
             """
             SELECT ticker, fiscal_year, doc_id, doc_type, file_path, xbrl_path,
@@ -109,7 +99,6 @@ def main(argv: Sequence[str] | None = None) -> int:
     found_any = any((
         stock_row is not None,
         price_rows,
-        market_cap_rows,
         sec_report_rows,
         financial_rows,
     ))
@@ -123,7 +112,6 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     _print_section("stocks", dict(stock_row) if stock_row is not None else None)
     _print_section("prices", [dict(row) for row in price_rows])
-    _print_section("market_cap", [dict(row) for row in market_cap_rows])
     _print_section("sec_reports", [dict(row) for row in sec_report_rows])
     _print_section("financial_items", [dict(row) for row in financial_rows])
     return 0

@@ -6,23 +6,40 @@
 - 比較対象: `../formula_screening`
 - 備考: `../formula_screening/data/stocks.db` は 0 byte で未使用。`../formula_screening/src/formula_screening/db/schema.py` は `stock_db.paths.STOCKS_DB_PATH` を参照している。
 
+## 実施結果 (2026-04-29 18:11 JST)
+
+- backup 作成:
+  - `var/backup/stocks.db.before_trash_purge_20260429_181039`
+- 実施済み cleanup:
+  - `financial_items.source='yfinance'` 148 行を削除
+  - `ticker='8462'` の `stocks` 1 行と `financial_items` 448 行を削除
+  - `market_cap` テーブルを削除
+  - `prices.shares_outstanding` 列を削除
+  - `stocks.address_source_urls` 列を削除
+- cleanup 後の主な状態:
+  - `stocks`: 4478 行
+  - `financial_items`: 2,181,045 行
+  - `sec_reports`: 3178 行
+  - `financial_items.statement='_status'`: 3 行のまま維持
+- 残件:
+  - `var/reference/all_stocks.csv` は `8462` を含み `254A` を含まない
+  - `var/raw/edinet` と `sec_reports` の不整合は未対応
+
+以下は cleanup 前の監査内容。
+
 ## 要約
 
 - もっとも危険なのは `financial_items` に混ざっている `source='yfinance'` の 148 行。6 銘柄の最新PL/CF/配当データに直接混ざっており、`formula_screening` の計算結果へ影響する。
 - `prices.shares_outstanding` は現行スキーマ外の死に列で、全件 `NULL`。
-- `market_cap` はデータ自体はあるが、現行の実運用コードでは未使用。
 - `stocks.address_source_urls` は保存されているが読取経路がない。
-- `sec_reports`、`stocks.securities_report_url`、`financial_items` の `_status` 行は現行用途があり、不要扱いしない。
 
 ## テーブル別サマリ
 
-| table | rows | 用途判定 |
-| --- | ---: | --- |
-| `stocks` | 4479 | 使用中 |
+| table             |      rows | 用途判定                           |
+| ----------------- | --------: | ---------------------------------- |
 | `financial_items` | 2,181,641 | 使用中。ただし `yfinance` 混在あり |
-| `prices` | 3608 | 使用中。ただし死に列あり |
-| `market_cap` | 3183 | 未使用候補 |
-| `sec_reports` | 3178 | 使用中 |
+| `prices`          |      3608 | 使用中。ただし死に列あり           |
+| `market_cap`      |      3183 | 未使用候補                         |
 
 補助件数:
 
@@ -84,7 +101,7 @@
 - 問題:
   - `formula_screening` の実運用は `price * shares_outstanding` で時価総額を計算しており、`market_cap` テーブルを参照しない。
   - `stock_db` 側でも実運用の読取は `src/stock_db/storage/market_caps.py` と inspect 用CLI/テストに留まる。
-- 判定: 現状未使用。削除候補。ただし将来 Kabutan の実測値を使う意思があるなら用途を README/ARCHITECTURE に明記すべき。
+- 判定: 現状未使用。削除
 
 ### P3: `stocks.address_source_urls` 列
 
@@ -101,39 +118,6 @@
   - スキーマ上は存在するが、DB上では全件空。
   - `formula_screening` でも現行スクリーニング処理は参照していない。
 - 判定: データとしては未使用。列自体を残すかは別として、少なくとも現DBには有効情報が入っていない。
-
-## 維持対象
-
-### `sec_reports`
-
-- 3178 行、3178 件すべて `file_path` あり
-- 3177 件で `xbrl_path` / `page_count` / `char_count` あり
-- `src/stock_db/storage/sec_reports.py`、`src/stock_db/cli/scrape_edinet_reports.py`、`src/stock_db/cli/report_edinet_progress.py` が利用
-- 判定: 使用中
-
-### `stocks.securities_report_url`
-
-- 3495 行
-- `stock_db` の EDINET 回収・進捗確認と、`../formula_screening/src/formula_screening/validation.py` の PDF 検証対象抽出で利用
-- 判定: 使用中
-
-### `financial_items` の `_status`
-
-- 件数: 3 行
-- 内容: `1480`, `7699`, `9257` の `no_data`
-- `../formula_screening/src/formula_screening/validation.py` の `load_latest_irbank_bs()` が `scrape_no_data` 判定に利用
-- 判定: 少量だが必要
-
-### `stocks.shares_outstanding` / `shares_updated_at`
-
-- `formula_screening` の時価総額計算と validation 対象抽出に利用
-- 判定: 使用中
-
-### `stocks.edinet_code`
-
-- 現DBでは全件 `NULL`
-- ただし `src/stock_db/cli/scrape_edinet_reports.py` と `src/stock_db/sources/edinet/search_scraper.py` の探索経路はこの列を前提にしている
-- 判定: 空だが不要ではない
 
 ## 根拠SQL
 
