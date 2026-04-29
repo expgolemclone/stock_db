@@ -143,7 +143,7 @@ def _process_one(
         )
         markdown = extract_markdown(pdf_path)
 
-        md_dir = _EDINET_RAW_DIR / ticker
+        md_dir = _EDINET_RAW_DIR / "markdown" / ticker
         md_dir.mkdir(parents=True, exist_ok=True)
         md_path = md_dir / "latest.md"
         md_path.write_text(markdown, encoding="utf-8")

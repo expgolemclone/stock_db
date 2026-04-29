@@ -51,7 +51,10 @@ stock_db/
       validation_site_list.py
   var/
     db/stocks.db           # SQLite データベース（Git LFS）
-    raw/edinet/            # EDINET 有報 Markdown ファイル ({ticker}/{fiscal_year}.md)
+    raw/edinet/
+      markdown/{ticker}/latest.md  # 抽出済み Markdown
+      pdf/{ticker}/*.pdf           # ダウンロード済み PDF
+      xbrl/{ticker}/*.xhtml        # ダウンロード済み XBRL
     raw/irbank/            # ダウンロード済み JSON ファイル
 ```
 
@@ -60,7 +63,8 @@ stock_db/
 ```
 IR BANK /bs ページ ──スクレイピング──→ bs_parser ──→ financial_items
 IR BANK JSON API ──ダウンロード──→ downloader ──→ financial_items
-EDINET API v2 ──PDF取得──→ pdf_extractor ──→ sec_reports + Markdown
+EDINET API v2 ──PDF取得──→ pdf_extractor ──→ sec_reports + var/raw/edinet/markdown/
+EDINET API v2 ──XBRL取得──→ var/raw/edinet/xbrl/
                                                   stocks
                                                   prices
 ```

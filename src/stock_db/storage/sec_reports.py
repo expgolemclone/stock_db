@@ -115,8 +115,8 @@ def _discover_raw_edinet_reports(raw_dir: Path) -> list[_RawEdinetReport]:
         report.xbrl_path = str(path.resolve())
         report.artifact_mtime_ns = max(report.artifact_mtime_ns, path.stat().st_mtime_ns)
 
-    for ticker_dir in sorted(raw_dir.iterdir()):
-        if not ticker_dir.is_dir() or ticker_dir.name in {"pdf", "xbrl"}:
+    for ticker_dir in sorted((raw_dir / "markdown").iterdir()):
+        if not ticker_dir.is_dir():
             continue
         md_path = ticker_dir / "latest.md"
         if not md_path.is_file():
