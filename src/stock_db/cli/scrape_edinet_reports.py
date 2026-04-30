@@ -6,12 +6,13 @@ import argparse
 import logging
 import sqlite3
 import sys
-import time
 import threading
+import time
+from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Literal
 
 import requests
 
@@ -41,6 +42,11 @@ logger = logging.getLogger("stock_db.cli.scrape_edinet_reports")
 _EDINET_RAW_DIR = VAR_DIR / "raw" / "edinet"
 _WORKERS = 1
 
+_CLI_MODE_ALL = "all"
+_CLI_MODE_STEP1 = "step1"
+_CLI_MODE_STEP2 = "step2"
+_CliMode = Literal["all", "step1", "step2"]
+
 
 @dataclass(frozen=True, slots=True)
 class _ExistingReportArtifacts:
@@ -59,6 +65,22 @@ class _DownloadedReportArtifacts:
     xbrl_path: str | None
     page_count: int | None
     char_count: int | None
+
+
+@dataclass(frozen=True, slots=True)
+class _Phase1Result:
+    searched: int
+    found: int
+    not_found: int
+    errors: int
+
+
+@dataclass(frozen=True, slots=True)
+class _Phase2Result:
+    ok: int
+    errors: int
+    xbrl_failures: int
+    skipped_missing_url: int
 
 
 class _RequestThrottle:
@@ -114,12 +136,51 @@ def _load_existing_report_artifacts(
     }
 
 
+def _load_securities_report_urls(
+    conn: sqlite3.Connection,
+    tickers: Sequence[str],
+) -> dict[str, str]:
+    ticker_set = set(tickers)
+    if not ticker_set:
+        return {}
+    rows = conn.execute(
+        "SELECT ticker, securities_report_url FROM stocks "
+        "WHERE securities_report_url IS NOT NULL"
+    ).fetchall()
+    return {
+        row["ticker"]: row["securities_report_url"]
+        for row in rows
+        if row["ticker"] in ticker_set
+    }
+
+
+def _build_client_config(defaults: dict, browser_cfg: dict) -> dict:
+    return {
+        "pool_size": _WORKERS,
+        "page_timeout": browser_cfg.get("page_timeout", 30000),
+        "idle_timeout": browser_cfg.get("idle_timeout", 60000),
+        "startup_timeout": browser_cfg.get("startup_timeout", 30),
+        "headless": defaults.get("headless", True),
+        "disable_xvfb": defaults.get("disable_xvfb", True),
+        "challenge_poll_interval_ms": browser_cfg.get("challenge_poll_interval_ms", 500),
+        "challenge_clear_stable_ms": browser_cfg.get("challenge_clear_stable_ms", 2000),
+    }
+
+
+def _resolve_tickers(
+    conn: sqlite3.Connection,
+    ticker: str | None,
+) -> list[str]:
+    if ticker:
+        return [ticker]
+    return get_all_tickers(conn)
+
+
 def _process_one(
     ticker: str,
     url: str,
     *,
     client: BrowserServiceClient | None = None,
-    proxy: str | None = None,
     skip_pdf: bool = False,
     skip_xbrl: bool = False,
     existing: _ExistingReportArtifacts | None = None,
@@ -157,7 +218,6 @@ def _process_one(
             client,
             doc_id,
             _EDINET_RAW_DIR / "xbrl" / ticker,
-            proxy=proxy,
             before_request=before_request,
         )
         if xbrl_dest is not None:
@@ -176,98 +236,114 @@ def _process_one(
     )
 
 
-def scrape_all_edinet_reports(
+def scrape_edinet_phase1(
     conn: sqlite3.Connection,
     client: BrowserServiceClient,
     tickers: list[str],
     *,
-    proxy: str | None = None,
+    interval: float = DEFAULT_INTERVAL_SECONDS,
+) -> _Phase1Result:
+    """Discover EDINET annual report URLs for tickers without securities_report_url."""
+    has_url = _load_securities_report_urls(conn, tickers)
+    no_url_tickers = [ticker for ticker in tickers if ticker not in has_url]
+    if not no_url_tickers:
+        logger.info("Phase 1: all %d tickers already have securities_report_url", len(tickers))
+        return _Phase1Result(searched=0, found=0, not_found=0, errors=0)
+
+    throttle = _RequestThrottle(interval)
+    names = get_stock_names(conn)
+    edinet_codes = {ticker: get_edinet_code(conn, ticker) for ticker in no_url_tickers}
+
+    logger.info(
+        "Phase 1: Discovering %d tickers via EDINET search (%d workers)",
+        len(no_url_tickers),
+        _WORKERS,
+    )
+
+    found = 0
+    not_found = 0
+
+    def _search_worker(ticker: str) -> tuple[str, str | None, str | None]:
+        return ticker, *search_annual_reports(
+            client,
+            ticker,
+            edinet_code=edinet_codes.get(ticker),
+            company_name=names.get(ticker),
+            before_request=throttle.wait,
+        )
+
+    with ThreadPoolExecutor(max_workers=_WORKERS) as executor:
+        futures = {executor.submit(_search_worker, ticker): ticker for ticker in no_url_tickers}
+        done_count = 0
+        for future in as_completed(futures):
+            done_count += 1
+            ticker, doc_id, found_edinet = future.result()
+            logger.info(
+                "[Phase1 %d/%d] %s: docID=%s edinet=%s",
+                done_count,
+                len(no_url_tickers),
+                ticker,
+                doc_id,
+                found_edinet,
+            )
+            if found_edinet:
+                try:
+                    upsert_stock(conn, ticker, names.get(ticker, ""), "", "", edinet_code=found_edinet)
+                except sqlite3.IntegrityError:
+                    logger.warning(
+                        "  EDINET code %s already assigned to another ticker, skipping",
+                        found_edinet,
+                    )
+            if doc_id:
+                upsert_company_metadata(conn, ticker, securities_report_url=build_pdf_url(doc_id))
+                found += 1
+            else:
+                not_found += 1
+                logger.info("  No annual report found for %s", ticker)
+            conn.commit()
+
+    logger.info(
+        "Phase 1 complete: searched=%d found=%d not_found=%d",
+        len(no_url_tickers),
+        found,
+        not_found,
+    )
+    return _Phase1Result(
+        searched=len(no_url_tickers),
+        found=found,
+        not_found=not_found,
+        errors=0,
+    )
+
+
+def scrape_edinet_phase2(
+    conn: sqlite3.Connection,
+    client: BrowserServiceClient,
+    tickers: list[str],
+    *,
     skip_existing: bool = True,
     interval: float = DEFAULT_INTERVAL_SECONDS,
-) -> tuple[int, int]:
-    """全銘柄の有報を取得・抽出。
+) -> _Phase2Result:
+    """Download PDF/XBRL for tickers that already have securities_report_url."""
+    has_url = _load_securities_report_urls(conn, tickers)
+    missing_url_tickers = [ticker for ticker in tickers if ticker not in has_url]
+    if missing_url_tickers:
+        logger.info(
+            "Phase 2: skipping %d tickers without securities_report_url",
+            len(missing_url_tickers),
+        )
 
-    1. URLなし銘柄: browser serviceでEDINET検索→docID発見
-    2. 全銘柄(URLあり+発見済み): PDF/XBRLダウンロード
-
-    Raises EdinetBlockError if EDINET blocks the search.
-
-    Returns: (ok_count, error_count)
-    """
     existing_report_keys: set[tuple[str, str]] = set()
     xbrl_done_keys: set[tuple[str, str]] = set()
     if skip_existing:
         existing_report_keys = get_processed_report_keys(conn)
         xbrl_done_keys = get_processed_xbrl_report_keys(conn)
-    throttle = _RequestThrottle(interval)
 
-    # URLあり・なしを仕分け
-    has_url: dict[str, str] = {}
-    for row in conn.execute(
-        "SELECT ticker, securities_report_url FROM stocks "
-        "WHERE securities_report_url IS NOT NULL"
-    ).fetchall():
-        if row["ticker"] in set(tickers):
-            has_url[row["ticker"]] = row["securities_report_url"]
-
-    no_url_tickers = [t for t in tickers if t not in has_url]
-
-    logger.info(
-        "%d tickers total: %d with URL, %d without URL",
-        len(tickers), len(has_url), len(no_url_tickers),
-    )
-
-    ok = 0
-    errors = 0
-
-    # Phase 1: URLなし銘柄をEDINET検索でdocID発見
-    if no_url_tickers:
-        logger.info("Phase 1: Discovering %d tickers via EDINET search (%d workers)", len(no_url_tickers), _WORKERS)
-        names = get_stock_names(conn)
-        edinet_codes = {t: get_edinet_code(conn, t) for t in no_url_tickers}
-
-        def _search_worker(ticker: str) -> tuple[str, str | None, str | None]:
-            return ticker, *search_annual_reports(
-                client, ticker, proxy=proxy,
-                edinet_code=edinet_codes.get(ticker),
-                company_name=names.get(ticker),
-                before_request=throttle.wait,
-            )
-
-        with ThreadPoolExecutor(max_workers=_WORKERS) as executor:
-            futures = {executor.submit(_search_worker, t): t for t in no_url_tickers}
-            done_count = 0
-            for future in as_completed(futures):
-                done_count += 1
-                ticker, doc_id, found_edinet = future.result()
-                logger.info("[Phase1 %d/%d] %s: docID=%s edinet=%s",
-                            done_count, len(no_url_tickers), ticker, doc_id, found_edinet)
-                if found_edinet:
-                    try:
-                        upsert_stock(conn, ticker, names.get(ticker, ""), "", "", edinet_code=found_edinet)
-                    except sqlite3.IntegrityError:
-                        logger.warning("  EDINET code %s already assigned to another ticker, skipping", found_edinet)
-                if doc_id:
-                    url = build_pdf_url(doc_id)
-                    upsert_company_metadata(conn, ticker, securities_report_url=url)
-                conn.commit()
-                if not doc_id:
-                    logger.info("  No annual report found for %s", ticker)
-
-    # URLあり銘柄を再取得（Phase 1で新規発見分を含む）
-    has_url = {}
-    for row in conn.execute(
-        "SELECT ticker, securities_report_url FROM stocks "
-        "WHERE securities_report_url IS NOT NULL"
-    ).fetchall():
-        if row["ticker"] in set(tickers):
-            has_url[row["ticker"]] = row["securities_report_url"]
-
-    # Phase 2: 全URLあり銘柄のPDF/XBRLダウンロード
     url_targets = [
-        (t, url) for t, url in has_url.items()
-        if (t, doc_id_from_url(url) or "") not in existing_report_keys
-        or (t, doc_id_from_url(url) or "") not in xbrl_done_keys
+        (ticker, url)
+        for ticker, url in has_url.items()
+        if (ticker, doc_id_from_url(url) or "") not in existing_report_keys
+        or (ticker, doc_id_from_url(url) or "") not in xbrl_done_keys
     ]
     existing_artifacts = _load_existing_report_artifacts(
         conn,
@@ -277,17 +353,37 @@ def scrape_all_edinet_reports(
             if (doc_id := doc_id_from_url(url)) is not None
         },
     )
-    if url_targets:
-        pdf_todo = sum(
-            1 for ticker, url in url_targets
-            if (ticker, doc_id_from_url(url) or "") not in existing_report_keys
+    if not url_targets:
+        logger.info(
+            "Phase 2: no URL-backed tickers require processing (skip_existing=%s)",
+            skip_existing,
         )
-        xbrl_todo = sum(
-            1 for ticker, url in url_targets
-            if (ticker, doc_id_from_url(url) or "") not in xbrl_done_keys
+        return _Phase2Result(
+            ok=0,
+            errors=0,
+            xbrl_failures=0,
+            skipped_missing_url=len(missing_url_tickers),
         )
-        logger.info("Phase 2: Processing %d tickers (PDF todo: %d, XBRL todo: %d, workers: %d)",
-                     len(url_targets), pdf_todo, xbrl_todo, _WORKERS)
+
+    pdf_todo = sum(
+        1
+        for ticker, url in url_targets
+        if (ticker, doc_id_from_url(url) or "") not in existing_report_keys
+    )
+    xbrl_todo = sum(
+        1
+        for ticker, url in url_targets
+        if (ticker, doc_id_from_url(url) or "") not in xbrl_done_keys
+    )
+    logger.info(
+        "Phase 2: Processing %d tickers (PDF todo: %d, XBRL todo: %d, workers: %d)",
+        len(url_targets),
+        pdf_todo,
+        xbrl_todo,
+        _WORKERS,
+    )
+
+    throttle = _RequestThrottle(interval)
 
     def _download_worker(ticker: str, url: str) -> _DownloadedReportArtifacts:
         doc_id = doc_id_from_url(url)
@@ -299,16 +395,17 @@ def scrape_all_edinet_reports(
             ticker,
             url,
             client=client,
-            proxy=proxy,
             skip_pdf=skip_pdf,
             skip_xbrl=skip_xbrl,
             existing=existing_artifacts.get((ticker, doc_id)) if doc_id is not None else None,
             before_request=throttle.wait,
         )
 
+    ok = 0
+    errors = 0
     xbrl_failures = 0
     with ThreadPoolExecutor(max_workers=_WORKERS) as executor:
-        futures = {executor.submit(_download_worker, t, u): (t, u) for t, u in url_targets}
+        futures = {executor.submit(_download_worker, ticker, url): (ticker, url) for ticker, url in url_targets}
         done_count = 0
         for future in as_completed(futures):
             done_count += 1
@@ -336,32 +433,147 @@ def scrape_all_edinet_reports(
             if result.xbrl_path is None and (ticker, result.doc_id) not in xbrl_done_keys:
                 xbrl_failures += 1
 
-    logger.info("Total: %d ok, %d errors, %d xbrl_failed", ok, errors, xbrl_failures)
-    return ok, errors
+    logger.info(
+        "Phase 2 complete: %d ok, %d errors, %d xbrl_failed, %d skipped_without_url",
+        ok,
+        errors,
+        xbrl_failures,
+        len(missing_url_tickers),
+    )
+    return _Phase2Result(
+        ok=ok,
+        errors=errors,
+        xbrl_failures=xbrl_failures,
+        skipped_missing_url=len(missing_url_tickers),
+    )
 
 
-def main() -> None:
+def scrape_all_edinet_reports(
+    conn: sqlite3.Connection,
+    client: BrowserServiceClient,
+    tickers: list[str],
+    *,
+    proxy: str | None = None,
+    skip_existing: bool = True,
+    interval: float = DEFAULT_INTERVAL_SECONDS,
+) -> tuple[int, int]:
+    """全銘柄の有報を取得・抽出。
+
+    1. URLなし銘柄: browser serviceでEDINET検索→docID発見
+    2. 全銘柄(URLあり+発見済み): PDF/XBRLダウンロード
+
+    Raises EdinetBlockError if EDINET blocks the search.
+
+    Returns: (ok_count, error_count)
+    """
+    del proxy
+
+    phase1 = scrape_edinet_phase1(conn, client, tickers, interval=interval)
+    phase2 = scrape_edinet_phase2(
+        conn,
+        client,
+        tickers,
+        skip_existing=skip_existing,
+        interval=interval,
+    )
+    logger.info(
+        "Combined run complete: phase1 searched=%d found=%d not_found=%d; phase2 ok=%d errors=%d",
+        phase1.searched,
+        phase1.found,
+        phase1.not_found,
+        phase2.ok,
+        phase2.errors,
+    )
+    return phase2.ok, phase2.errors
+
+
+def build_parser(mode: _CliMode) -> argparse.ArgumentParser:
+    descriptions = {
+        _CLI_MODE_ALL: "Download and extract EDINET securities reports for all listed companies",
+        _CLI_MODE_STEP1: "Discover EDINET securities report URLs for tickers without securities_report_url",
+        _CLI_MODE_STEP2: "Download EDINET PDF/XBRL artifacts for tickers with securities_report_url",
+    }
+    defaults = cli_defaults("scrape_edinet_reports")
+    parser = argparse.ArgumentParser(description=descriptions[mode])
+    parser.add_argument("--ticker", type=str, help="Single ticker to process")
+    if mode in {_CLI_MODE_ALL, _CLI_MODE_STEP2}:
+        parser.add_argument(
+            "--skip-existing",
+            action="store_true",
+            default=defaults.get("skip_existing", True),
+            help="Skip already processed documents (default)",
+        )
+        parser.add_argument("--force", action="store_true", help="Disable --skip-existing")
+    return parser
+
+
+def _print_summary(mode: _CliMode, *, phase1: _Phase1Result | None = None, phase2: _Phase2Result | None = None) -> None:
+    if mode == _CLI_MODE_STEP1 and phase1 is not None:
+        print(
+            (
+                "Done: "
+                f"{phase1.searched} searched, {phase1.found} found, "
+                f"{phase1.not_found} not found, {phase1.errors} errors"
+            ),
+            file=sys.stderr,
+        )
+        return
+
+    if phase2 is not None:
+        suffix = ""
+        if mode == _CLI_MODE_STEP2:
+            suffix = f", {phase2.skipped_missing_url} skipped without URL"
+        print(f"Done: {phase2.ok} ok, {phase2.errors} errors{suffix}", file=sys.stderr)
+
+
+def _run_selected_mode(
+    mode: _CliMode,
+    conn: sqlite3.Connection,
+    client: BrowserServiceClient,
+    tickers: list[str],
+    *,
+    skip_existing: bool,
+    interval: float,
+) -> int:
+    if mode == _CLI_MODE_STEP1:
+        phase1 = scrape_edinet_phase1(conn, client, tickers, interval=interval)
+        _print_summary(mode, phase1=phase1)
+        return 1 if phase1.errors > 0 else 0
+
+    if mode == _CLI_MODE_STEP2:
+        phase2 = scrape_edinet_phase2(
+            conn,
+            client,
+            tickers,
+            skip_existing=skip_existing,
+            interval=interval,
+        )
+        _print_summary(mode, phase2=phase2)
+        return 1 if phase2.errors > 0 else 0
+
+    ok, errors = scrape_all_edinet_reports(
+        conn,
+        client,
+        tickers,
+        skip_existing=skip_existing,
+        interval=interval,
+    )
+    _print_summary(mode, phase2=_Phase2Result(ok=ok, errors=errors, xbrl_failures=0, skipped_missing_url=0))
+    return 1 if errors > 0 else 0
+
+
+def _main(argv: Sequence[str] | None, *, mode: _CliMode) -> int:
     defaults = cli_defaults("scrape_edinet_reports")
     browser_cfg = magic_numbers()["browser"]
     edinet_cfg = magic_numbers().get("edinet", {})
     interval = edinet_cfg.get("interval_seconds", DEFAULT_INTERVAL_SECONDS)
 
-    parser = argparse.ArgumentParser(description="Download and extract EDINET securities reports for all listed companies")
-    parser.add_argument("--ticker", type=str, help="Single ticker to process")
-    parser.add_argument(
-        "--proxy", type=str, default=defaults["proxy"],
-        help="direct | file:<path> | <proxy-url>",
-    )
-    parser.add_argument(
-        "--skip-existing", action="store_true", default=defaults.get("skip_existing", True),
-        help="Skip already processed documents (default)",
-    )
-    parser.add_argument("--force", action="store_true", help="Disable --skip-existing")
-    args = parser.parse_args()
+    parser = build_parser(mode)
+    args = parser.parse_args(argv)
 
     logging.basicConfig(level=logging.INFO, format="%(message)s")
 
-    skip_existing = args.skip_existing and not args.force
+    skip_existing = getattr(args, "skip_existing", True) and not getattr(args, "force", False)
 
     conn: sqlite3.Connection = get_connection(STOCKS_DB_PATH)
     init_db(conn)
@@ -375,43 +587,40 @@ def main() -> None:
                 synced_urls,
             )
 
-        if args.ticker:
-            tickers: list[str] = [args.ticker]
-        else:
-            tickers = get_all_tickers(conn)
-
+        tickers = _resolve_tickers(conn, args.ticker)
         if not tickers:
             print("No tickers to process", file=sys.stderr)
-            sys.exit(1)
+            return 0
 
-        client_cfg = {
-            "pool_size": _WORKERS,
-            "page_timeout": browser_cfg.get("page_timeout", 30000),
-            "idle_timeout": browser_cfg.get("idle_timeout", 60000),
-            "startup_timeout": browser_cfg.get("startup_timeout", 30),
-            "headless": defaults.get("headless", True),
-            "disable_xvfb": defaults.get("disable_xvfb", True),
-            "challenge_poll_interval_ms": browser_cfg.get("challenge_poll_interval_ms", 500),
-            "challenge_clear_stable_ms": browser_cfg.get("challenge_clear_stable_ms", 2000),
-        }
-
+        client_cfg = _build_client_config(defaults, browser_cfg)
         with BrowserServiceClient(config=client_cfg) as client:
-            ok, errors = scrape_all_edinet_reports(
-                conn, client, tickers,
-                proxy=args.proxy if args.proxy != "direct" else None,
+            return _run_selected_mode(
+                mode,
+                conn,
+                client,
+                tickers,
                 skip_existing=skip_existing,
                 interval=interval,
             )
-
-        print(f"Done: {ok} ok, {errors} errors", file=sys.stderr)
-        sys.exit(1 if errors > 0 else 0)
     except (EdinetBlockError, DocIdExtractionError, EdinetNoRecordsError) as exc:
         logger.error("Scrape failed: %s", exc)
         print(f"FAILED: {exc}", file=sys.stderr)
-        sys.exit(1)
+        return 1
     finally:
         conn.close()
 
 
+def main(argv: Sequence[str] | None = None) -> int:
+    return _main(argv, mode=_CLI_MODE_ALL)
+
+
+def main_step1(argv: Sequence[str] | None = None) -> int:
+    return _main(argv, mode=_CLI_MODE_STEP1)
+
+
+def main_step2(argv: Sequence[str] | None = None) -> int:
+    return _main(argv, mode=_CLI_MODE_STEP2)
+
+
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
