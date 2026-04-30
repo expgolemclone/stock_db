@@ -14,9 +14,10 @@ def test_ingest_daily_prices_imports_only_jp_rows(db_conn: object, tmp_path: Pat
             "<TICKER>,<PER>,<DATE>,<TIME>,<OPEN>,<HIGH>,<LOW>,<CLOSE>,<VOL>,<OPENINT>",
             "7203.JP,D,20260429,000000,3065,3101,3057,3067,19390900,0",
             "6758.JP,D,20260429,000000,3500,3510,3480,3495,101.44927535999999,0",
+            "211A.JP,D,20260429,000000,4070,4080,4050,4080,2100,0",
+            "12345.JP,D,20260429,000000,100,101,99,100,500,0",
             "5594.JP,D,,000000,,,,,0,0",
             "AAPL.US,D,20260429,000000,200,205,198,204,1000,0",
-            "12345.JP,D,20260429,000000,1,1,1,1,1,0",
         ]),
         encoding="utf-8",
     )
@@ -26,8 +27,10 @@ def test_ingest_daily_prices_imports_only_jp_rows(db_conn: object, tmp_path: Pat
         "SELECT ticker, date, close, volume FROM prices ORDER BY ticker"
     ).fetchall()
 
-    assert imported == 2
+    assert imported == 4
     assert [dict(row) for row in rows] == [
+        {"ticker": "12345", "date": "2026-04-29", "close": 100.0, "volume": None},
+        {"ticker": "211A", "date": "2026-04-29", "close": 4080.0, "volume": None},
         {"ticker": "6758", "date": "2026-04-29", "close": 3495.0, "volume": None},
         {"ticker": "7203", "date": "2026-04-29", "close": 3067.0, "volume": None},
     ]

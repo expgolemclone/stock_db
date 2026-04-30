@@ -28,7 +28,10 @@ stock_db/
     cli/
       scrape_irbank_bs.py  # IR BANK B/S スクレイピング CLI
       scrape_edinet_reports.py # EDINET 有報取得 CLI（3並列・ThreadPoolExecutor）
+      scrape_edinet_reports_step1.py # EDINET step1（書類一覧取得）のみ
+      scrape_edinet_reports_step2.py # EDINET step2（PDF/XBRL取得）のみ
       scrape_edinet_watchdog.py # メモリ監視付き watchdog ラッパー
+      scrape_stooq_prices.py # Stooq 日次価格取り込み CLI
       fetch_irbank_files.py # IR BANK JSON ダウンロード CLI
       purge_irbank_bs.py   # IR BANK B/S データ削除 CLI
       generate_validation_site_list.py
@@ -36,6 +39,11 @@ stock_db/
       api_client.py        # EDINET API v2 クライアント（書類一覧・PDF取得）
       search_scraper.py    # EDINET 検索フォーム経由で docID 発見（スレッドセーフ）
       pdf_extractor.py     # PDF → Markdown テキスト抽出
+    sources/stooq/
+      downloader.py        # Stooq 日次ファイルダウンロード（CAPTCHA 対応）
+      parser.py            # Stooq CSV パーサー（4桁・5桁・英字付きティッカー対応）
+      captcha_solver.py    # Stooq CAPTCHA OCR ソルバー
+      exceptions.py        # Stooq 固有例外
     sources/irbank/
       bs_parser.py         # B/S ページ HTML パーサー
       bs_scraper.py        # B/S ページスクレイパー（取得 → パース → 保存）
@@ -65,6 +73,7 @@ IR BANK /bs ページ ──スクレイピング──→ bs_parser ──→ f
 IR BANK JSON API ──ダウンロード──→ downloader ──→ financial_items
 EDINET API v2 ──PDF取得──→ pdf_extractor ──→ sec_reports + var/raw/edinet/markdown/
 EDINET API v2 ──XBRL取得──→ var/raw/edinet/xbrl/
+Stooq 日次CSV ──ダウンロード──→ parser ──→ prices
                                                   stocks
                                                   prices
 ```
@@ -105,6 +114,14 @@ SQLite を使用。WAL モード・外部キー制約有効。
 | `api_client` | EDINET API v2 で書類一覧取得・PDFダウンロード。XBRL は文書ビューアの GeneXus AJAX PostBack で全セクション（目次・本文・財務諸表等）を反復取得し結合 |
 | `pdf_extractor` | pypdf で PDF からテキスト抽出し Markdown に変換 |
 | `search_scraper` | EDINET 検索フォーム経由で有報 docID を発見（スレッドセーフ）。HTML entity デコード・企業名フォールバック付き |
+
+### Stooq Sources
+
+| コンポーネント | 役割 |
+|---|---|
+| `downloader` | Stooq 日次JP全銘柄CSVのダウンロード（CAPTCHA 解決・リトライ付き） |
+| `parser` | CSV から `.JP` 銘柄を抽出し prices テーブルに upsert。4桁・5桁・英字付き（3桁+A等）ティッカーに対応 |
+| `captcha_solver` | Stooq CAPTCHA 画像の OCR 解決 |
 
 ### ProxyPool
 

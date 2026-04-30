@@ -61,7 +61,7 @@ def ingest_daily_prices(conn: sqlite3.Connection, file_path: Path) -> int:
                 continue
 
             ticker = symbol.removesuffix(".JP")
-            if re.fullmatch(r"\d{4}", ticker) is None:
+            if re.fullmatch(r"\d{4,5}|\d{3}[A-Z]", ticker) is None:
                 continue
 
             price_date = row[2].strip()
