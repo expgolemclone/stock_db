@@ -39,7 +39,7 @@ from stock_db.storage.stocks import get_all_tickers, get_edinet_code, get_stock_
 logger = logging.getLogger("stock_db.cli.scrape_edinet_reports")
 
 _EDINET_RAW_DIR = VAR_DIR / "raw" / "edinet"
-_WORKERS = 3
+_WORKERS = 1
 
 
 @dataclass(frozen=True, slots=True)

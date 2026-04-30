@@ -13,4 +13,4 @@ startup_poll_interval = 0.25
 request_interval_seconds = 2.0
 
 [edinet]
-interval_seconds = 2.0
+interval_seconds = 1.0
