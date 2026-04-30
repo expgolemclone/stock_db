@@ -27,6 +27,7 @@ purge-irbank-bs = "stock_db.cli.purge_irbank_bs:main"
 scrape-edinet-reports = "stock_db.cli.scrape_edinet_reports:main"
 report-edinet-progress = "stock_db.cli.report_edinet_progress:main"
 scrape-stooq-prices = "stock_db.cli.scrape_stooq_prices:main"
+parse-xbrl-bs = "stock_db.cli.parse_xbrl_bs:main"
 
 [build-system]
 requires = ["hatchling"]
