@@ -162,6 +162,8 @@ def _process_one(
         )
         if xbrl_dest is not None:
             xbrl_path = str(xbrl_dest)
+        else:
+            logger.warning("  %s: XBRL download failed (doc_id=%s)", ticker, doc_id)
 
     return _DownloadedReportArtifacts(
         ticker=ticker,
@@ -304,6 +306,7 @@ def scrape_all_edinet_reports(
             before_request=throttle.wait,
         )
 
+    xbrl_failures = 0
     with ThreadPoolExecutor(max_workers=_WORKERS) as executor:
         futures = {executor.submit(_download_worker, t, u): (t, u) for t, u in url_targets}
         done_count = 0
@@ -330,8 +333,10 @@ def scrape_all_edinet_reports(
             upsert_company_metadata(conn, result.ticker, securities_report_url=result.url)
             conn.commit()
             ok += 1
+            if result.xbrl_path is None and (ticker, result.doc_id) not in xbrl_done_keys:
+                xbrl_failures += 1
 
-    logger.info("Total: %d ok, %d errors", ok, errors)
+    logger.info("Total: %d ok, %d errors, %d xbrl_failed", ok, errors, xbrl_failures)
     return ok, errors
 
 

@@ -133,7 +133,10 @@ def download_xbrl(
         return None
 
     if not result or not isinstance(result, str) or len(result) < 100:
-        logger.warning("XBRL content too short for %s (%d chars)", doc_id, len(result) if result else 0)
+        logger.warning(
+            "XBRL content invalid for %s: type=%s, len=%d",
+            doc_id, type(result).__name__, len(result) if result else 0,
+        )
         return None
 
     dest.write_text(result, encoding="utf-8")
