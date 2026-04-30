@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 
 from stock_db.browser_client.client import BrowserServiceError
 from stock_db.paths import magic_numbers
-from stock_db.sources.yahoo_finance_jp.parser import QuoteData, parse_quote_page
+from stock_db.sources.yahoo_finance_jp.parser import QuoteData, is_quote_page, parse_quote_page
 from stock_db.storage.prices import upsert_price
 from stock_db.storage.stocks import upsert_yf_suffix
 
@@ -82,7 +82,7 @@ def discover_suffix(
     *,
     interval: float = 1.0,
 ) -> str | None:
-    """Try each exchange suffix and return the first one that resolves."""
+    """Try each exchange suffix and return the first quote page that resolves."""
     for suffix in _SUFFIXES:
         url = _quote_url(ticker, suffix)
         try:
@@ -90,9 +90,11 @@ def discover_suffix(
         except YFScrapeError:
             logger.debug("  %s.%s: fetch failed", ticker, suffix)
             continue
-        result = parse_quote_page(html)
-        if result is not None:
-            logger.debug("  %s.%s: found", ticker, suffix)
+        if parse_quote_page(html) is not None:
+            logger.debug("  %s.%s: found quote data", ticker, suffix)
+            return suffix
+        if is_quote_page(html):
+            logger.debug("  %s.%s: found quote page without quote data", ticker, suffix)
             return suffix
         _delay(interval)
 

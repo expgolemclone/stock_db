@@ -6,6 +6,7 @@ import pytest
 
 from stock_db.sources.yahoo_finance_jp.parser import (
     QuoteData,
+    is_quote_page,
     parse_quote_page,
 )
 
@@ -90,6 +91,13 @@ class TestParseQuotePageNotFound:
         result = parse_quote_page("")
         assert result is None
 
+    def test_is_quote_page_returns_false_for_not_found_page(self) -> None:
+        html = (
+            "<html><head><title>Yahoo!ファイナンス</title></head>"
+            "<body><main>指定されたページは表示できません。</main></body></html>"
+        )
+        assert is_quote_page(html) is False
+
 
 class TestParseQuotePageNoDate:
     """Tests for quote data without a parseable date."""
@@ -100,3 +108,17 @@ class TestParseQuotePageNoDate:
         assert result is not None
         assert result.close == 1555.0
         assert result.date is None
+
+
+class TestIsQuotePage:
+    def test_true_for_valid_quote_page_without_quote_data(self) -> None:
+        html = (
+            "<html><head><title>銘柄名【289A】：株価・株式情報 - Yahoo!ファイナンス</title></head>"
+            "<body><main>"
+            '<dl><dt><span>前日終値</span></dt><dd><span class="value">---</span>'
+            '<span class="date">(--/--)</span></dd></dl>'
+            "</main></body></html>"
+        )
+
+        assert is_quote_page(html) is True
+        assert parse_quote_page(html) is None

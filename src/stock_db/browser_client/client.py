@@ -362,7 +362,7 @@ class BrowserServiceClient:
         except requests.RequestException:
             logger.debug("Shutdown request failed", exc_info=True)
         self._kill()
-        logger.info("Browser service stopped")
+        logger.debug("Browser service stopped")
 
     def _kill(self) -> None:
         if self._process is not None:

@@ -27,6 +27,16 @@ class QuoteData:
     volume: int | None
 
 
+def _build_soup(html: str) -> BeautifulSoup | None:
+    if not html or _NOT_FOUND_MARKER in html:
+        return None
+    return BeautifulSoup(html, "html.parser")
+
+
+def _is_quote_title(title: str) -> bool:
+    return "Yahoo!ファイナンス" in title and "株価" in title and "【" in title and "】" in title
+
+
 def _extract_field(soup: BeautifulSoup, label: str) -> _FieldResult | None:
     for dl in soup.find_all("dl"):
         dt = dl.find("dt")
@@ -84,10 +94,9 @@ def _parse_date(raw: str | None) -> str | None:
 
 
 def parse_quote_page(html: str) -> QuoteData | None:
-    if not html or _NOT_FOUND_MARKER in html:
+    soup = _build_soup(html)
+    if soup is None:
         return None
-
-    soup = BeautifulSoup(html, "html.parser")
 
     close_field = _extract_field(soup, "前日終値")
     if close_field is None:
@@ -103,3 +112,12 @@ def parse_quote_page(html: str) -> QuoteData | None:
     volume = _parse_volume(volume_field.value) if volume_field else None
 
     return QuoteData(close=close, date=price_date, volume=volume)
+
+
+def is_quote_page(html: str) -> bool:
+    soup = _build_soup(html)
+    if soup is None:
+        return False
+
+    title = soup.title.get_text(strip=True) if soup.title else ""
+    return _is_quote_title(title)
