@@ -33,3 +33,11 @@ stooqの日次価格を取り込む:
 ```bash
 uv run scrape-stooq-prices
 ```
+
+Yahoo Finance JPから非東証銘柄の価格をスクレイプする:
+
+```bash
+uv run scrape-yahoo-finance-prices --ticker 3442
+```
+
+全銘柄を対象にする場合は `--ticker` を外す。接尾辞（.T/.N/.S/.F）は自動検出されDBに記録される。

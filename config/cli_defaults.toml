@@ -25,3 +25,8 @@ pool_size = 1
 headless = false
 disable_xvfb = true
 output_dir = "var/raw/stooq"
+
+[scrape_yahoo_finance_prices]
+pool_size = 1
+headless = false
+disable_xvfb = true

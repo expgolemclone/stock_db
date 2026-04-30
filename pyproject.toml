@@ -12,6 +12,7 @@ dependencies = [
     "pillow>=11.3,<12",
     "pypdf>=5.0,<6",
     "pdfminer.six>=20250327,<20260000",
+    "yfinance>=1.3.0",
 ]
 
 [dependency-groups]
@@ -29,6 +30,7 @@ scrape-edinet-reports-step1 = "stock_db.cli.scrape_edinet_reports_step1:main"
 scrape-edinet-reports-step2 = "stock_db.cli.scrape_edinet_reports_step2:main"
 report-edinet-progress = "stock_db.cli.report_edinet_progress:main"
 scrape-stooq-prices = "stock_db.cli.scrape_stooq_prices:main"
+scrape-yahoo-finance-prices = "stock_db.cli.scrape_yahoo_finance_prices:main"
 parse-xbrl-bs = "stock_db.cli.parse_xbrl_bs:main"
 
 [build-system]

@@ -32,6 +32,7 @@ stock_db/
       scrape_edinet_reports_step2.py # EDINET step2（PDF/XBRL取得）のみ
       scrape_edinet_watchdog.py # メモリ監視付き watchdog ラッパー
       scrape_stooq_prices.py # Stooq 日次価格取り込み CLI
+      scrape_yahoo_finance_prices.py # Yahoo Finance JP 価格スクレイプ CLI
       fetch_irbank_files.py # IR BANK JSON ダウンロード CLI
       purge_irbank_bs.py   # IR BANK B/S データ削除 CLI
       generate_validation_site_list.py
@@ -44,6 +45,9 @@ stock_db/
       parser.py            # Stooq CSV パーサー（4桁・5桁・英字付きティッカー対応）
       captcha_solver.py    # Stooq CAPTCHA OCR ソルバー
       exceptions.py        # Stooq 固有例外
+    sources/yahoo_finance_jp/
+      parser.py            # Yahoo Finance JP HTML パーサー（前日終値・出来高抽出）
+      scraper.py           # 接尾辞自動検出・価格スクレイプ・DB保存
     sources/irbank/
       bs_parser.py         # B/S ページ HTML パーサー
       bs_scraper.py        # B/S ページスクレイパー（取得 → パース → 保存）
@@ -74,6 +78,7 @@ IR BANK JSON API ──ダウンロード──→ downloader ──→ financia
 EDINET API v2 ──PDF取得──→ pdf_extractor ──→ sec_reports + var/raw/edinet/markdown/
 EDINET API v2 ──XBRL取得──→ var/raw/edinet/xbrl/
 Stooq 日次CSV ──ダウンロード──→ parser ──→ prices
+Yahoo Finance JP ──スクレイピング──→ parser ──→ prices + yf_suffix
                                                   stocks
                                                   prices
 ```
@@ -122,6 +127,16 @@ SQLite を使用。WAL モード・外部キー制約有効。
 | `downloader` | Stooq 日次JP全銘柄CSVのダウンロード（CAPTCHA 解決・リトライ付き） |
 | `parser` | CSV から `.JP` 銘柄を抽出し prices テーブルに upsert。4桁・5桁・英字付き（3桁+A等）ティッカーに対応 |
 | `captcha_solver` | Stooq CAPTCHA 画像の OCR 解決 |
+
+### Yahoo Finance JP Sources
+
+Stooq 未カバーの非東証銘柄（名証・札証・福証）の前日終値を Yahoo Finance Japan からスクレイプ。
+接尾辞（.T/.N/.S/.F）を自動検出し、`stocks.yf_suffix` に記録して2回目以降は一発取得。
+
+| コンポーネント | 役割 |
+|---|---|
+| `parser` | HTML から前日終値・日付・出来高を抽出。存在しない銘柄ページを検知 |
+| `scraper` | 接尾辞自動検出・価格取得・DB 保存のオーケストレーション |
 
 ### ProxyPool
 

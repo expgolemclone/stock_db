@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS stocks (
     shares_outstanding   INTEGER,
     shares_updated_at    TEXT,
     securities_report_url TEXT,
+    yf_suffix            TEXT,
     updated_at           TEXT
 );
 
@@ -199,6 +200,7 @@ def _migrate(conn: sqlite3.Connection) -> None:
             "shares_outstanding": "INTEGER",
             "shares_updated_at": "TEXT",
             "securities_report_url": "TEXT",
+            "yf_suffix": "TEXT",
         }
         for col_name, col_type in new_cols.items():
             if col_name not in stock_cols:

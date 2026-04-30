@@ -79,3 +79,17 @@ def upsert_company_metadata(
         """,
         (securities_report_url, now, ticker),
     )
+
+
+def upsert_yf_suffix(conn: sqlite3.Connection, ticker: str, suffix: str) -> None:
+    conn.execute(
+        "UPDATE stocks SET yf_suffix = ?, updated_at = ? WHERE ticker = ?",
+        (suffix, utc_now_iso(), ticker),
+    )
+
+
+def get_ticker_suffix_map(conn: sqlite3.Connection) -> dict[str, str]:
+    rows = conn.execute(
+        "SELECT ticker, yf_suffix FROM stocks WHERE yf_suffix IS NOT NULL"
+    ).fetchall()
+    return {r["ticker"]: r["yf_suffix"] for r in rows}
