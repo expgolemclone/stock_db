@@ -22,6 +22,98 @@ class FakeBrowserServiceClient:
         return None
 
 
+def test_main_uses_default_headless_setting_when_flag_is_absent(
+    tmp_path: Path,
+    monkeypatch: object,
+    capsys: object,
+) -> None:
+    db_path = tmp_path / "stocks.db"
+    captured_config: dict[str, object] = {}
+
+    class CapturingBrowserServiceClient(FakeBrowserServiceClient):
+        def __init__(self, *, config: dict[str, object], browser_service_dir: str | Path | None = None) -> None:
+            super().__init__(config=config, browser_service_dir=browser_service_dir)
+            captured_config.update(config)
+
+    def fake_download_latest_daily_file(
+        client: object,
+        output_dir: Path,
+        *,
+        timeout: int | None = None,
+    ) -> object:
+        del client, timeout
+        output_dir.mkdir(parents=True, exist_ok=True)
+        file_path = output_dir / "0429_d.csv"
+        file_path.write_text(
+            "\n".join([
+                "<TICKER>,<PER>,<DATE>,<TIME>,<OPEN>,<HIGH>,<LOW>,<CLOSE>,<VOL>,<OPENINT>",
+                "7203.JP,D,20260429,000000,3065,3101,3057,3067,19390900,0",
+            ]),
+            encoding="utf-8",
+        )
+        return cli_module.DownloadedStooqDailyFile(
+            date="20260429",
+            label="0429_d",
+            file_path=file_path,
+        )
+
+    monkeypatch.setattr(cli_module, "BrowserServiceClient", CapturingBrowserServiceClient)
+    monkeypatch.setattr(cli_module, "download_latest_daily_file", fake_download_latest_daily_file)
+
+    rc = cli_module.main(["--db", str(db_path)])
+    captured = capsys.readouterr()
+
+    assert rc == 0
+    assert "Imported 1 JP prices for 20260429" in captured.err
+    assert captured_config["headless"] is False
+
+
+def test_main_overrides_headless_setting_when_flag_is_present(
+    tmp_path: Path,
+    monkeypatch: object,
+    capsys: object,
+) -> None:
+    db_path = tmp_path / "stocks.db"
+    captured_config: dict[str, object] = {}
+
+    class CapturingBrowserServiceClient(FakeBrowserServiceClient):
+        def __init__(self, *, config: dict[str, object], browser_service_dir: str | Path | None = None) -> None:
+            super().__init__(config=config, browser_service_dir=browser_service_dir)
+            captured_config.update(config)
+
+    def fake_download_latest_daily_file(
+        client: object,
+        output_dir: Path,
+        *,
+        timeout: int | None = None,
+    ) -> object:
+        del client, timeout
+        output_dir.mkdir(parents=True, exist_ok=True)
+        file_path = output_dir / "0429_d.csv"
+        file_path.write_text(
+            "\n".join([
+                "<TICKER>,<PER>,<DATE>,<TIME>,<OPEN>,<HIGH>,<LOW>,<CLOSE>,<VOL>,<OPENINT>",
+                "7203.JP,D,20260429,000000,3065,3101,3057,3067,19390900,0",
+            ]),
+            encoding="utf-8",
+        )
+        return cli_module.DownloadedStooqDailyFile(
+            date="20260429",
+            label="0429_d",
+            file_path=file_path,
+        )
+
+    monkeypatch.setattr(cli_module, "BrowserServiceClient", CapturingBrowserServiceClient)
+    monkeypatch.setattr(cli_module, "download_latest_daily_file", fake_download_latest_daily_file)
+
+    rc = cli_module.main(["--db", str(db_path), "--headless"])
+    captured = capsys.readouterr()
+
+    assert rc == 0
+    assert "Imported 1 JP prices for 20260429" in captured.err
+    assert captured_config["headless"] is True
+
+
 def test_main_imports_prices_into_db(
     tmp_path: Path,
     monkeypatch: object,

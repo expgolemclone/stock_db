@@ -37,6 +37,12 @@ def build_parser() -> argparse.ArgumentParser:
         default=STOOQ_DIR,
         help=f"Directory for raw Stooq downloads (default: {STOOQ_DIR})",
     )
+    parser.add_argument(
+        "--headless",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Override browser headless mode",
+    )
     return parser
 
 
@@ -59,7 +65,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             "page_timeout": browser_cfg.get("page_timeout", 30000),
             "idle_timeout": browser_cfg.get("idle_timeout", 300),
             "startup_timeout": browser_cfg.get("startup_timeout", 30),
-            "headless": defaults.get("headless", False),
+            "headless": defaults.get("headless", False) if args.headless is None else args.headless,
             "disable_xvfb": defaults.get("disable_xvfb", True),
             "challenge_poll_interval_ms": browser_cfg.get("challenge_poll_interval_ms", 500),
             "challenge_clear_stable_ms": browser_cfg.get("challenge_clear_stable_ms", 2000),

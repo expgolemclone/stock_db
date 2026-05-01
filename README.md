@@ -34,6 +34,12 @@ stooqの日次価格を取り込む:
 uv run scrape-stooq-prices
 ```
 
+GitHub Actions / CI 相当の headless 実行:
+
+```bash
+uv run scrape-stooq-prices --headless
+```
+
 Yahoo Finance JPから非東証銘柄の価格をスクレイプする:
 
 ```bash
