@@ -17,6 +17,11 @@ _FONT_PATTERNS = (
     "/nix/store/*/share/fonts/truetype/DejaVuSans-BoldOblique.ttf",
     "/nix/store/*/share/fonts/truetype/FreeSansBoldOblique.ttf",
     "/nix/store/*/share/fonts/truetype/LiberationSans-BoldItalic.ttf",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSansCondensed-Bold.ttf",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans-BoldOblique.ttf",
+    "/usr/share/fonts/truetype/freefont/FreeSansBoldOblique.ttf",
+    "/usr/share/fonts/truetype/liberation/LiberationSans-BoldItalic.ttf",
+    "/usr/share/fonts/truetype/liberation2/LiberationSans-BoldItalic.ttf",
 )
 _FONT_SIZES = (34, 38, 42)
 _ROTATION_ANGLES = tuple(range(-35, 36, 5))

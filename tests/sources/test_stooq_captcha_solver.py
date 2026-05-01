@@ -1,8 +1,13 @@
 from __future__ import annotations
 
 from base64 import b64decode
+from collections.abc import Iterator
 
+import pytest
+
+import stock_db.sources.stooq.captcha_solver as captcha_solver_module
 from stock_db.sources.stooq.captcha_solver import solve_stooq_captcha
+from stock_db.sources.stooq.exceptions import StooqCaptchaError
 
 _CAPTCHA_D1TY_BASE64 = (
     "iVBORw0KGgoAAAANSUhEUgAAAMgAAABGCAIAAAAGgExhAAAITklEQVR4nO2df0hUWRTHvzPNToNr"
@@ -45,6 +50,55 @@ _CAPTCHA_D1TY_BASE64 = (
     "TRr+WTnWKgwsx6YMkwj8C6usVaPln5VjFMGBxSiBA4tRAgcWowQOLEYJHFiMEjiwGIZ5e/gPCrRP"
     "SM63CZQAAAAASUVORK5CYII="
 )
+
+
+@pytest.fixture(autouse=True)
+def clear_font_caches() -> Iterator[None]:
+    captcha_solver_module._font_paths.cache_clear()
+    captcha_solver_module._templates_for_char.cache_clear()
+    yield
+    captcha_solver_module._font_paths.cache_clear()
+    captcha_solver_module._templates_for_char.cache_clear()
+
+
+def test_font_paths_include_linux_paths_and_deduplicate(monkeypatch: pytest.MonkeyPatch) -> None:
+    matches = {
+        "/nix/store/*/share/fonts/truetype/DejaVuSansCondensed-Bold.ttf": [],
+        "/nix/store/*/share/fonts/truetype/DejaVuSans-BoldOblique.ttf": [],
+        "/nix/store/*/share/fonts/truetype/FreeSansBoldOblique.ttf": [],
+        "/nix/store/*/share/fonts/truetype/LiberationSans-BoldItalic.ttf": [],
+        "/usr/share/fonts/truetype/dejavu/DejaVuSansCondensed-Bold.ttf": [
+            "/usr/share/fonts/truetype/dejavu/DejaVuSansCondensed-Bold.ttf"
+        ],
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-BoldOblique.ttf": [
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-BoldOblique.ttf"
+        ],
+        "/usr/share/fonts/truetype/freefont/FreeSansBoldOblique.ttf": [
+            "/usr/share/fonts/truetype/freefont/FreeSansBoldOblique.ttf"
+        ],
+        "/usr/share/fonts/truetype/liberation/LiberationSans-BoldItalic.ttf": [
+            "/usr/share/fonts/truetype/liberation/LiberationSans-BoldItalic.ttf"
+        ],
+        "/usr/share/fonts/truetype/liberation2/LiberationSans-BoldItalic.ttf": [
+            "/usr/share/fonts/truetype/liberation/LiberationSans-BoldItalic.ttf"
+        ],
+    }
+
+    monkeypatch.setattr(captcha_solver_module, "glob", lambda pattern: matches.get(pattern, []))
+
+    assert captcha_solver_module._font_paths() == (
+        "/usr/share/fonts/truetype/dejavu/DejaVuSansCondensed-Bold.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-BoldOblique.ttf",
+        "/usr/share/fonts/truetype/freefont/FreeSansBoldOblique.ttf",
+        "/usr/share/fonts/truetype/liberation/LiberationSans-BoldItalic.ttf",
+    )
+
+
+def test_font_paths_raises_when_no_fonts_are_found(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(captcha_solver_module, "glob", lambda pattern: [])
+
+    with pytest.raises(StooqCaptchaError, match="No OCR fonts found"):
+        captcha_solver_module._font_paths()
 
 
 def test_solve_stooq_captcha() -> None:

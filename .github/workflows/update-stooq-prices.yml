@@ -44,6 +44,14 @@ jobs:
       - name: Install browser service dependencies
         run: npm ci --prefix services/browser
 
+      - name: Install OCR fonts
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            fonts-dejavu-extra \
+            fonts-freefont-ttf \
+            fonts-liberation
+
       - name: Update Stooq prices
         run: uv run scrape-stooq-prices --headless
 
