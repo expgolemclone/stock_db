@@ -27,11 +27,11 @@ from stock_db.sources.edinet.search_scraper import (
     EdinetNoRecordsError,
     search_annual_reports,
 )
+from stock_db.sources.edinet.xbrl_bs_parser import is_valid_xbrl_path
 from stock_db.storage.connection import get_connection
 from stock_db.storage.schema import init_db
 from stock_db.storage.sec_reports import (
     get_processed_report_keys,
-    get_processed_xbrl_report_keys,
     sync_edinet_raw_to_db,
     upsert_sec_report,
 )
@@ -136,6 +136,29 @@ def _load_existing_report_artifacts(
     }
 
 
+def _load_valid_xbrl_report_keys(conn: sqlite3.Connection) -> set[tuple[str, str]]:
+    rows = conn.execute(
+        """
+        SELECT ticker, doc_id, xbrl_path
+        FROM sec_reports
+        WHERE xbrl_path IS NOT NULL
+        """
+    ).fetchall()
+
+    valid_keys: set[tuple[str, str]] = set()
+    for row in rows:
+        key = (row["ticker"], row["doc_id"])
+        if is_valid_xbrl_path(row["xbrl_path"]):
+            valid_keys.add(key)
+            continue
+        logger.info(
+            "Phase 2: will refresh invalid saved XBRL for %s (doc_id=%s)",
+            row["ticker"],
+            row["doc_id"],
+        )
+    return valid_keys
+
+
 def _load_securities_report_urls(
     conn: sqlite3.Connection,
     tickers: Sequence[str],
@@ -184,6 +207,7 @@ def _process_one(
     skip_pdf: bool = False,
     skip_xbrl: bool = False,
     existing: _ExistingReportArtifacts | None = None,
+    keep_existing_xbrl: bool = True,
     before_request: Callable[[], None] | None = None,
 ) -> _DownloadedReportArtifacts:
     """Download PDF/XBRL and return the artifacts for main-thread persistence."""
@@ -192,7 +216,7 @@ def _process_one(
         raise ValueError(f"Cannot extract docID from URL: {url}")
 
     file_path = existing.file_path if existing is not None else ""
-    xbrl_path = existing.xbrl_path if existing is not None else None
+    xbrl_path = existing.xbrl_path if existing is not None and keep_existing_xbrl else None
     page_count = existing.page_count if existing is not None else None
     char_count = existing.char_count if existing is not None else None
 
@@ -337,7 +361,7 @@ def scrape_edinet_phase2(
     xbrl_done_keys: set[tuple[str, str]] = set()
     if skip_existing:
         existing_report_keys = get_processed_report_keys(conn)
-        xbrl_done_keys = get_processed_xbrl_report_keys(conn)
+        xbrl_done_keys = _load_valid_xbrl_report_keys(conn)
 
     url_targets = [
         (ticker, url)
@@ -397,6 +421,7 @@ def scrape_edinet_phase2(
             client=client,
             skip_pdf=skip_pdf,
             skip_xbrl=skip_xbrl,
+            keep_existing_xbrl=skip_xbrl,
             existing=existing_artifacts.get((ticker, doc_id)) if doc_id is not None else None,
             before_request=throttle.wait,
         )

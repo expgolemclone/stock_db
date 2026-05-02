@@ -13,6 +13,8 @@ import requests
 if TYPE_CHECKING:
     from stock_db.browser_client.client import BrowserServiceClient
 
+from stock_db.sources.edinet.xbrl_bs_parser import is_valid_xbrl_text
+
 logger = logging.getLogger("stock_db.sources.edinet.api_client")
 
 _PDF_URL_RE = re.compile(r"/searchdocument/pdf/([A-Za-z0-9]+)\.pdf")
@@ -23,6 +25,33 @@ _DEFAULT_XBRL_TIMEOUT_MS = 300_000
 
 _EXTRACT_HONBUN_JS = """
 (async () => {
+  function hasInlineFacts(html) {
+    return /<ix:(?:nonfraction|nonnumeric)\\b/i.test(html || '');
+  }
+
+  function bodyOf(html) {
+    const m = html.match(/<body[^>]*>([\\s\\S]*)<\\/body>/i);
+    return m ? m[1] : html;
+  }
+
+  function htmlShellOf(html) {
+    const xmlDecl = html.match(/^<\\?xml[^?]*\\?>/)?.[0] || '';
+    const htmlOpen = html.match(/<html[^>]*>/)?.[0] || '<html>';
+    const headBlock = html.match(/<head[^>]*>([\\s\\S]*?)<\\/head>/)?.[0] || '<head></head>';
+    return { xmlDecl, htmlOpen, headBlock };
+  }
+
+  async function waitForBodyChange(previousHtml) {
+    for (let i = 0; i < 10; i++) {
+      await new Promise(r => setTimeout(r, 1000));
+      const current = document.getElementById('frame_honbun')?.srcdoc || '';
+      if (current && current !== previousHtml) {
+        return current;
+      }
+    }
+    return document.getElementById('frame_honbun')?.srcdoc || '';
+  }
+
   let frame = document.getElementById('frame_honbun');
   if (!frame) return null;
   for (let i = 0; i < 30; i++) {
@@ -33,37 +62,45 @@ _EXTRACT_HONBUN_JS = """
   const initial = frame?.srcdoc || '';
   if (initial.length < 100) return null;
 
-  const mokuji = document.getElementById('frame_mokuji');
-  if (!mokuji || !mokuji.srcdoc) return initial;
+  const sections = [];
+  const seenBodies = new Set();
 
-  const links = [...mokuji.srcdoc.matchAll(/linkclicknew\\('([^']+)'\\)/g)];
-  const files = [...new Set(links.map(m => m[1].split('#')[0]))];
-  if (files.length <= 1) return initial;
-
-  function bodyOf(html) {
-    const m = html.match(/<body[^>]*>([\\s\\S]*)<\\/body>/i);
-    return m ? m[1] : html;
+  function collect(html) {
+    if (!hasInlineFacts(html)) {
+      return;
+    }
+    if (seenBodies.has(html)) {
+      return;
+    }
+    seenBodies.add(html);
+    sections.push(html);
   }
 
-  const xmlDecl = initial.match(/^<\\?xml[^?]*\\?>/)?.[0] || '';
-  const htmlOpen = initial.match(/<html[^>]*>/)?.[0] || '<html>';
-  const headBlock = initial.match(/<head[^>]*>([\\s\\S]*?)<\\/head>/)?.[0] || '<head></head>';
+  collect(initial);
 
-  const bodies = [bodyOf(initial)];
+  const mokuji = document.getElementById('frame_mokuji');
+  if (mokuji?.srcdoc) {
+    const links = [...mokuji.srcdoc.matchAll(/linkclicknew\\('([^']+)'\\)/g)];
+    const files = [...new Set(links.map(m => m[1].split('#')[0]).filter(Boolean))];
 
-  for (let i = 1; i < files.length; i++) {
-    document.getElementById('TXTURL').innerHTML = files[i];
-    document.getElementById('BTNMOKUJILINK').click();
-    await new Promise(r => setTimeout(r, 3000));
-    const curFrame = document.getElementById('frame_honbun');
-    const cur = curFrame?.srcdoc || '';
-    if (cur.length > 100) {
-      bodies.push(bodyOf(cur));
+    for (const file of files) {
+      const currentBody = document.getElementById('frame_honbun')?.srcdoc || '';
+      document.getElementById('TXTURL').innerHTML = file;
+      document.getElementById('BTNMOKUJILINK').click();
+      const nextBody = await waitForBodyChange(currentBody);
+      if (nextBody.length > 100) {
+        collect(nextBody);
+      }
     }
   }
 
-  const combined = xmlDecl + '\\n' + htmlOpen + '\\n' + headBlock + '\\n<body>'
-    + bodies.join('\\n') + '</body>\\n</html>';
+  if (sections.length === 0) {
+    return null;
+  }
+
+  const shell = htmlShellOf(sections[0]);
+  const combined = shell.xmlDecl + '\\n' + shell.htmlOpen + '\\n' + shell.headBlock + '\\n<body>'
+    + sections.map(bodyOf).join('\\n') + '</body>\\n</html>';
   return combined;
 })()
 """
@@ -137,6 +174,9 @@ def download_xbrl(
             "XBRL content invalid for %s: type=%s, len=%d",
             doc_id, type(result).__name__, len(result) if result else 0,
         )
+        return None
+    if not is_valid_xbrl_text(result):
+        logger.warning("XBRL payload rejected for %s: no parseable inline facts", doc_id)
         return None
 
     dest.write_text(result, encoding="utf-8")

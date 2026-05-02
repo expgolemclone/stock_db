@@ -15,6 +15,17 @@ from stock_db.storage.sec_reports import upsert_sec_report
 from stock_db.storage.stocks import upsert_company_metadata, upsert_stock
 
 
+def _valid_ixbrl_html(*, inventory_value: str = "500") -> str:
+    return (
+        '<html xmlns:ix="http://www.xbrl.org/2008/inlineXBRL"><head></head><body>'
+        '<ix:nonnumeric contextref="FilingDateInstant" '
+        'name="jpdei_cor:CurrentFiscalYearEndDateDEI">2025年3月31日</ix:nonnumeric>'
+        '<ix:nonfraction contextref="CurrentYearInstant" '
+        f'name="jppfs_cor:Inventories">{inventory_value}</ix:nonfraction>'
+        "</body></html>"
+    )
+
+
 class _FakePdfResponse:
     def __init__(self, body: bytes = b"%PDF-1.4 fake") -> None:
         self._body = body
@@ -28,9 +39,16 @@ class _FakePdfResponse:
 
 
 class _EvaluateClient:
-    def __init__(self, request_times: list[float], lock: threading.Lock) -> None:
+    def __init__(
+        self,
+        request_times: list[float],
+        lock: threading.Lock,
+        *,
+        html: str | None = None,
+    ) -> None:
         self._request_times = request_times
         self._lock = lock
+        self._html = html or _valid_ixbrl_html()
 
     def evaluate(
         self,
@@ -43,7 +61,7 @@ class _EvaluateClient:
         del url, script, proxy, timeout
         with self._lock:
             self._request_times.append(time.monotonic())
-        return "<html><body>" + ("x" * 200) + "</body></html>"
+        return self._html
 
 
 def _build_db(db_path: Path) -> sqlite3.Connection:
@@ -359,6 +377,137 @@ class TestScrapeAllEdinetReports:
             skipped_missing_url=1,
         )
         assert [(row["ticker"], row["doc_id"]) for row in rows] == [("2222", "S100STEP2")]
+        conn.close()
+
+    def test_skip_existing_refreshes_invalid_saved_xbrl(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        db_path = tmp_path / "stocks.db"
+        conn = _build_db(db_path)
+        request_times: list[float] = []
+        request_lock = threading.Lock()
+        raw_dir = tmp_path / "var" / "raw" / "edinet"
+        md_path = raw_dir / "markdown" / "4444" / "latest.md"
+        xbrl_path = raw_dir / "xbrl" / "4444" / "S100BADX.xhtml"
+        md_path.parent.mkdir(parents=True, exist_ok=True)
+        xbrl_path.parent.mkdir(parents=True, exist_ok=True)
+        md_path.write_text("existing markdown", encoding="utf-8")
+        xbrl_path.write_text("<html><body>header only</body></html>", encoding="utf-8")
+
+        upsert_stock(conn, "4444", "Name 4444", "Sector", "Prime")
+        upsert_company_metadata(
+            conn,
+            "4444",
+            securities_report_url="https://disclosure2dl.edinet-fsa.go.jp/searchdocument/pdf/S100BADX.pdf",
+        )
+        upsert_sec_report(
+            conn,
+            ticker="4444",
+            fiscal_year="latest",
+            doc_id="S100BADX",
+            file_path=str(md_path.resolve()),
+            xbrl_path=str(xbrl_path.resolve()),
+            page_count=5,
+            char_count=55,
+        )
+        conn.commit()
+
+        def fail_get(*args: object, **kwargs: object) -> _FakePdfResponse:
+            raise AssertionError("PDF should not be downloaded when skip_pdf=True")
+
+        monkeypatch.setattr("stock_db.sources.edinet.api_client.requests.get", fail_get)
+        monkeypatch.setattr(scrape_edinet_reports, "_EDINET_RAW_DIR", raw_dir)
+
+        result = scrape_edinet_reports.scrape_edinet_phase2(
+            conn,
+            _EvaluateClient(request_times, request_lock, html=_valid_ixbrl_html(inventory_value="700")),
+            ["4444"],
+            skip_existing=True,
+            interval=0.0,
+        )
+
+        row = conn.execute(
+            """
+            SELECT file_path, xbrl_path, page_count, char_count
+            FROM sec_reports
+            WHERE ticker = '4444'
+            """
+        ).fetchone()
+
+        assert result == scrape_edinet_reports._Phase2Result(
+            ok=1,
+            errors=0,
+            xbrl_failures=0,
+            skipped_missing_url=0,
+        )
+        assert row["file_path"] == str(md_path.resolve())
+        assert row["page_count"] == 5
+        assert row["char_count"] == 55
+        assert row["xbrl_path"] == str(xbrl_path.resolve())
+        assert _valid_ixbrl_html(inventory_value="700") in Path(row["xbrl_path"]).read_text(encoding="utf-8")
+        conn.close()
+
+    def test_phase2_counts_invalid_xbrl_payload_as_failure(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        db_path = tmp_path / "stocks.db"
+        conn = _build_db(db_path)
+        request_times: list[float] = []
+        request_lock = threading.Lock()
+
+        upsert_stock(conn, "5555", "Name 5555", "Sector", "Prime")
+        upsert_company_metadata(
+            conn,
+            "5555",
+            securities_report_url="https://disclosure2dl.edinet-fsa.go.jp/searchdocument/pdf/S100FAILX.pdf",
+        )
+        conn.commit()
+
+        def fake_get(url: str, *, timeout: float, stream: bool) -> _FakePdfResponse:
+            del url, timeout, stream
+            with request_lock:
+                request_times.append(time.monotonic())
+            return _FakePdfResponse()
+
+        monkeypatch.setattr("stock_db.sources.edinet.api_client.requests.get", fake_get)
+        monkeypatch.setattr(
+            scrape_edinet_reports,
+            "extract_markdown",
+            lambda pdf_path: f"markdown for {Path(pdf_path).stem}",
+        )
+        monkeypatch.setattr(
+            scrape_edinet_reports,
+            "_EDINET_RAW_DIR",
+            tmp_path / "var" / "raw" / "edinet",
+        )
+
+        result = scrape_edinet_reports.scrape_edinet_phase2(
+            conn,
+            _EvaluateClient(
+                request_times,
+                request_lock,
+                html="<html><head><title>0000000_header.htm</title></head><body>header</body></html>",
+            ),
+            ["5555"],
+            skip_existing=False,
+            interval=0.0,
+        )
+
+        row = conn.execute(
+            """
+            SELECT xbrl_path
+            FROM sec_reports
+            WHERE ticker = '5555'
+            """
+        ).fetchone()
+
+        assert result == scrape_edinet_reports._Phase2Result(
+            ok=1,
+            errors=0,
+            xbrl_failures=1,
+            skipped_missing_url=0,
+        )
+        assert row["xbrl_path"] is None
         conn.close()
 
     def test_skip_existing_is_scoped_per_ticker_not_global_doc_id(

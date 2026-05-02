@@ -1,4 +1,4 @@
-"""CLI entry point for parsing XBRL files and storing BS data into financial_items."""
+"""CLI entry point for parsing XBRL inventories into financial_items."""
 
 from __future__ import annotations
 
@@ -16,6 +16,7 @@ from stock_db.storage.financials import replace_financial_items_for_source
 
 _SOURCE = "xbrl_bs"
 _STATEMENT = "bs"
+_ITEM_NAME = "inventories"
 
 
 def main() -> None:
@@ -80,15 +81,14 @@ def main() -> None:
 
             db_rows: list[dict[str, str | float | None]] = []
             for period, items in parsed.items():
-                for item_name, value in items.items():
-                    db_rows.append({
-                        "ticker": ticker,
-                        "period": period,
-                        "statement": _STATEMENT,
-                        "item_name": item_name,
-                        "value": value,
-                        "source": _SOURCE,
-                    })
+                db_rows.append({
+                    "ticker": ticker,
+                    "period": period,
+                    "statement": _STATEMENT,
+                    "item_name": _ITEM_NAME,
+                    "value": items.get(_ITEM_NAME),
+                    "source": _SOURCE,
+                })
 
             replace_financial_items_for_source(conn, ticker, _SOURCE, db_rows)
             conn.commit()

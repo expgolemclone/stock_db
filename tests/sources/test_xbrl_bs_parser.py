@@ -1,7 +1,4 @@
-"""Tests for XBRL balance sheet parser.
-
-Uses real XBRL fixture files from stock_db/var/raw/edinet/xbrl/.
-"""
+"""Tests for EDINET XBRL inventories parser."""
 
 from __future__ import annotations
 
@@ -11,6 +8,7 @@ import pytest
 
 from stock_db.sources.edinet.xbrl_bs_parser import (
     InventoriesTagMismatchError,
+    is_valid_xbrl_path,
     parse_xbrl_bs,
 )
 
@@ -19,129 +17,97 @@ def _xbrl_path(ticker: str) -> str:
     return f"/home/exp/projects/stock_db/var/raw/edinet/xbrl/{ticker}"
 
 
-class TestParseYoshicon:
-    """ヨシコン(5280): 不動産会社。Inventoriesタグなし、RealEstateForSale + RealEstateForSaleInTrustCA から inventories を計算。"""
+class TestRealFixtures:
+    def test_yoshicon_sums_real_estate_components(self) -> None:
+        parsed = parse_xbrl_bs(_xbrl_path("5280"))
 
-    @pytest.fixture()
-    def parsed(self) -> dict[str, dict[str, float | None]]:
-        result = parse_xbrl_bs(_xbrl_path("5280"))
-        assert result, "XBRL parse returned empty result"
-        return result
+        assert parsed["2025-03"]["inventories"] == pytest.approx(32_974_467_000)
+        assert parsed["2024-03"]["inventories"] == pytest.approx(28_448_283_000)
 
-    def test_has_three_periods(self, parsed: dict[str, dict[str, float | None]]) -> None:
-        assert len(parsed) == 3
+    def test_kudan_prefers_direct_total(self) -> None:
+        parsed = parse_xbrl_bs(_xbrl_path("4425"))
 
-    def test_latest_period(self, parsed: dict[str, dict[str, float | None]]) -> None:
-        periods = sorted(parsed.keys(), reverse=True)
-        assert periods[0] == "2025-03"
+        assert parsed["2025-03"]["inventories"] == pytest.approx(39_840_000)
 
-    def test_prior_period(self, parsed: dict[str, dict[str, float | None]]) -> None:
-        periods = sorted(parsed.keys(), reverse=True)
-        assert periods[1] == "2024-03"
+    def test_toyota_does_not_double_count_ifrs_components(self) -> None:
+        parsed = parse_xbrl_bs(_xbrl_path("7203"))
 
-    def test_prior2_period(self, parsed: dict[str, dict[str, float | None]]) -> None:
-        periods = sorted(parsed.keys(), reverse=True)
-        assert periods[2] == "2023-03"
+        assert parsed["2025-03"]["inventories"] == pytest.approx(4_598_232_000_000)
 
-    def test_current_assets(self, parsed: dict[str, dict[str, float | None]]) -> None:
-        bs = parsed["2025-03"]
-        assert bs["current_assets"] == pytest.approx(38_675_872_000)
+    def test_nyk_ignores_construction_in_progress(self) -> None:
+        parsed = parse_xbrl_bs(_xbrl_path("9001"))
 
-    def test_current_liabilities(self, parsed: dict[str, dict[str, float | None]]) -> None:
-        bs = parsed["2025-03"]
-        assert bs["current_liabilities"] == pytest.approx(15_158_894_000)
+        assert parsed["2025-03"]["inventories"] == 0.0
 
-    def test_non_current_liabilities(self, parsed: dict[str, dict[str, float | None]]) -> None:
-        bs = parsed["2025-03"]
-        assert bs["non_current_liabilities"] == pytest.approx(1_468_637_000)
+    def test_mitsubishi_heavy_sums_work_in_process(self) -> None:
+        parsed = parse_xbrl_bs(_xbrl_path("6597"))
 
-    def test_investment_securities(self, parsed: dict[str, dict[str, float | None]]) -> None:
-        bs = parsed["2025-03"]
-        assert bs["investment_securities"] == pytest.approx(2_985_654_000)
+        assert parsed["2025-06"]["inventories"] == pytest.approx(775_897_000)
 
-    def test_inventories_summed_from_components(self, parsed: dict[str, dict[str, float | None]]) -> None:
-        """Merchandise(空) + RealEstateForSale + RealEstateForSaleInTrustCA."""
-        bs = parsed["2025-03"]
-        expected = 28_526_855_000 + 4_447_612_000
-        assert bs["inventories"] == pytest.approx(expected)
+    def test_obayashi_picks_cns_raw_materials(self) -> None:
+        parsed = parse_xbrl_bs(_xbrl_path("1934"))
 
-    def test_prior_year_inventories(self, parsed: dict[str, dict[str, float | None]]) -> None:
-        """前期: Merchandise(8,284) + RealEstateForSale(28,439,999) + RealEstateForSaleInTrustCA(なし)."""
-        bs = parsed["2024-03"]
-        expected = 8_284_000 + 28_439_999_000
-        assert bs["inventories"] == pytest.approx(expected)
+        assert parsed["2025-03"]["inventories"] == pytest.approx(2_356_000_000)
 
-    def test_cash_and_deposits(self, parsed: dict[str, dict[str, float | None]]) -> None:
-        bs = parsed["2025-03"]
-        assert bs["cash_and_deposits"] == pytest.approx(3_514_675_000)
+    def test_valid_consolidated_xbrl_without_inventory_tags_returns_zero(self) -> None:
+        parsed = parse_xbrl_bs(_xbrl_path("1802"))
+
+        assert parsed["2025-03"]["inventories"] == 0.0
+        assert parsed["2024-03"]["inventories"] == 0.0
+
+    def test_header_only_html_returns_empty(self) -> None:
+        assert parse_xbrl_bs(_xbrl_path("143A")) == {}
 
 
-class TestParseKudan:
-    """Kudan(4425): Inventoriesタグが直接存在するパターン。"""
+class TestValidationHelpers:
+    def test_saved_fixture_path_validation(self) -> None:
+        path = next(Path(_xbrl_path("5280")).glob("*.xhtml"))
+        assert is_valid_xbrl_path(path) is True
 
-    @pytest.fixture()
-    def parsed(self) -> dict[str, dict[str, float | None]]:
-        result = parse_xbrl_bs(_xbrl_path("4425"))
-        assert result, "XBRL parse returned empty result"
-        return result
+    def test_invalid_saved_path_validation(self, tmp_path: Path) -> None:
+        invalid = tmp_path / "header.xhtml"
+        invalid.write_text("<html><body>header only</body></html>", encoding="utf-8")
 
-    def test_inventories_from_direct_tag(self, parsed: dict[str, dict[str, float | None]]) -> None:
-        periods = sorted(parsed.keys(), reverse=True)
-        bs = parsed[periods[0]]
-        assert bs["inventories"] == pytest.approx(39_840_000)
+        assert is_valid_xbrl_path(invalid) is False
 
 
-class TestNoInventoryTags:
-    """サービス業等で棚卸資産タグが一切ない場合、inventories = 0."""
-
-    def test_inventories_zero_when_no_tags(self) -> None:
-        # 7840 フランスベッドHD: 棚卸資産タグなし
-        result = parse_xbrl_bs(_xbrl_path("7840"))
-        if not result:
-            pytest.skip("No XBRL data for 7840")
-        periods = sorted(result.keys(), reverse=True)
-        bs = result[periods[0]]
-        assert bs.get("inventories", 0) == 0
-
-
-class TestHeaderOnlyFile:
-    """ヘッダーのみのXBRLファイルは空結果を返す."""
-
-    def test_returns_empty_for_tiny_file(self, tmp_path: Path) -> None:
+class TestSyntheticCases:
+    def test_returns_empty_for_tiny_header_only_file(self, tmp_path: Path) -> None:
         xbrl = tmp_path / "test.xhtml"
         xbrl.write_text(
             '<html xmlns:ix="http://www.xbrl.org/2008/inlineXBRL">'
             "<body><p>header only</p></body></html>",
             encoding="utf-8",
         )
-        result = parse_xbrl_bs(str(tmp_path))
-        assert result == {}
 
+        assert parse_xbrl_bs(str(tmp_path)) == {}
 
-class TestNegativeValues:
-    """△(マイナス)値の処理: sign属性付きの負値."""
-
-    def test_negative_value_parsed(self, tmp_path: Path) -> None:
+    def test_parses_negative_inventory_value(self, tmp_path: Path) -> None:
         xbrl = tmp_path / "S9999.xhtml"
         xbrl.write_text(
             '<html xmlns:ix="http://www.xbrl.org/2008/inlineXBRL">'
             '<ix:nonnumeric contextref="FilingDateInstant" '
             'name="jpdei_cor:CurrentFiscalYearEndDateDEI">2025年3月31日</ix:nonnumeric>'
             '<body><ix:nonfraction contextref="CurrentYearInstant" '
-            'name="jppfs_cor:CurrentAssets" decimals="-3" scale="3">'
-            "1,000</ix:nonfraction>"
-            '<ix:nonfraction contextref="CurrentYearInstant" '
-            'name="jppfs_cor:CurrentLiabilities" decimals="-3" scale="3" '
-            'sign="negative">500</ix:nonfraction>'
-            "</body></html>",
+            'name="jppfs_cor:Inventories" decimals="-3" scale="3" sign="negative">'
+            "500</ix:nonfraction></body></html>",
             encoding="utf-8",
         )
-        # Pad to pass the 100KB threshold for detailed data
+
+        parsed = parse_xbrl_bs(str(tmp_path))
+        assert parsed["2025-03"]["inventories"] == pytest.approx(-500_000)
+
+    def test_raises_for_unknown_inventory_like_tag(self, tmp_path: Path) -> None:
+        xbrl = tmp_path / "S9998.xhtml"
         xbrl.write_text(
-            xbrl.read_text(encoding="utf-8") + "<!-- " + "x" * 100_000 + " -->",
+            '<html xmlns:ix="http://www.xbrl.org/2008/inlineXBRL">'
+            '<ix:nonnumeric contextref="FilingDateInstant" '
+            'name="jpdei_cor:CurrentFiscalYearEndDateDEI">2025年3月31日</ix:nonnumeric>'
+            '<body><ix:nonfraction contextref="CurrentYearInstant" '
+            'name="jppfs_cor:MysteryInventoriesCA" decimals="-3" scale="3">'
+            "500</ix:nonfraction></body></html>",
             encoding="utf-8",
         )
-        result = parse_xbrl_bs(str(tmp_path))
-        bs = result.get("2025-03", {})
-        assert bs.get("current_assets") == pytest.approx(1_000_000)
-        assert bs.get("current_liabilities") == pytest.approx(-500_000)
+
+        with pytest.raises(InventoriesTagMismatchError, match="MysteryInventoriesCA"):
+            parse_xbrl_bs(str(tmp_path))

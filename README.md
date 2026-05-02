@@ -28,6 +28,18 @@ uv run scrape-edinet-reports-step2 --ticker 7203
 
 step2 は `securities_report_url` 未設定の ticker をスキップする。全銘柄を対象にする場合は `--ticker` を外す。
 
+取得済み XBRL から棚卸資産だけを `financial_items` に反映する:
+
+```bash
+uv run parse-xbrl-bs --ticker 7203
+```
+
+既存の `xbrl_bs` データを上書きして全件再計算する:
+
+```bash
+uv run parse-xbrl-bs --force
+```
+
 stooqの日次価格を取り込む:
 
 ```bash
