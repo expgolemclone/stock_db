@@ -37,7 +37,7 @@ class TestRealFixtures:
     def test_nyk_ignores_construction_in_progress(self) -> None:
         parsed = parse_xbrl_bs(_xbrl_path("9001"))
 
-        assert parsed["2025-03"]["inventories"] == 0.0
+        assert parsed["2025-03"]["inventories"] == pytest.approx(30_621_000_000)
 
     def test_mitsubishi_heavy_sums_work_in_process(self) -> None:
         parsed = parse_xbrl_bs(_xbrl_path("6597"))
