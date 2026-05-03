@@ -1,16 +1,8 @@
 [proxy]
 max_failures = 2
 
-[irbank]
-max_tries = 5
-rate_limit_wait = 30.0
-user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36"
-
 [browser]
 startup_poll_interval = 0.25
-
-[irbank_bs]
-request_interval_seconds = 2.0
 
 [edinet]
 interval_seconds = 1.0

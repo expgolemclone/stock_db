@@ -14,8 +14,8 @@ from stock_db.storage.financials import (
 
 class TestFinancialItems:
     def test_upsert_and_get_dict(self, db_conn: sqlite3.Connection) -> None:
-        upsert_financial_item(db_conn, "1234", "2024", "pl", "revenue", 1000.0, "irbank")
-        upsert_financial_item(db_conn, "1234", "2024", "bs", "total_assets", 5000.0, "irbank")
+        upsert_financial_item(db_conn, "1234", "2024", "pl", "revenue", 1000.0, "test_source")
+        upsert_financial_item(db_conn, "1234", "2024", "bs", "total_assets", 5000.0, "test_source")
         db_conn.commit()
 
         result = get_financial_dict(db_conn, "1234", "2024")
@@ -24,8 +24,8 @@ class TestFinancialItems:
         assert result["bs"]["total_assets"] == 5000.0
 
     def test_get_dict_uses_latest_period(self, db_conn: sqlite3.Connection) -> None:
-        upsert_financial_item(db_conn, "1234", "2023", "pl", "revenue", 900.0, "irbank")
-        upsert_financial_item(db_conn, "1234", "2024", "pl", "revenue", 1000.0, "irbank")
+        upsert_financial_item(db_conn, "1234", "2023", "pl", "revenue", 900.0, "test_source")
+        upsert_financial_item(db_conn, "1234", "2024", "pl", "revenue", 1000.0, "test_source")
         db_conn.commit()
 
         result = get_financial_dict(db_conn, "1234")
@@ -39,8 +39,8 @@ class TestFinancialItems:
 
     def test_bulk_upsert(self, db_conn: sqlite3.Connection) -> None:
         rows = [
-            {"ticker": "1234", "period": "2024", "statement": "pl", "item_name": "revenue", "value": 100.0, "source": "irbank"},
-            {"ticker": "1234", "period": "2024", "statement": "pl", "item_name": "net_income", "value": 10.0, "source": "irbank"},
+            {"ticker": "1234", "period": "2024", "statement": "pl", "item_name": "revenue", "value": 100.0, "source": "test_source"},
+            {"ticker": "1234", "period": "2024", "statement": "pl", "item_name": "net_income", "value": 10.0, "source": "test_source"},
         ]
         upsert_financial_items_bulk(db_conn, rows)
         db_conn.commit()
@@ -51,7 +51,7 @@ class TestFinancialItems:
 
     def test_get_historical_items(self, db_conn: sqlite3.Connection) -> None:
         for year in range(2020, 2025):
-            upsert_financial_item(db_conn, "1234", str(year), "pl", "revenue", float(year), "irbank")
+            upsert_financial_item(db_conn, "1234", str(year), "pl", "revenue", float(year), "test_source")
         db_conn.commit()
 
         result = get_historical_items(db_conn, "1234", "pl", n_periods=3)
@@ -61,8 +61,8 @@ class TestFinancialItems:
         assert result[0][1]["revenue"] == 2024.0
 
     def test_get_cached_periods(self, db_conn: sqlite3.Connection) -> None:
-        upsert_financial_item(db_conn, "1234", "2023", "pl", "revenue", 1.0, "irbank")
-        upsert_financial_item(db_conn, "1234", "2024", "pl", "revenue", 2.0, "irbank")
+        upsert_financial_item(db_conn, "1234", "2023", "pl", "revenue", 1.0, "test_source")
+        upsert_financial_item(db_conn, "1234", "2024", "pl", "revenue", 2.0, "test_source")
         db_conn.commit()
 
         result = get_cached_periods(db_conn, "1234", "pl")
@@ -75,7 +75,7 @@ class TestFinancialItems:
         assert result == []
 
     def test_get_dict_includes_new_statement_type(self, db_conn: sqlite3.Connection) -> None:
-        upsert_financial_item(db_conn, "1234", "2024", "custom_stmt", "metric", 42.0, "irbank")
+        upsert_financial_item(db_conn, "1234", "2024", "custom_stmt", "metric", 42.0, "test_source")
         db_conn.commit()
 
         result = get_financial_dict(db_conn, "1234", "2024")
@@ -83,15 +83,15 @@ class TestFinancialItems:
         assert result["custom_stmt"]["metric"] == 42.0
 
     def test_purge_financial_items_for_source(self, db_conn: sqlite3.Connection) -> None:
-        upsert_financial_item(db_conn, "1234", "2024", "bs", "x", 1.0, "irbank_bs")
-        upsert_financial_item(db_conn, "1234", "2024", "pl", "y", 2.0, "irbank")
+        upsert_financial_item(db_conn, "1234", "2024", "bs", "x", 1.0, "test_source_alt")
+        upsert_financial_item(db_conn, "1234", "2024", "pl", "y", 2.0, "test_source")
         db_conn.commit()
 
-        deleted = purge_financial_items_for_source(db_conn, "irbank_bs")
+        deleted = purge_financial_items_for_source(db_conn, "test_source_alt")
         db_conn.commit()
 
         assert deleted == 1
         rows = db_conn.execute(
             "SELECT statement, item_name, source FROM financial_items ORDER BY statement, item_name"
         ).fetchall()
-        assert [tuple(row) for row in rows] == [("pl", "y", "irbank")]
+        assert [tuple(row) for row in rows] == [("pl", "y", "test_source")]

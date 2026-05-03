@@ -3,7 +3,7 @@
 ## Overview
 
 stock_db は日本株の財務データを収集・保存するツールキット。
-IR BANK からのスクレイピングと JSON ダウンロード、EDINET API からの有価証券報告書取得の3経路でデータを取得し、SQLite に集約する。
+EDINET API からの有価証券報告書取得、Stooq / Yahoo Finance JP からの株価取得の3経路でデータを取得し、SQLite に集約する。
 
 ## Directory Structure
 
@@ -29,7 +29,6 @@ stock_db/
     browser_client/
       client.py            # BrowserServiceClient（ブラウザサービスの Python クライアント）
     cli/
-      scrape_irbank_bs.py  # IR BANK B/S スクレイピング CLI
       scrape_edinet_reports.py # EDINET 有報取得 CLI（browser service直列利用, invalid XBRL再取得）
       scrape_edinet_reports_step1.py # EDINET step1（書類一覧取得）のみ
       scrape_edinet_reports_step2.py # EDINET step2（XBRL取得）のみ
@@ -37,8 +36,6 @@ stock_db/
       scrape_edinet_watchdog.py # メモリ監視付き watchdog ラッパー
       scrape_stooq_prices.py # Stooq 日次価格取り込み CLI
       scrape_yahoo_finance_prices.py # Yahoo Finance JP 価格スクレイプ CLI
-      fetch_irbank_files.py # IR BANK JSON ダウンロード CLI
-      purge_irbank_bs.py   # IR BANK B/S データ削除 CLI
       generate_validation_site_list.py
     sources/edinet/
       api_client.py        # EDINET API v2 クライアント（書類一覧・XBRL取得URL生成）
@@ -52,10 +49,6 @@ stock_db/
     sources/yahoo_finance_jp/
       parser.py            # Yahoo Finance JP HTML パーサー（前日終値・出来高抽出）
       scraper.py           # 接尾辞自動検出・価格スクレイプ・DB保存
-    sources/irbank/
-      bs_parser.py         # B/S ページ HTML パーサー
-      bs_scraper.py        # B/S ページスクレイパー（取得 → パース → 保存）
-      downloader.py        # IR BANK JSON ファイルダウンローダー
     storage/
       connection.py        # SQLite 接続（WAL, FK有効）
       schema.py            # テーブル定義・マイグレーション
@@ -69,14 +62,11 @@ stock_db/
     db/stocks.db           # SQLite データベース（GitHub Actions Artifactsで永続化）
     raw/edinet/
       xbrl/{ticker}/*.xhtml        # ダウンロード済み XBRL
-    raw/irbank/            # ダウンロード済み JSON ファイル
 ```
 
 ## Data Flow
 
 ```
-IR BANK /bs ページ ──スクレイピング──→ bs_parser ──→ financial_items
-IR BANK JSON API ──ダウンロード──→ downloader ──→ financial_items
 EDINET API v2 ──XBRL取得/検証──→ var/raw/edinet/xbrl/
 var/raw/edinet/xbrl/ ──parse-xbrl-bs──→ financial_items (source=xbrl_bs, inventoriesのみ)
 Stooq 日次CSV ──ダウンロード──→ parser ──→ prices
@@ -100,14 +90,6 @@ Windows 対応済み（PTY の代わりに PIPE を使用）。
 ### BrowserServiceClient (Python)
 
 `subprocess.Popen` で Node.js サーバーを起動し、stdout を監視してポート番号を検出。`requests` で API を呼び出す。コンテキストマネージャー対応。
-
-### IR BANK Sources
-
-| コンポーネント | 役割 |
-|---|---|
-| `bs_scraper` | B/S ページの取得・リトライ・DB保存のオーケストレーション |
-| `bs_parser` | HTML からの財務データ抽出（概要表・詳細表の2形式対応） |
-| `downloader` | IR BANK の JSON ファイル一括ダウンロード |
 
 ### Storage Layer
 

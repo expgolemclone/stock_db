@@ -16,9 +16,6 @@ class TestShouldExclude:
     def test_excludes_tracking_keyword(self) -> None:
         assert should_exclude("tracking.example.com") is True
 
-    def test_excludes_irbank(self) -> None:
-        assert should_exclude("irbank.net") is True
-
     def test_excludes_cloudflare(self) -> None:
         assert should_exclude("cloudflare.com") is True
 

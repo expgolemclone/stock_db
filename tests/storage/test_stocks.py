@@ -61,11 +61,11 @@ class TestGetAllTickers:
 
 class TestGetExistingTickers:
     def test_returns_tickers_with_source(self, db_conn: sqlite3.Connection) -> None:
-        upsert_financial_item(db_conn, "1234", "2024", "pl", "revenue", 100.0, "irbank")
+        upsert_financial_item(db_conn, "1234", "2024", "pl", "revenue", 100.0, "test_source")
         upsert_financial_item(db_conn, "5678", "2024", "pl", "revenue", 200.0, "other")
         db_conn.commit()
 
-        result = get_existing_tickers(db_conn, "irbank")
+        result = get_existing_tickers(db_conn, "test_source")
 
         assert result == {"1234"}
 

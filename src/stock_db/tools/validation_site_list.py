@@ -35,7 +35,6 @@ _EXCLUDE_PATTERNS: list[re.Pattern[str]] = [
         r"githubusercontent\.",
         r"yahoo",
         r"yimg\.",
-        r"irbank\.",
         r"edinet",
         r"cloudfront\.net$",
         r"akamai",

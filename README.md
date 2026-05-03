@@ -6,7 +6,6 @@
 
 | ソース | 取得内容 | 取得方式 |
 |---|---|---|
-| **IR BANK** | 貸借対照表 (B/S)・財務データ | スクレイピング / JSON ダウンロード |
 | **EDINET** | 有価証券報告書 (XBRL) | EDINET API v2 |
 | **Stooq** | 日次株価 (JP 全銘柄) | CSV ダウンロード (CAPTCHA 対応) |
 | **Yahoo Finance JP** | 非東証銘柄の前日終値 | スクレイピング |
@@ -22,19 +21,6 @@ npm ci --prefix services/browser
 ```
 
 ## CLI コマンド
-
-### IR BANK
-
-```bash
-# B/S ページのスクレイピング
-uv run scrape-irbank-bs
-
-# JSON ファイルのダウンロード
-uv run fetch-irbank-files
-
-# B/S データの削除
-uv run purge-irbank-bs
-```
 
 ### EDINET
 
@@ -93,6 +79,6 @@ SQLite (`var/db/stocks.db`)。WAL モード・外部キー制約有効。
 | テーブル | 内容 |
 |---|---|
 | `stocks` | 銘柄マスタ |
-| `financial_items` | 財務データ (IR BANK / EDINET) |
+| `financial_items` | 財務データ (EDINET XBRL) |
 | `prices` | 日次株価 (Stooq / Yahoo Finance) |
 | `sec_reports` | 有価証券報告書メタデータ |

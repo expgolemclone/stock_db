@@ -138,7 +138,7 @@ class TestInitDb:
                 1000,
                 '2024-01-01T00:00:00+00:00',
                 'https://example.test/report.pdf',
-                '["https://irbank.net/1234/ir"]',
+                '["https://example.test/1234/ir"]',
                 '2024-01-02T00:00:00+00:00'
             );
             """

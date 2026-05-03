@@ -9,13 +9,6 @@ class TestMagicNumbers:
 
         assert cfg["proxy"]["max_failures"] == 2
 
-    def test_loads_irbank_section(self) -> None:
-        cfg = magic_numbers()
-
-        assert cfg["irbank"]["max_tries"] == 5
-        assert cfg["irbank"]["rate_limit_wait"] == 30.0
-        assert "user_agent" in cfg["irbank"]
-
     def test_loads_browser_section(self) -> None:
         cfg = magic_numbers()
 
@@ -23,28 +16,11 @@ class TestMagicNumbers:
 
 
 class TestCliDefaults:
-    def test_fetch_irbank_files_defaults(self) -> None:
-        defaults = cli_defaults("fetch_irbank_files")
-
-        assert defaults["years"] == 5
-        assert defaults["interval_seconds"] == 1.0
-        assert defaults["proxy"] == "direct"
-        assert defaults["output_dir"] == "var/raw/irbank"
-
     def test_generate_validation_site_list_defaults(self) -> None:
         defaults = cli_defaults("generate_validation_site_list")
 
         assert defaults["count"] == 5000
         assert defaults["output"] == "var/generated/validation_sites.txt"
-
-    def test_scrape_irbank_bs_defaults(self) -> None:
-        defaults = cli_defaults("scrape_irbank_bs")
-
-        assert defaults["proxy"] == "direct"
-        assert defaults["skip_existing"] is True
-        assert defaults["pool_size"] == 1
-        assert defaults["headless"] is False
-        assert defaults["disable_xvfb"] is True
 
     def test_scrape_stooq_prices_defaults(self) -> None:
         defaults = cli_defaults("scrape_stooq_prices")
