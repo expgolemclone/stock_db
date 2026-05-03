@@ -24,9 +24,6 @@ services/**/node_modules/
 
 !var/
 !var/.gitkeep
-!var/db/
-var/db/*
-!var/db/stocks.db
 var/db/*.db-wal
 var/db/*.db-shm
 !var/reference/
