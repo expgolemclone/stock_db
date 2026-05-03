@@ -31,7 +31,7 @@ stock_db/
       scrape_irbank_bs.py  # IR BANK B/S スクレイピング CLI
       scrape_edinet_reports.py # EDINET 有報取得 CLI（browser service直列利用, invalid XBRL再取得）
       scrape_edinet_reports_step1.py # EDINET step1（書類一覧取得）のみ
-      scrape_edinet_reports_step2.py # EDINET step2（PDF/XBRL取得）のみ
+      scrape_edinet_reports_step2.py # EDINET step2（XBRL取得）のみ
       parse_xbrl_bs.py     # EDINET XBRL から inventories のみを保存
       scrape_edinet_watchdog.py # メモリ監視付き watchdog ラッパー
       scrape_stooq_prices.py # Stooq 日次価格取り込み CLI
@@ -40,9 +40,8 @@ stock_db/
       purge_irbank_bs.py   # IR BANK B/S データ削除 CLI
       generate_validation_site_list.py
     sources/edinet/
-      api_client.py        # EDINET API v2 クライアント（書類一覧・PDF取得）
+      api_client.py        # EDINET API v2 クライアント（書類一覧・XBRL取得URL生成）
       search_scraper.py    # EDINET 検索フォーム経由で docID 発見（スレッドセーフ）
-      pdf_extractor.py     # PDF → Markdown テキスト抽出
       xbrl_bs_parser.py    # EDINET iXBRL から inventories を抽出
     sources/stooq/
       downloader.py        # Stooq 日次ファイルダウンロード（CAPTCHA 対応）
@@ -68,8 +67,6 @@ stock_db/
   var/
     db/stocks.db           # SQLite データベース（GitHub Actions Artifactsで永続化）
     raw/edinet/
-      markdown/{ticker}/latest.md  # 抽出済み Markdown
-      pdf/{ticker}/*.pdf           # ダウンロード済み PDF
       xbrl/{ticker}/*.xhtml        # ダウンロード済み XBRL
     raw/irbank/            # ダウンロード済み JSON ファイル
 ```
@@ -79,7 +76,6 @@ stock_db/
 ```
 IR BANK /bs ページ ──スクレイピング──→ bs_parser ──→ financial_items
 IR BANK JSON API ──ダウンロード──→ downloader ──→ financial_items
-EDINET API v2 ──PDF取得──→ pdf_extractor ──→ sec_reports + var/raw/edinet/markdown/
 EDINET API v2 ──XBRL取得/検証──→ var/raw/edinet/xbrl/
 var/raw/edinet/xbrl/ ──parse-xbrl-bs──→ financial_items (source=xbrl_bs, inventoriesのみ)
 Stooq 日次CSV ──ダウンロード──→ parser ──→ prices
@@ -121,8 +117,7 @@ SQLite を使用。WAL モード・外部キー制約有効。
 
 | コンポーネント | 役割 |
 |---|---|
-| `api_client` | EDINET API v2 で書類一覧取得・PDFダウンロード。XBRL は文書ビューアの GeneXus AJAX PostBack で ix facts を含む本文セクションだけを反復取得し、header-only HTML は reject |
-| `pdf_extractor` | pypdf で PDF からテキスト抽出し Markdown に変換 |
+| `api_client` | EDINET API v2 で書類一覧取得・XBRL取得URL生成。XBRL は文書ビューアの GeneXus AJAX PostBack で ix facts を含む本文セクションだけを反復取得し、header-only HTML は reject |
 | `search_scraper` | EDINET 検索フォーム経由で有報 docID を発見（スレッドセーフ）。HTML entity デコード・企業名フォールバック付き |
 | `xbrl_bs_parser` | EDINET iXBRL の exact consolidated instant facts から棚卸資産を抽出。direct total を優先し、必要時のみ component を合算 |
 

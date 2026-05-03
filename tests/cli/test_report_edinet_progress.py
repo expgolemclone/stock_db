@@ -33,20 +33,14 @@ def _build_db(db_path: Path) -> None:
         ticker="3333",
         fiscal_year="latest",
         doc_id="S100NOXBRL",
-        file_path="var/raw/edinet/markdown/3333/latest.md",
         xbrl_path=None,
-        page_count=10,
-        char_count=1000,
     )
     upsert_sec_report(
         conn,
         ticker="4444",
         fiscal_year="latest",
         doc_id="S100DONE",
-        file_path="var/raw/edinet/markdown/4444/latest.md",
-        xbrl_path="var/raw/edinet/markdown/xbrl/4444/S100DONE.xhtml",
-        page_count=10,
-        char_count=1000,
+        xbrl_path="var/raw/edinet/xbrl/4444/S100DONE.xhtml",
     )
     conn.commit()
     conn.close()

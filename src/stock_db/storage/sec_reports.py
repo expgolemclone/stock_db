@@ -13,10 +13,7 @@ from stock_db.storage.stocks import upsert_company_metadata
 class _RawEdinetReport:
     ticker: str
     doc_id: str
-    file_path: str = ""
     xbrl_path: str | None = None
-    page_count: int | None = None
-    char_count: int | None = None
     artifact_mtime_ns: int = 0
 
 
@@ -26,31 +23,25 @@ def upsert_sec_report(
     ticker: str,
     fiscal_year: str,
     doc_id: str,
-    file_path: str,
     xbrl_path: str | None = None,
-    page_count: int | None = None,
-    char_count: int | None = None,
     doc_type: str = "annual_report",
     source: str = "edinet",
 ) -> None:
     conn.execute(
         """
         INSERT INTO sec_reports
-            (ticker, fiscal_year, doc_id, doc_type, file_path, xbrl_path,
-             page_count, char_count, source, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (ticker, fiscal_year, doc_id, doc_type, xbrl_path,
+             source, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(ticker, doc_id) DO UPDATE SET
             fiscal_year = excluded.fiscal_year,
             doc_type    = excluded.doc_type,
-            file_path   = excluded.file_path,
             xbrl_path   = excluded.xbrl_path,
-            page_count  = excluded.page_count,
-            char_count  = excluded.char_count,
             source      = excluded.source,
             updated_at  = excluded.updated_at
         """,
-        (ticker, fiscal_year, doc_id, doc_type, file_path, xbrl_path,
-         page_count, char_count, source, utc_now_iso()),
+        (ticker, fiscal_year, doc_id, doc_type, xbrl_path,
+         source, utc_now_iso()),
     )
 
 
@@ -77,8 +68,8 @@ def get_sec_reports_for_ticker(
 ) -> list[sqlite3.Row]:
     rows = conn.execute(
         """
-        SELECT ticker, fiscal_year, doc_id, doc_type, file_path, xbrl_path,
-               page_count, char_count, source, updated_at
+        SELECT ticker, fiscal_year, doc_id, doc_type, xbrl_path,
+               source, updated_at
         FROM sec_reports
         WHERE ticker = ?
         ORDER BY fiscal_year DESC
@@ -90,18 +81,6 @@ def get_sec_reports_for_ticker(
 
 def _discover_raw_edinet_reports(raw_dir: Path) -> list[_RawEdinetReport]:
     reports: dict[tuple[str, str], _RawEdinetReport] = {}
-    by_ticker: dict[str, list[_RawEdinetReport]] = {}
-
-    for path in sorted((raw_dir / "pdf").glob("*/*.pdf")):
-        ticker = path.parent.name
-        doc_id = path.stem
-        key = (ticker, doc_id)
-        report = reports.get(key)
-        if report is None:
-            report = _RawEdinetReport(ticker=ticker, doc_id=doc_id)
-            reports[key] = report
-            by_ticker.setdefault(ticker, []).append(report)
-        report.artifact_mtime_ns = max(report.artifact_mtime_ns, path.stat().st_mtime_ns)
 
     for path in sorted((raw_dir / "xbrl").glob("*/*.xhtml")):
         ticker = path.parent.name
@@ -111,25 +90,8 @@ def _discover_raw_edinet_reports(raw_dir: Path) -> list[_RawEdinetReport]:
         if report is None:
             report = _RawEdinetReport(ticker=ticker, doc_id=doc_id)
             reports[key] = report
-            by_ticker.setdefault(ticker, []).append(report)
         report.xbrl_path = str(path.resolve())
         report.artifact_mtime_ns = max(report.artifact_mtime_ns, path.stat().st_mtime_ns)
-
-    for ticker_dir in sorted((raw_dir / "markdown").iterdir()):
-        if not ticker_dir.is_dir():
-            continue
-        md_path = ticker_dir / "latest.md"
-        if not md_path.is_file():
-            continue
-        candidates = by_ticker.get(ticker_dir.name)
-        if not candidates:
-            continue
-        target = max(candidates, key=lambda report: (report.artifact_mtime_ns, report.doc_id))
-        markdown = md_path.read_text(encoding="utf-8")
-        target.file_path = str(md_path.resolve())
-        target.page_count = len(markdown.split("\n\n"))
-        target.char_count = len(markdown)
-        target.artifact_mtime_ns = max(target.artifact_mtime_ns, md_path.stat().st_mtime_ns)
 
     return sorted(reports.values(), key=lambda report: (report.ticker, report.doc_id))
 
@@ -143,7 +105,7 @@ def sync_edinet_raw_to_db(
         (row["ticker"], row["doc_id"]): row
         for row in conn.execute(
             """
-            SELECT ticker, doc_id, file_path, xbrl_path, page_count, char_count
+            SELECT ticker, doc_id, xbrl_path
             FROM sec_reports
             """
         ).fetchall()
@@ -169,21 +131,14 @@ def sync_edinet_raw_to_db(
     for report in reports:
         current = existing_reports.get((report.ticker, report.doc_id))
         if current is None or (
-            current["ticker"] != report.ticker
-            or current["file_path"] != report.file_path
-            or current["xbrl_path"] != report.xbrl_path
-            or current["page_count"] != report.page_count
-            or current["char_count"] != report.char_count
+            current["xbrl_path"] != report.xbrl_path
         ):
             upsert_sec_report(
                 conn,
                 ticker=report.ticker,
                 fiscal_year="latest",
                 doc_id=report.doc_id,
-                file_path=report.file_path,
                 xbrl_path=report.xbrl_path,
-                page_count=report.page_count,
-                char_count=report.char_count,
             )
             synced_reports += 1
 

@@ -26,18 +26,6 @@ def _valid_ixbrl_html(*, inventory_value: str = "500") -> str:
     )
 
 
-class _FakePdfResponse:
-    def __init__(self, body: bytes = b"%PDF-1.4 fake") -> None:
-        self._body = body
-
-    def raise_for_status(self) -> None:
-        return None
-
-    def iter_content(self, chunk_size: int) -> list[bytes]:
-        del chunk_size
-        return [self._body]
-
-
 class _EvaluateClient:
     def __init__(
         self,
@@ -153,19 +141,6 @@ class TestScrapeAllEdinetReports:
             "search_annual_reports",
             lambda client, ticker, **kwargs: ("S100STEP12", "E54321"),
         )
-
-        def fake_get(url: str, *, timeout: float, stream: bool) -> _FakePdfResponse:
-            del url, timeout, stream
-            with request_lock:
-                request_times.append(time.monotonic())
-            return _FakePdfResponse()
-
-        monkeypatch.setattr("stock_db.sources.edinet.api_client.requests.get", fake_get)
-        monkeypatch.setattr(
-            scrape_edinet_reports,
-            "extract_markdown",
-            lambda pdf_path: f"markdown for {Path(pdf_path).stem}",
-        )
         monkeypatch.setattr(
             scrape_edinet_reports,
             "_EDINET_RAW_DIR",
@@ -210,18 +185,6 @@ class TestScrapeAllEdinetReports:
             )
         conn.commit()
 
-        def fake_get(url: str, *, timeout: float, stream: bool) -> _FakePdfResponse:
-            del url, timeout, stream
-            with request_lock:
-                request_times.append(time.monotonic())
-            return _FakePdfResponse()
-
-        monkeypatch.setattr("stock_db.sources.edinet.api_client.requests.get", fake_get)
-        monkeypatch.setattr(
-            scrape_edinet_reports,
-            "extract_markdown",
-            lambda pdf_path: f"markdown for {Path(pdf_path).stem}",
-        )
         monkeypatch.setattr(
             scrape_edinet_reports,
             "_EDINET_RAW_DIR",
@@ -241,34 +204,31 @@ class TestScrapeAllEdinetReports:
 
         rows = conn.execute(
             """
-            SELECT ticker, doc_id, file_path, xbrl_path, page_count, char_count
+            SELECT ticker, doc_id, xbrl_path
             FROM sec_reports
             ORDER BY ticker
             """
         ).fetchall()
         assert [row["ticker"] for row in rows] == ["1111", "2222"]
-        assert all(Path(row["file_path"]).is_file() for row in rows)
         assert all(Path(str(row["xbrl_path"])).is_file() for row in rows)
-        assert all(row["page_count"] == 1 for row in rows)
-        assert all(row["char_count"] > 0 for row in rows)
 
         diffs = [
             current - previous
             for previous, current in zip(sorted(request_times), sorted(request_times)[1:])
         ]
-        assert len(request_times) == 4
+        assert len(request_times) == 2
         assert all(diff >= 0.02 for diff in diffs)
         conn.close()
 
-    def test_skip_existing_reuses_saved_markdown_metadata_for_xbrl_only(
+    def test_skip_existing_skips_fully_processed_report(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         db_path = tmp_path / "stocks.db"
         conn = _build_db(db_path)
         raw_dir = tmp_path / "var" / "raw" / "edinet"
-        md_path = raw_dir / "3333" / "latest.md"
-        md_path.parent.mkdir(parents=True, exist_ok=True)
-        md_path.write_text("existing markdown", encoding="utf-8")
+        xbrl_path = raw_dir / "xbrl" / "3333" / "S100CCC3.xhtml"
+        xbrl_path.parent.mkdir(parents=True, exist_ok=True)
+        xbrl_path.write_text(_valid_ixbrl_html(inventory_value="600"), encoding="utf-8")
 
         upsert_stock(conn, "3333", "Name 3333", "Sector", "Prime")
         upsert_company_metadata(
@@ -281,17 +241,10 @@ class TestScrapeAllEdinetReports:
             ticker="3333",
             fiscal_year="latest",
             doc_id="S100CCC3",
-            file_path=str(md_path.resolve()),
-            xbrl_path=None,
-            page_count=7,
-            char_count=77,
+            xbrl_path=str(xbrl_path.resolve()),
         )
         conn.commit()
 
-        def fail_get(*args: object, **kwargs: object) -> _FakePdfResponse:
-            raise AssertionError("PDF should not be downloaded when skip_pdf=True")
-
-        monkeypatch.setattr("stock_db.sources.edinet.api_client.requests.get", fail_get)
         monkeypatch.setattr(scrape_edinet_reports, "_EDINET_RAW_DIR", raw_dir)
 
         ok, errors = scrape_edinet_reports.scrape_all_edinet_reports(
@@ -302,21 +255,18 @@ class TestScrapeAllEdinetReports:
             interval=0.0,
         )
 
-        assert ok == 1
+        assert ok == 0
         assert errors == 0
 
         row = conn.execute(
             """
-            SELECT file_path, xbrl_path, page_count, char_count
+            SELECT xbrl_path
             FROM sec_reports
             WHERE doc_id = 'S100CCC3'
             """
         ).fetchone()
-        assert row["file_path"] == str(md_path.resolve())
         assert row["xbrl_path"] is not None
         assert Path(row["xbrl_path"]).is_file()
-        assert row["page_count"] == 7
-        assert row["char_count"] == 77
         conn.close()
 
     def test_phase2_skips_tickers_without_url(
@@ -336,18 +286,6 @@ class TestScrapeAllEdinetReports:
         )
         conn.commit()
 
-        def fake_get(url: str, *, timeout: float, stream: bool) -> _FakePdfResponse:
-            del url, timeout, stream
-            with request_lock:
-                request_times.append(time.monotonic())
-            return _FakePdfResponse()
-
-        monkeypatch.setattr("stock_db.sources.edinet.api_client.requests.get", fake_get)
-        monkeypatch.setattr(
-            scrape_edinet_reports,
-            "extract_markdown",
-            lambda pdf_path: f"markdown for {Path(pdf_path).stem}",
-        )
         monkeypatch.setattr(
             scrape_edinet_reports,
             "_EDINET_RAW_DIR",
@@ -387,11 +325,8 @@ class TestScrapeAllEdinetReports:
         request_times: list[float] = []
         request_lock = threading.Lock()
         raw_dir = tmp_path / "var" / "raw" / "edinet"
-        md_path = raw_dir / "markdown" / "4444" / "latest.md"
         xbrl_path = raw_dir / "xbrl" / "4444" / "S100BADX.xhtml"
-        md_path.parent.mkdir(parents=True, exist_ok=True)
         xbrl_path.parent.mkdir(parents=True, exist_ok=True)
-        md_path.write_text("existing markdown", encoding="utf-8")
         xbrl_path.write_text("<html><body>header only</body></html>", encoding="utf-8")
 
         upsert_stock(conn, "4444", "Name 4444", "Sector", "Prime")
@@ -405,17 +340,10 @@ class TestScrapeAllEdinetReports:
             ticker="4444",
             fiscal_year="latest",
             doc_id="S100BADX",
-            file_path=str(md_path.resolve()),
             xbrl_path=str(xbrl_path.resolve()),
-            page_count=5,
-            char_count=55,
         )
         conn.commit()
 
-        def fail_get(*args: object, **kwargs: object) -> _FakePdfResponse:
-            raise AssertionError("PDF should not be downloaded when skip_pdf=True")
-
-        monkeypatch.setattr("stock_db.sources.edinet.api_client.requests.get", fail_get)
         monkeypatch.setattr(scrape_edinet_reports, "_EDINET_RAW_DIR", raw_dir)
 
         result = scrape_edinet_reports.scrape_edinet_phase2(
@@ -428,7 +356,7 @@ class TestScrapeAllEdinetReports:
 
         row = conn.execute(
             """
-            SELECT file_path, xbrl_path, page_count, char_count
+            SELECT xbrl_path
             FROM sec_reports
             WHERE ticker = '4444'
             """
@@ -440,9 +368,6 @@ class TestScrapeAllEdinetReports:
             xbrl_failures=0,
             skipped_missing_url=0,
         )
-        assert row["file_path"] == str(md_path.resolve())
-        assert row["page_count"] == 5
-        assert row["char_count"] == 55
         assert row["xbrl_path"] == str(xbrl_path.resolve())
         assert _valid_ixbrl_html(inventory_value="700") in Path(row["xbrl_path"]).read_text(encoding="utf-8")
         conn.close()
@@ -463,18 +388,6 @@ class TestScrapeAllEdinetReports:
         )
         conn.commit()
 
-        def fake_get(url: str, *, timeout: float, stream: bool) -> _FakePdfResponse:
-            del url, timeout, stream
-            with request_lock:
-                request_times.append(time.monotonic())
-            return _FakePdfResponse()
-
-        monkeypatch.setattr("stock_db.sources.edinet.api_client.requests.get", fake_get)
-        monkeypatch.setattr(
-            scrape_edinet_reports,
-            "extract_markdown",
-            lambda pdf_path: f"markdown for {Path(pdf_path).stem}",
-        )
         monkeypatch.setattr(
             scrape_edinet_reports,
             "_EDINET_RAW_DIR",
@@ -530,25 +443,10 @@ class TestScrapeAllEdinetReports:
             ticker="9999",
             fiscal_year="latest",
             doc_id="S100DUP1",
-            file_path=str((tmp_path / "legacy.md").resolve()),
             xbrl_path=str((tmp_path / "legacy.xhtml").resolve()),
-            page_count=3,
-            char_count=30,
         )
         conn.commit()
 
-        def fake_get(url: str, *, timeout: float, stream: bool) -> _FakePdfResponse:
-            del url, timeout, stream
-            with request_lock:
-                request_times.append(time.monotonic())
-            return _FakePdfResponse()
-
-        monkeypatch.setattr("stock_db.sources.edinet.api_client.requests.get", fake_get)
-        monkeypatch.setattr(
-            scrape_edinet_reports,
-            "extract_markdown",
-            lambda pdf_path: f"markdown for {Path(pdf_path).stem}",
-        )
         monkeypatch.setattr(
             scrape_edinet_reports,
             "_EDINET_RAW_DIR",
@@ -568,7 +466,7 @@ class TestScrapeAllEdinetReports:
 
         rows = conn.execute(
             """
-            SELECT ticker, doc_id, file_path, xbrl_path
+            SELECT ticker, doc_id, xbrl_path
             FROM sec_reports
             WHERE doc_id = 'S100DUP1'
             ORDER BY ticker
@@ -578,7 +476,6 @@ class TestScrapeAllEdinetReports:
             ("1111", "S100DUP1"),
             ("9999", "S100DUP1"),
         ]
-        assert Path(rows[0]["file_path"]).is_file()
         assert Path(rows[0]["xbrl_path"]).is_file()
         conn.close()
 

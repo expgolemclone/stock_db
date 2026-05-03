@@ -21,10 +21,7 @@ def _build_db(db_path: Path) -> None:
         ticker="7203",
         fiscal_year="latest",
         doc_id="S100TEST1",
-        file_path="var/raw/edinet/markdown/7203/latest.md",
-        xbrl_path="var/raw/edinet/markdown/xbrl/7203/S100TEST1.xhtml",
-        page_count=100,
-        char_count=2000,
+        xbrl_path="var/raw/edinet/xbrl/7203/S100TEST1.xhtml",
     )
     upsert_financial_item(conn, "7203", "2025-03", "pl", "revenue", 1000.0, "yfinance")
     conn.commit()

@@ -1,4 +1,4 @@
-"""CLI entry point for downloading and extracting EDINET securities reports."""
+"""CLI entry point for downloading EDINET securities report XBRL and scraping search results."""
 
 from __future__ import annotations
 
@@ -18,8 +18,7 @@ import requests
 
 from stock_db.browser_client.client import BrowserServiceClient
 from stock_db.paths import STOCKS_DB_PATH, VAR_DIR, cli_defaults, magic_numbers
-from stock_db.sources.edinet.api_client import build_pdf_url, doc_id_from_url, download_pdf, download_xbrl
-from stock_db.sources.edinet.pdf_extractor import extract_markdown
+from stock_db.sources.edinet.api_client import build_pdf_url, doc_id_from_url, download_xbrl
 from stock_db.sources.edinet.search_scraper import (
     DEFAULT_INTERVAL_SECONDS,
     DocIdExtractionError,
@@ -50,10 +49,7 @@ _CliMode = Literal["all", "step1", "step2"]
 
 @dataclass(frozen=True, slots=True)
 class _ExistingReportArtifacts:
-    file_path: str
     xbrl_path: str | None
-    page_count: int | None
-    char_count: int | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -61,10 +57,7 @@ class _DownloadedReportArtifacts:
     ticker: str
     url: str
     doc_id: str
-    file_path: str
     xbrl_path: str | None
-    page_count: int | None
-    char_count: int | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -118,7 +111,7 @@ def _load_existing_report_artifacts(
     )
     rows = conn.execute(
         f"""
-        SELECT doc_id, file_path, xbrl_path, page_count, char_count
+        SELECT doc_id, xbrl_path
              , ticker
         FROM sec_reports
         WHERE {pairs_sql}
@@ -127,10 +120,7 @@ def _load_existing_report_artifacts(
     ).fetchall()
     return {
         (row["ticker"], row["doc_id"]): _ExistingReportArtifacts(
-            file_path=row["file_path"],
             xbrl_path=row["xbrl_path"],
-            page_count=row["page_count"],
-            char_count=row["char_count"],
         )
         for row in rows
     }
@@ -204,38 +194,17 @@ def _process_one(
     url: str,
     *,
     client: BrowserServiceClient | None = None,
-    skip_pdf: bool = False,
     skip_xbrl: bool = False,
     existing: _ExistingReportArtifacts | None = None,
     keep_existing_xbrl: bool = True,
     before_request: Callable[[], None] | None = None,
 ) -> _DownloadedReportArtifacts:
-    """Download PDF/XBRL and return the artifacts for main-thread persistence."""
+    """Download XBRL and return the artifacts for main-thread persistence."""
     doc_id = doc_id_from_url(url)
     if doc_id is None:
         raise ValueError(f"Cannot extract docID from URL: {url}")
 
-    file_path = existing.file_path if existing is not None else ""
     xbrl_path = existing.xbrl_path if existing is not None and keep_existing_xbrl else None
-    page_count = existing.page_count if existing is not None else None
-    char_count = existing.char_count if existing is not None else None
-
-    if not skip_pdf:
-        pdf_path = download_pdf(
-            url,
-            _EDINET_RAW_DIR / "pdf" / ticker,
-            before_request=before_request,
-        )
-        markdown = extract_markdown(pdf_path)
-
-        md_dir = _EDINET_RAW_DIR / "markdown" / ticker
-        md_dir.mkdir(parents=True, exist_ok=True)
-        md_path = md_dir / "latest.md"
-        md_path.write_text(markdown, encoding="utf-8")
-        file_path = str(md_path.resolve())
-        page_count = len(markdown.split("\n\n"))
-        char_count = len(markdown)
-        logger.info("  %s: saved %s (%d chars)", ticker, file_path, len(markdown))
 
     if not skip_xbrl and client is not None:
         xbrl_dest = download_xbrl(
@@ -253,10 +222,7 @@ def _process_one(
         ticker=ticker,
         url=url,
         doc_id=doc_id,
-        file_path=file_path,
         xbrl_path=xbrl_path,
-        page_count=page_count,
-        char_count=char_count,
     )
 
 
@@ -348,7 +314,7 @@ def scrape_edinet_phase2(
     skip_existing: bool = True,
     interval: float = DEFAULT_INTERVAL_SECONDS,
 ) -> _Phase2Result:
-    """Download PDF/XBRL for tickers that already have securities_report_url."""
+    """Download XBRL for tickers that already have securities_report_url."""
     has_url = _load_securities_report_urls(conn, tickers)
     missing_url_tickers = [ticker for ticker in tickers if ticker not in has_url]
     if missing_url_tickers:
@@ -389,20 +355,14 @@ def scrape_edinet_phase2(
             skipped_missing_url=len(missing_url_tickers),
         )
 
-    pdf_todo = sum(
-        1
-        for ticker, url in url_targets
-        if (ticker, doc_id_from_url(url) or "") not in existing_report_keys
-    )
     xbrl_todo = sum(
         1
         for ticker, url in url_targets
         if (ticker, doc_id_from_url(url) or "") not in xbrl_done_keys
     )
     logger.info(
-        "Phase 2: Processing %d tickers (PDF todo: %d, XBRL todo: %d, workers: %d)",
+        "Phase 2: Processing %d tickers (XBRL todo: %d, workers: %d)",
         len(url_targets),
-        pdf_todo,
         xbrl_todo,
         _WORKERS,
     )
@@ -412,14 +372,12 @@ def scrape_edinet_phase2(
     def _download_worker(ticker: str, url: str) -> _DownloadedReportArtifacts:
         doc_id = doc_id_from_url(url)
         report_key = (ticker, doc_id or "")
-        skip_pdf = report_key in existing_report_keys
         skip_xbrl = report_key in xbrl_done_keys
-        logger.info("[Phase2] Processing %s (skip_pdf=%s, skip_xbrl=%s)", ticker, skip_pdf, skip_xbrl)
+        logger.info("[Phase2] Processing %s (skip_xbrl=%s)", ticker, skip_xbrl)
         return _process_one(
             ticker,
             url,
             client=client,
-            skip_pdf=skip_pdf,
             skip_xbrl=skip_xbrl,
             keep_existing_xbrl=skip_xbrl,
             existing=existing_artifacts.get((ticker, doc_id)) if doc_id is not None else None,
@@ -447,10 +405,7 @@ def scrape_edinet_phase2(
                 ticker=result.ticker,
                 fiscal_year="latest",
                 doc_id=result.doc_id,
-                file_path=result.file_path,
                 xbrl_path=result.xbrl_path,
-                page_count=result.page_count,
-                char_count=result.char_count,
             )
             upsert_company_metadata(conn, result.ticker, securities_report_url=result.url)
             conn.commit()
@@ -485,7 +440,7 @@ def scrape_all_edinet_reports(
     """全銘柄の有報を取得・抽出。
 
     1. URLなし銘柄: browser serviceでEDINET検索→docID発見
-    2. 全銘柄(URLあり+発見済み): PDF/XBRLダウンロード
+    2. 全銘柄(URLあり+発見済み): XBRLダウンロード
 
     Raises EdinetBlockError if EDINET blocks the search.
 
@@ -516,7 +471,7 @@ def build_parser(mode: _CliMode) -> argparse.ArgumentParser:
     descriptions = {
         _CLI_MODE_ALL: "Download and extract EDINET securities reports for all listed companies",
         _CLI_MODE_STEP1: "Discover EDINET securities report URLs for tickers without securities_report_url",
-        _CLI_MODE_STEP2: "Download EDINET PDF/XBRL artifacts for tickers with securities_report_url",
+        _CLI_MODE_STEP2: "Download EDINET XBRL artifacts for tickers with securities_report_url",
     }
     defaults = cli_defaults("scrape_edinet_reports")
     parser = argparse.ArgumentParser(description=descriptions[mode])

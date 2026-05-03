@@ -74,8 +74,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         ).fetchall()
         sec_report_rows = conn.execute(
             """
-            SELECT ticker, fiscal_year, doc_id, doc_type, file_path, xbrl_path,
-                   page_count, char_count, source, updated_at
+            SELECT ticker, fiscal_year, doc_id, doc_type, xbrl_path,
+                   source, updated_at
             FROM sec_reports
             WHERE ticker = ?
             ORDER BY updated_at DESC, fiscal_year DESC

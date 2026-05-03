@@ -1,4 +1,4 @@
-"""Download EDINET securities report PDFs, XBRL, and scrape search results."""
+"""Download EDINET securities report XBRL and scrape search results."""
 
 from __future__ import annotations
 
@@ -20,7 +20,6 @@ logger = logging.getLogger("stock_db.sources.edinet.api_client")
 _PDF_URL_RE = re.compile(r"/searchdocument/pdf/([A-Za-z0-9]+)\.pdf")
 _SEARCH_BASE = "https://disclosure2.edinet-fsa.go.jp/EKW01Z01/wk110000"
 _XBRL_BASE_URL = "https://disclosure2.edinet-fsa.go.jp/WZEK0040.aspx"
-_DEFAULT_PDF_TIMEOUT = 120
 _DEFAULT_XBRL_TIMEOUT_MS = 300_000
 
 _EXTRACT_HONBUN_JS = """
@@ -110,31 +109,6 @@ def doc_id_from_url(url: str) -> str | None:
     """Extract EDINET docID from a PDF URL."""
     m = _PDF_URL_RE.search(url)
     return m.group(1) if m else None
-
-
-def download_pdf(
-    url: str,
-    dest_dir: Path,
-    *,
-    timeout: float = _DEFAULT_PDF_TIMEOUT,
-    before_request: Callable[[], None] | None = None,
-) -> Path:
-    """Download a PDF directly via requests. Returns the saved file path."""
-    doc_id = doc_id_from_url(url)
-    if doc_id is None:
-        raise ValueError(f"Cannot extract docID from URL: {url}")
-
-    dest_dir.mkdir(parents=True, exist_ok=True)
-    dest = dest_dir / f"{doc_id}.pdf"
-    if before_request is not None:
-        before_request()
-    resp = requests.get(url, timeout=timeout, stream=True)
-    resp.raise_for_status()
-    with open(dest, "wb") as f:
-        for chunk in resp.iter_content(8192):
-            f.write(chunk)
-    logger.info("Downloaded %s -> %s (%d bytes)", url, dest, dest.stat().st_size)
-    return dest
 
 
 def build_pdf_url(doc_id: str) -> str:

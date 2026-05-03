@@ -50,10 +50,7 @@ CREATE TABLE IF NOT EXISTS sec_reports (
     fiscal_year  TEXT    NOT NULL,
     doc_id       TEXT    NOT NULL,
     doc_type     TEXT    NOT NULL DEFAULT 'annual_report',
-    file_path    TEXT    NOT NULL,
     xbrl_path    TEXT,
-    page_count   INTEGER,
-    char_count   INTEGER,
     source       TEXT    NOT NULL DEFAULT 'edinet',
     updated_at   TEXT    NOT NULL,
     PRIMARY KEY (ticker, doc_id)
@@ -133,6 +130,34 @@ def _rebuild_prices_without_legacy_shares(conn: sqlite3.Connection) -> None:
 
         DROP TABLE prices;
         ALTER TABLE prices__new RENAME TO prices;
+        """
+    )
+    conn.commit()
+
+
+def _rebuild_sec_reports_without_markdown_columns(conn: sqlite3.Connection) -> None:
+    conn.executescript(
+        """
+        CREATE TABLE sec_reports__new (
+            ticker       TEXT    NOT NULL,
+            fiscal_year  TEXT    NOT NULL,
+            doc_id       TEXT    NOT NULL,
+            doc_type     TEXT    NOT NULL DEFAULT 'annual_report',
+            xbrl_path    TEXT,
+            source       TEXT    NOT NULL DEFAULT 'edinet',
+            updated_at   TEXT    NOT NULL,
+            PRIMARY KEY (ticker, doc_id)
+        );
+
+        INSERT INTO sec_reports__new (
+            ticker, fiscal_year, doc_id, doc_type, xbrl_path, source, updated_at
+        )
+        SELECT
+            ticker, fiscal_year, doc_id, doc_type, xbrl_path, source, updated_at
+        FROM sec_reports;
+
+        DROP TABLE sec_reports;
+        ALTER TABLE sec_reports__new RENAME TO sec_reports;
         """
     )
     conn.commit()
@@ -231,6 +256,8 @@ def _migrate(conn: sqlite3.Connection) -> None:
         sr_pk = {row[1]: row[5] for row in _table_info(conn, "sec_reports")}
         if sr_pk.get("doc_id") == 1 and sr_pk.get("ticker", 0) == 0:
             _rebuild_sec_reports_with_composite_pk(conn)
+    if sr_cols and "file_path" in sr_cols:
+        _rebuild_sec_reports_without_markdown_columns(conn)
 
 
 def init_db(conn: sqlite3.Connection) -> None:
