@@ -13,6 +13,7 @@ stock_db/
   ARCHITECTURE.md
   CLAUDE.md
   README.md
+  pyproject.toml
   .github/
     workflows/
       update-stooq-prices.yml # 毎日16:00 JST の Stooq 価格更新 workflow

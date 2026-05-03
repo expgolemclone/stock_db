@@ -1,61 +1,98 @@
-## rules
+# stock_db
 
-1. scrapingはbrowser serviceを使うこと. 並列数は1, 各リクエスト間に適切なディレイを入れること.
-2. fall backは問題が発覚しづらくなるから禁止.
-   どうしても実装すべきだと思う場合はuserの許可を取ること.
+日本株の財務データ・株価データを自動収集し、SQLite に集約するツールキット。
 
-## commands
+## データソース
 
-EDINET報告書scrapeを単一銘柄で実行する:
+| ソース | 取得内容 | 取得方式 |
+|---|---|---|
+| **IR BANK** | 貸借対照表 (B/S)・財務データ | スクレイピング / JSON ダウンロード |
+| **EDINET** | 有価証券報告書 (XBRL) | EDINET API v2 |
+| **Stooq** | 日次株価 (JP 全銘柄) | CSV ダウンロード (CAPTCHA 対応) |
+| **Yahoo Finance JP** | 非東証銘柄の前日終値 | スクレイピング |
+
+## セットアップ
 
 ```bash
-uv run scrape-edinet-reports --ticker 7203
+# Python 依存関係のインストール
+uv sync --frozen
+
+# ブラウザサービスの依存関係（スクレイピングに使用）
+npm ci --prefix services/browser
 ```
 
-全銘柄を対象にする場合は `--ticker` を外す。
+## CLI コマンド
 
-EDINET報告書 scrape の step1 のみを単一銘柄で実行する:
+### IR BANK
 
 ```bash
-uv run scrape-edinet-reports-step1 --ticker 7203
+# B/S ページのスクレイピング
+uv run scrape-irbank-bs
+
+# JSON ファイルのダウンロード
+uv run fetch-irbank-files
+
+# B/S データの削除
+uv run purge-irbank-bs
 ```
 
-EDINET報告書 scrape の step2 のみを単一銘柄で実行する:
+### EDINET
 
 ```bash
-uv run scrape-edinet-reports-step2 --ticker 7203
+# 有報取得 (step1: 書類一覧取得 → step2: XBRL 取得)
+uv run scrape-edinet-reports
+
+# step1 / step2 のみ個別実行
+uv run scrape-edinet-reports-step1
+uv run scrape-edinet-reports-step2
+
+# XBRL から棚卸資産を抽出
+uv run parse-xbrl-bs
+
+# 進捗レポート
+uv run report-edinet-progress
 ```
 
-step2 は `securities_report_url` 未設定の ticker をスキップする。全銘柄を対象にする場合は `--ticker` を外す。
-
-取得済み XBRL から棚卸資産だけを `financial_items` に反映する:
+### 株価
 
 ```bash
-uv run parse-xbrl-bs --ticker 7203
-```
-
-既存の `xbrl_bs` データを上書きして全件再計算する:
-
-```bash
-uv run parse-xbrl-bs --force
-```
-
-stooqの日次価格を取り込む:
-
-```bash
+# Stooq 日次株価の取り込み
 uv run scrape-stooq-prices
+
+# Yahoo Finance JP 株価スクレイプ
+uv run scrape-yahoo-finance-prices
 ```
 
-GitHub Actions / CI 相当の headless 実行:
+### その他
 
 ```bash
-uv run scrape-stooq-prices --headless
+# DB 内容の確認
+uv run inspect-stock-db
+
+# バリデーション用サイトリスト生成
+uv run generate-validation-site-list
 ```
 
-Yahoo Finance JPから非東証銘柄の価格をスクレイプする:
+## 自動実行
 
-```bash
-uv run scrape-yahoo-finance-prices --ticker 3442
-```
+GitHub Actions が毎日 16:00 JST に Stooq 日次株価の更新を実行する。
 
-全銘柄を対象にする場合は `--ticker` を外す。接尾辞（.T/.N/.S/.F）は自動検出されDBに記録される。
+- `stocks.db` は Artifacts (`stocks-db`) で永続化
+- CAPTCHA OCR 用に DejaVu / FreeSans / Liberation Sans フォントをインストール
+- 手動実行: `gh workflow run update-stooq-prices.yml --repo expgolemclone/stock_db --ref main`
+
+## 設定
+
+- `config/cli_defaults.toml` — CLI のデフォルト引数
+- `config/magic_numbers.toml` — タイムアウト・リトライ回数・インターバル等の定数
+
+## データベース
+
+SQLite (`var/db/stocks.db`)。WAL モード・外部キー制約有効。
+
+| テーブル | 内容 |
+|---|---|
+| `stocks` | 銘柄マスタ |
+| `financial_items` | 財務データ (IR BANK / EDINET) |
+| `prices` | 日次株価 (Stooq / Yahoo Finance) |
+| `sec_reports` | 有価証券報告書メタデータ |
