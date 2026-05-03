@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import logging
 import re
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 class InventoriesTagMismatchError(RuntimeError):
@@ -251,6 +254,7 @@ def is_valid_xbrl_path(path: str | Path | None) -> bool:
     try:
         return is_valid_xbrl_text(xbrl_path.read_text(encoding="utf-8"))
     except OSError:
+        logger.warning("Failed to read XBRL file %s", xbrl_path)
         return False
 
 

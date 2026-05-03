@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: stooq-price-update-${{ github.ref_name }}
@@ -19,8 +19,6 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          lfs: true
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -34,9 +32,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "24"
-
-      - name: Install Git LFS
-        run: git lfs install
 
       - name: Sync Python dependencies
         run: uv sync --frozen
@@ -52,20 +47,18 @@ jobs:
             fonts-freefont-ttf \
             fonts-liberation
 
+      - name: Download stocks.db artifact
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: stocks-db
+          path: var/db
+
       - name: Update Stooq prices
         run: uv run scrape-stooq-prices --headless
 
-      - name: Checkpoint SQLite WAL
-        run: sqlite3 var/db/stocks.db "PRAGMA wal_checkpoint(TRUNCATE);"
-
-      - name: Commit updated database
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add var/db/stocks.db
-          if git diff --cached --quiet -- var/db/stocks.db; then
-            echo "No database changes to commit"
-            exit 0
-          fi
-          git commit -m "chore: update stooq prices"
-          git push origin HEAD:${GITHUB_REF_NAME}
+      - name: Upload stocks.db artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: stocks-db
+          path: var/db/stocks.db

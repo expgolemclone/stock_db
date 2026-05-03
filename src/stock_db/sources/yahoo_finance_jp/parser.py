@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import dataclass
 from datetime import date
 from typing import NamedTuple
 
 from bs4 import BeautifulSoup
+
+logger = logging.getLogger(__name__)
 
 
 class _FieldResult(NamedTuple):
@@ -75,6 +78,7 @@ def _parse_volume(raw: str) -> int | None:
     try:
         return int(cleaned)
     except ValueError:
+        logger.debug("Failed to parse volume: %r", raw)
         return None
 
 
