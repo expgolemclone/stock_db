@@ -21,8 +21,8 @@ class TestRealFixtures:
     def test_yoshicon_sums_real_estate_components(self) -> None:
         parsed = parse_xbrl_bs(_xbrl_path("5280"))
 
-        assert parsed["2025-03"]["inventories"] == pytest.approx(32_974_467_000)
-        assert parsed["2024-03"]["inventories"] == pytest.approx(28_448_283_000)
+        assert parsed["2025-03"]["inventories"] == pytest.approx(32_983_204_000)
+        assert parsed["2024-03"]["inventories"] == pytest.approx(28_505_747_000)
 
     def test_kudan_prefers_direct_total(self) -> None:
         parsed = parse_xbrl_bs(_xbrl_path("4425"))
@@ -47,7 +47,12 @@ class TestRealFixtures:
     def test_obayashi_picks_cns_raw_materials(self) -> None:
         parsed = parse_xbrl_bs(_xbrl_path("1934"))
 
-        assert parsed["2025-03"]["inventories"] == pytest.approx(2_356_000_000)
+        assert parsed["2025-03"]["inventories"] == pytest.approx(3_422_000_000)
+
+    def test_8881_sums_real_estate_business_costs(self) -> None:
+        parsed = parse_xbrl_bs(_xbrl_path("8881"))
+
+        assert parsed["2025-03"]["inventories"] == pytest.approx(42_683_591_000)
 
     def test_valid_consolidated_xbrl_without_inventory_tags_returns_zero(self) -> None:
         parsed = parse_xbrl_bs(_xbrl_path("1802"))

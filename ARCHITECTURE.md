@@ -102,7 +102,7 @@ SQLite を使用。WAL モード・外部キー制約有効。
 |---|---|
 | `api_client` | EDINET API v2 で書類一覧取得・XBRL取得URL生成。XBRL は文書ビューアの GeneXus AJAX PostBack で ix facts を含む本文セクションだけを反復取得し、header-only HTML は reject |
 | `search_scraper` | EDINET 検索フォーム経由で有報 docID を発見（スレッドセーフ）。HTML entity デコード・企業名フォールバック付き |
-| `xbrl_bs_parser` | EDINET iXBRL の exact consolidated instant facts から棚卸資産を抽出。direct total を優先し、必要時のみ component を合算 |
+| `xbrl_bs_parser` | EDINET iXBRL の exact consolidated instant facts から棚卸資産を抽出。direct total を優先し、必要時のみ component を合算。建設業の未成工事支出金（`CostsOnUncompletedConstructionContractsCNS` 等）・不動産業の販売用不動産原価（`CostsOnRealEstateBusiness`）も含む |
 
 `scrape_edinet_reports` の Phase 2 は `sec_reports.xbrl_path` があるだけでは完了扱いせず、保存済み `.xhtml` が parseable かを再判定する。header-only / invalid XBRL は再取得対象に戻す。
 

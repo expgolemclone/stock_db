@@ -92,6 +92,10 @@ _INVENTORY_COMPONENT_TAGS: frozenset[str] = frozenset({
     "WorkInProcessCAAssets",
     "WorkInProcessContentsAssetsCA",
     "WorkInProcessConstructionCA",
+    # Japan GAAP - 不動産・建設業
+    "CostsOnRealEstateBusiness",
+    "CostsOnUncompletedConstructionContractsCNS",
+    "CostsOnUncompletedConstructionContractsAndOtherCNS",
     # IFRS
     "ConstructionInProgressCAIFRS",
     "FinishedGoodsCAIFRS",
