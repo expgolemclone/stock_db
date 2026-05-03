@@ -469,12 +469,21 @@ def scrape_all_edinet_reports(
 
 def build_parser(mode: _CliMode) -> argparse.ArgumentParser:
     descriptions = {
-        _CLI_MODE_ALL: "Download and extract EDINET securities reports for all listed companies",
+        _CLI_MODE_ALL: "Download EDINET securities report XBRL for all listed companies",
         _CLI_MODE_STEP1: "Discover EDINET securities report URLs for tickers without securities_report_url",
         _CLI_MODE_STEP2: "Download EDINET XBRL artifacts for tickers with securities_report_url",
     }
+    epilogs = {
+        _CLI_MODE_ALL: (
+            "Runs Phase 1 (URL discovery) and Phase 2 (XBRL download) sequentially.\n"
+            "Run each phase individually with scrape-edinet-reports-step1 / -step2."
+        ),
+    }
     defaults = cli_defaults("scrape_edinet_reports")
-    parser = argparse.ArgumentParser(description=descriptions[mode])
+    parser = argparse.ArgumentParser(
+        description=descriptions[mode],
+        epilog=epilogs.get(mode),
+    )
     parser.add_argument("--ticker", type=str, help="Single ticker to process")
     if mode in {_CLI_MODE_ALL, _CLI_MODE_STEP2}:
         parser.add_argument(
