@@ -104,6 +104,10 @@ SQLite を使用。WAL モード・外部キー制約有効。
 | `search_scraper` | EDINET 検索フォーム経由で有報 docID を発見（スレッドセーフ）。HTML entity デコード・企業名フォールバック付き |
 | `xbrl_bs_parser` | EDINET iXBRL の exact consolidated instant facts から棚卸資産を抽出。direct total を優先し、必要時のみ component を合算。建設業の未成工事支出金（`CostsOnUncompletedConstructionContractsCNS` 等）・不動産業の販売用不動産原価（`CostsOnRealEstateBusiness`）も含む |
 
+`search_scraper` は書類種別ラジオを明示的に「指定する」に切り替えたうえで `有価証券報告書` チェックを付与し、提出者名検索で大量保有報告書などに埋もれて annual report を取り逃がさないようにしている。
+
+`scrape_edinet_reports` の Phase 1 は EDINET 検索で docID が見つからなかった銘柄に対して Yahoo Finance JP の quote title から表示名（例: `キタムラHD` → `株式会社キタムラ・ホールディングス`）と `yf_suffix` を補完し、その正規化名で再検索する。補完した名称・suffix は `stocks` に保存して次回以降の探索に再利用する。
+
 `scrape_edinet_reports` の Phase 2 は `sec_reports.xbrl_path` があるだけでは完了扱いせず、保存済み `.xhtml` が parseable かを再判定する。header-only / invalid XBRL は再取得対象に戻す。
 
 ### Stooq Sources

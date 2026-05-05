@@ -6,6 +6,7 @@ import logging
 import re
 from dataclasses import dataclass
 from datetime import date
+from html import unescape
 from typing import NamedTuple
 
 from bs4 import BeautifulSoup
@@ -21,6 +22,7 @@ class _FieldResult(NamedTuple):
 _NOT_FOUND_MARKER = "指定されたページは表示できません"
 _PRICE_RE = re.compile(r"[\d,]+")
 _DATE_RE = re.compile(r"\((\d{2})/(\d{2})\)")
+_TITLE_NAME_RE = re.compile(r"<title>(.*?)【[^】]+】", re.IGNORECASE | re.DOTALL)
 
 
 @dataclass(frozen=True, slots=True)
@@ -125,3 +127,21 @@ def is_quote_page(html: str) -> bool:
 
     title = soup.title.get_text(strip=True) if soup.title else ""
     return _is_quote_title(title)
+
+
+def extract_quote_page_name(html: str) -> str | None:
+    soup = _build_soup(html)
+    if soup is None:
+        return None
+
+    title = soup.title.get_text(" ", strip=True) if soup.title else ""
+    if not _is_quote_title(title):
+        return None
+
+    match = _TITLE_NAME_RE.search(str(soup.title))
+    if match is None:
+        return None
+
+    name = unescape(match.group(1)).strip()
+    name = name.replace("（株）", "株式会社").replace("(株)", "株式会社")
+    return name or None

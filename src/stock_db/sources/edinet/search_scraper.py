@@ -25,6 +25,7 @@ _BLOCK_INDICATORS = ("規定外操作", "エラー画面", "Message code")
 DEFAULT_INTERVAL_SECONDS = 2.0
 _POSTBACK_WAIT_MS = 25000
 _DOCID_CAPTURE_WAIT_MS = 5000
+_DOC_TYPE_TOGGLE_WAIT_MS = 500
 
 _EDINET_CODE_RE = re.compile(r">\s*(E\d{5})\s*<")
 
@@ -95,7 +96,17 @@ def _build_search_and_extract_js(
     input.dispatchEvent(new Event('blur', {{ bubbles: true }}));
 
     const cb = document.querySelector('#W0277vCHKSYORUI1');
-    if (cb && !cb.checked) cb.click();
+    const syoruiRadio = document.querySelector('#vD_SYORUI2');
+    if (syoruiRadio && !syoruiRadio.checked) {{
+        syoruiRadio.click();
+        syoruiRadio.dispatchEvent(new Event('change', {{ bubbles: true }}));
+    }}
+    await new Promise(r => setTimeout(r, {_DOC_TYPE_TOGGLE_WAIT_MS}));
+
+    if (cb && !cb.checked) {{
+        cb.click();
+        cb.dispatchEvent(new Event('change', {{ bubbles: true }}));
+    }}
 
     // EDINET defaults to "past 1 year", which misses delisted/merged issuers
     // whose latest annual report is older. Force "all period" before searching.

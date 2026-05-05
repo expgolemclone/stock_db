@@ -1,14 +1,24 @@
 from __future__ import annotations
 
 import sqlite3
+from typing import ClassVar
 
 from stock_db.browser_client.client import BrowserResponse
-from stock_db.sources.yahoo_finance_jp.scraper import discover_suffix, scrape_and_store
+from stock_db.sources.yahoo_finance_jp.scraper import (
+    discover_company_name,
+    discover_suffix,
+    scrape_and_store,
+)
 from stock_db.storage.schema import init_db
 from stock_db.storage.stocks import upsert_stock
 
 
 class FakeBrowserClient:
+    _NOT_FOUND_HTML: ClassVar[str] = (
+        "<html><head><title>Yahoo!ファイナンス</title></head>"
+        "<body><main>指定されたページは表示できません。</main></body></html>"
+    )
+
     def __init__(self, pages: dict[str, str]) -> None:
         self.pages = pages
         self.urls: list[str] = []
@@ -16,7 +26,7 @@ class FakeBrowserClient:
     def fetch(self, url: str) -> BrowserResponse:
         self.urls.append(url)
         return BrowserResponse(
-            html=self.pages.get(url),
+            html=self.pages.get(url, self._NOT_FOUND_HTML),
             status=200,
             error=None,
         )
@@ -50,6 +60,23 @@ def test_discover_suffix_returns_page_suffix_even_without_quote_data() -> None:
 
     assert suffix == "T"
     assert client.urls == ["https://finance.yahoo.co.jp/quote/289A.T"]
+
+
+def test_discover_company_name_returns_normalized_quote_title() -> None:
+    client = FakeBrowserClient(
+        {
+            "https://finance.yahoo.co.jp/quote/8306.T": (
+                "<html><head>"
+                "<title>(株)三菱ＵＦＪフィナンシャル・グループ【8306】：株価・株式情報 - Yahoo!ファイナンス</title>"
+                "</head><body><main></main></body></html>"
+            ),
+        }
+    )
+
+    name, suffix = discover_company_name(client, "8306", interval=0)
+
+    assert (name, suffix) == ("株式会社三菱ＵＦＪフィナンシャル・グループ", "T")
+    assert client.urls == ["https://finance.yahoo.co.jp/quote/8306.T"]
 
 
 def test_scrape_and_store_persists_suffix_for_page_without_quote_data() -> None:

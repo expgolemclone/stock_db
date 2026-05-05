@@ -18,6 +18,12 @@ class TestBuildSearchAndExtractJs:
         assert "const kikan = document.querySelector('#vD_KIKAN');" in js
         assert "kikan.value = '7';" in js
 
+    def test_limits_results_to_annual_reports(self) -> None:
+        js = _build_search_and_extract_js(search_ticker="8306")
+
+        assert "const syoruiRadio = document.querySelector('#vD_SYORUI2');" in js
+        assert "const cb = document.querySelector('#W0277vCHKSYORUI1');" in js
+
     def test_uses_requested_field(self) -> None:
         js = _build_search_and_extract_js(company_name="ピックルスコーポレーション")
 

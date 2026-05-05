@@ -6,6 +6,7 @@ import pytest
 
 from stock_db.sources.yahoo_finance_jp.parser import (
     QuoteData,
+    extract_quote_page_name,
     is_quote_page,
     parse_quote_page,
 )
@@ -122,3 +123,26 @@ class TestIsQuotePage:
 
         assert is_quote_page(html) is True
         assert parse_quote_page(html) is None
+
+
+class TestExtractQuotePageName:
+    def test_converts_suffix_corporate_marker(self) -> None:
+        html = (
+            "<html><head>"
+            "<title>ハンワホームズ(株)【275A】：株価・株式情報 - Yahoo!ファイナンス</title>"
+            "</head><body></body></html>"
+        )
+
+        assert extract_quote_page_name(html) == "ハンワホームズ株式会社"
+
+    def test_converts_prefix_corporate_marker(self) -> None:
+        html = (
+            "<html><head>"
+            "<title>(株)三菱ＵＦＪフィナンシャル・グループ【8306】：株価・株式情報 - Yahoo!ファイナンス</title>"
+            "</head><body></body></html>"
+        )
+
+        assert extract_quote_page_name(html) == "株式会社三菱ＵＦＪフィナンシャル・グループ"
+
+    def test_returns_none_for_non_quote_page(self) -> None:
+        assert extract_quote_page_name("<html><head><title>Yahoo!ファイナンス</title></head></html>") is None

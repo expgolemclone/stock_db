@@ -10,7 +10,12 @@ from typing import TYPE_CHECKING
 
 from stock_db.browser_client.client import BrowserServiceError
 from stock_db.paths import magic_numbers
-from stock_db.sources.yahoo_finance_jp.parser import QuoteData, is_quote_page, parse_quote_page
+from stock_db.sources.yahoo_finance_jp.parser import (
+    QuoteData,
+    extract_quote_page_name,
+    is_quote_page,
+    parse_quote_page,
+)
 from stock_db.storage.prices import upsert_price
 from stock_db.storage.stocks import upsert_yf_suffix
 
@@ -76,14 +81,19 @@ def _delay(base_interval: float) -> None:
     time.sleep(jittered)
 
 
-def discover_suffix(
+def _discover_quote_page(
     client: BrowserServiceClient,
     ticker: str,
     *,
+    known_suffix: str | None = None,
     interval: float = 1.0,
-) -> str | None:
-    """Try each exchange suffix and return the first quote page that resolves."""
-    for suffix in _SUFFIXES:
+) -> tuple[str, str] | None:
+    suffixes = list(_SUFFIXES)
+    if known_suffix in suffixes:
+        suffixes.remove(known_suffix)
+        suffixes.insert(0, known_suffix)
+
+    for i, suffix in enumerate(suffixes):
         url = _quote_url(ticker, suffix)
         try:
             html = _fetch_html(client, url)
@@ -92,14 +102,50 @@ def discover_suffix(
             continue
         if parse_quote_page(html) is not None:
             logger.debug("  %s.%s: found quote data", ticker, suffix)
-            return suffix
+            return html, suffix
         if is_quote_page(html):
             logger.debug("  %s.%s: found quote page without quote data", ticker, suffix)
-            return suffix
-        _delay(interval)
+            return html, suffix
+        if i < len(suffixes) - 1:
+            _delay(interval)
 
-    logger.info("No valid suffix found for %s", ticker)
     return None
+
+
+def discover_suffix(
+    client: BrowserServiceClient,
+    ticker: str,
+    *,
+    interval: float = 1.0,
+) -> str | None:
+    """Try each exchange suffix and return the first quote page that resolves."""
+    quote_page = _discover_quote_page(client, ticker, interval=interval)
+    if quote_page is None:
+        logger.info("No valid suffix found for %s", ticker)
+        return None
+    _, suffix = quote_page
+    return suffix
+
+
+def discover_company_name(
+    client: BrowserServiceClient,
+    ticker: str,
+    *,
+    known_suffix: str | None = None,
+    interval: float = 1.0,
+) -> tuple[str | None, str | None]:
+    quote_page = _discover_quote_page(
+        client,
+        ticker,
+        known_suffix=known_suffix,
+        interval=interval,
+    )
+    if quote_page is None:
+        logger.info("No valid quote page found for %s", ticker)
+        return None, None
+
+    html, suffix = quote_page
+    return extract_quote_page_name(html), suffix
 
 
 def fetch_price(

@@ -27,6 +27,7 @@ from stock_db.sources.edinet.search_scraper import (
     search_annual_reports,
 )
 from stock_db.sources.edinet.xbrl_bs_parser import is_valid_xbrl_path
+from stock_db.sources.yahoo_finance_jp.scraper import discover_company_name
 from stock_db.storage.connection import get_connection
 from stock_db.storage.schema import init_db
 from stock_db.storage.sec_reports import (
@@ -34,7 +35,15 @@ from stock_db.storage.sec_reports import (
     sync_edinet_raw_to_db,
     upsert_sec_report,
 )
-from stock_db.storage.stocks import get_all_tickers, get_edinet_code, get_stock_names, upsert_company_metadata, upsert_stock
+from stock_db.storage.stocks import (
+    get_all_tickers,
+    get_edinet_code,
+    get_stock_names,
+    get_ticker_suffix_map,
+    upsert_company_metadata,
+    upsert_stock,
+    upsert_yf_suffix,
+)
 
 logger = logging.getLogger("stock_db.cli.scrape_edinet_reports")
 
@@ -243,6 +252,7 @@ def scrape_edinet_phase1(
     throttle = _RequestThrottle(interval)
     names = get_stock_names(conn)
     edinet_codes = {ticker: get_edinet_code(conn, ticker) for ticker in no_url_tickers}
+    suffixes = get_ticker_suffix_map(conn)
 
     logger.info(
         "Phase 1: Discovering %d tickers via EDINET search (%d workers)",
@@ -253,21 +263,45 @@ def scrape_edinet_phase1(
     found = 0
     not_found = 0
 
-    def _search_worker(ticker: str) -> tuple[str, str | None, str | None]:
-        return ticker, *search_annual_reports(
+    def _search_worker(
+        ticker: str,
+    ) -> tuple[str, str | None, str | None, str | None, str | None]:
+        company_name = names.get(ticker)
+        doc_id, found_edinet = search_annual_reports(
             client,
             ticker,
             edinet_code=edinet_codes.get(ticker),
-            company_name=names.get(ticker),
+            company_name=company_name,
             before_request=throttle.wait,
         )
+        yahoo_name = None
+        yahoo_suffix = None
+
+        if doc_id is None:
+            yahoo_name, yahoo_suffix = discover_company_name(
+                client,
+                ticker,
+                known_suffix=suffixes.get(ticker),
+                interval=0.0,
+            )
+            if yahoo_name and yahoo_name != company_name:
+                doc_id, fallback_edinet = search_annual_reports(
+                    client,
+                    ticker,
+                    edinet_code=edinet_codes.get(ticker),
+                    company_name=yahoo_name,
+                    before_request=throttle.wait,
+                )
+                found_edinet = found_edinet or fallback_edinet
+
+        return ticker, doc_id, found_edinet, yahoo_name, yahoo_suffix
 
     with ThreadPoolExecutor(max_workers=_WORKERS) as executor:
         futures = {executor.submit(_search_worker, ticker): ticker for ticker in no_url_tickers}
         done_count = 0
         for future in as_completed(futures):
             done_count += 1
-            ticker, doc_id, found_edinet = future.result()
+            ticker, doc_id, found_edinet, yahoo_name, yahoo_suffix = future.result()
             logger.info(
                 "[Phase1 %d/%d] %s: docID=%s edinet=%s",
                 done_count,
@@ -278,12 +312,23 @@ def scrape_edinet_phase1(
             )
             if found_edinet:
                 try:
-                    upsert_stock(conn, ticker, names.get(ticker, ""), "", "", edinet_code=found_edinet)
+                    upsert_stock(
+                        conn,
+                        ticker,
+                        yahoo_name or names.get(ticker, ""),
+                        "",
+                        "",
+                        edinet_code=found_edinet,
+                    )
                 except sqlite3.IntegrityError:
                     logger.warning(
                         "  EDINET code %s already assigned to another ticker, skipping",
                         found_edinet,
                     )
+            elif yahoo_name:
+                upsert_stock(conn, ticker, yahoo_name, "", "")
+            if yahoo_suffix:
+                upsert_yf_suffix(conn, ticker, yahoo_suffix)
             if doc_id:
                 upsert_company_metadata(conn, ticker, securities_report_url=build_pdf_url(doc_id))
                 found += 1
