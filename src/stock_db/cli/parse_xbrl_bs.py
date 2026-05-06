@@ -6,7 +6,6 @@ import argparse
 import logging
 import sqlite3
 import sys
-from pathlib import Path
 
 from stock_db.paths import STOCKS_DB_PATH
 from stock_db.sources.edinet.xbrl_bs_parser import InventoriesTagMismatchError, parse_xbrl_bs
@@ -64,12 +63,10 @@ def main() -> None:
         for i, row in enumerate(rows, 1):
             ticker: str = row["ticker"]
             xbrl_path: str = row["xbrl_path"]
-            # parse_xbrl_bs expects a directory; xbrl_path is a file path
-            xbrl_dir = str(Path(xbrl_path).parent)
             logger.info("[%d/%d] Parsing %s", i, len(rows), ticker)
 
             try:
-                parsed = parse_xbrl_bs(xbrl_dir)
+                parsed = parse_xbrl_bs(xbrl_path)
             except InventoriesTagMismatchError as exc:
                 logger.error("  %s: %s", ticker, exc)
                 errors += 1

@@ -58,6 +58,40 @@ def _build_db(db_path: Path) -> sqlite3.Connection:
     return conn
 
 
+def _fake_download_xbrl_package_factory(
+    request_times: list[float],
+    lock: threading.Lock,
+    *,
+    html: str | None = None,
+    raise_error: bool = False,
+):
+    payload = html or _valid_ixbrl_html()
+
+    def _fake_download_xbrl_package(
+        doc_id: str,
+        dest_dir: Path,
+        *,
+        api_key: str,
+        before_request: object = None,
+        timeout: int = 300,
+    ) -> Path:
+        del api_key, timeout
+        if before_request is not None:
+            before_request()
+        with lock:
+            request_times.append(time.monotonic())
+        if raise_error:
+            raise scrape_edinet_reports.EdinetApiError("invalid package")
+        artifact_dir = dest_dir / doc_id
+        public_doc = artifact_dir / "XBRL" / "PublicDoc"
+        public_doc.mkdir(parents=True, exist_ok=True)
+        (dest_dir / f"{doc_id}.zip").write_bytes(b"zip")
+        (public_doc / "report.xhtml").write_text(payload, encoding="utf-8")
+        return artifact_dir
+
+    return _fake_download_xbrl_package
+
+
 class TestRequestThrottle:
     def test_wait_enforces_shared_min_interval(self, monkeypatch: pytest.MonkeyPatch) -> None:
         now = {"value": 100.0}
@@ -214,6 +248,11 @@ class TestScrapeAllEdinetReports:
             "_EDINET_RAW_DIR",
             tmp_path / "var" / "raw" / "edinet",
         )
+        monkeypatch.setattr(
+            scrape_edinet_reports,
+            "download_xbrl_package",
+            _fake_download_xbrl_package_factory(request_times, request_lock),
+        )
 
         ok, errors = scrape_edinet_reports.scrape_all_edinet_reports(
             conn,
@@ -234,7 +273,8 @@ class TestScrapeAllEdinetReports:
         assert ok == 1
         assert errors == 0
         assert row["doc_id"] == "S100STEP12"
-        assert Path(row["xbrl_path"]).is_file()
+        assert Path(row["xbrl_path"]).is_dir()
+        assert Path(row["xbrl_path"]).joinpath("XBRL", "PublicDoc", "report.xhtml").is_file()
         conn.close()
 
     def test_phase2_persists_reports_without_cross_thread_db_access(
@@ -258,6 +298,11 @@ class TestScrapeAllEdinetReports:
             "_EDINET_RAW_DIR",
             tmp_path / "var" / "raw" / "edinet",
         )
+        monkeypatch.setattr(
+            scrape_edinet_reports,
+            "download_xbrl_package",
+            _fake_download_xbrl_package_factory(request_times, request_lock),
+        )
 
         ok, errors = scrape_edinet_reports.scrape_all_edinet_reports(
             conn,
@@ -278,7 +323,8 @@ class TestScrapeAllEdinetReports:
             """
         ).fetchall()
         assert [row["ticker"] for row in rows] == ["1111", "2222"]
-        assert all(Path(str(row["xbrl_path"])).is_file() for row in rows)
+        assert all(Path(str(row["xbrl_path"])).is_dir() for row in rows)
+        assert all((Path(str(row["xbrl_path"])).parent / f"{row['doc_id']}.zip").is_file() for row in rows)
 
         diffs = [
             current - previous
@@ -359,6 +405,11 @@ class TestScrapeAllEdinetReports:
             "_EDINET_RAW_DIR",
             tmp_path / "var" / "raw" / "edinet",
         )
+        monkeypatch.setattr(
+            scrape_edinet_reports,
+            "download_xbrl_package",
+            _fake_download_xbrl_package_factory(request_times, request_lock),
+        )
 
         result = scrape_edinet_reports.scrape_edinet_phase2(
             conn,
@@ -413,6 +464,15 @@ class TestScrapeAllEdinetReports:
         conn.commit()
 
         monkeypatch.setattr(scrape_edinet_reports, "_EDINET_RAW_DIR", raw_dir)
+        monkeypatch.setattr(
+            scrape_edinet_reports,
+            "download_xbrl_package",
+            _fake_download_xbrl_package_factory(
+                request_times,
+                request_lock,
+                html=_valid_ixbrl_html(inventory_value="700"),
+            ),
+        )
 
         result = scrape_edinet_reports.scrape_edinet_phase2(
             conn,
@@ -436,8 +496,9 @@ class TestScrapeAllEdinetReports:
             xbrl_failures=0,
             skipped_missing_url=0,
         )
-        assert row["xbrl_path"] == str(xbrl_path.resolve())
-        assert _valid_ixbrl_html(inventory_value="700") in Path(row["xbrl_path"]).read_text(encoding="utf-8")
+        assert Path(row["xbrl_path"]).is_dir()
+        saved = Path(row["xbrl_path"]) / "XBRL" / "PublicDoc" / "report.xhtml"
+        assert _valid_ixbrl_html(inventory_value="700") in saved.read_text(encoding="utf-8")
         conn.close()
 
     def test_phase2_counts_invalid_xbrl_payload_as_failure(
@@ -460,6 +521,15 @@ class TestScrapeAllEdinetReports:
             scrape_edinet_reports,
             "_EDINET_RAW_DIR",
             tmp_path / "var" / "raw" / "edinet",
+        )
+        monkeypatch.setattr(
+            scrape_edinet_reports,
+            "download_xbrl_package",
+            _fake_download_xbrl_package_factory(
+                request_times,
+                request_lock,
+                raise_error=True,
+            ),
         )
 
         result = scrape_edinet_reports.scrape_edinet_phase2(
@@ -520,6 +590,11 @@ class TestScrapeAllEdinetReports:
             "_EDINET_RAW_DIR",
             tmp_path / "var" / "raw" / "edinet",
         )
+        monkeypatch.setattr(
+            scrape_edinet_reports,
+            "download_xbrl_package",
+            _fake_download_xbrl_package_factory(request_times, request_lock),
+        )
 
         ok, errors = scrape_edinet_reports.scrape_all_edinet_reports(
             conn,
@@ -544,7 +619,7 @@ class TestScrapeAllEdinetReports:
             ("1111", "S100DUP1"),
             ("9999", "S100DUP1"),
         ]
-        assert Path(rows[0]["xbrl_path"]).is_file()
+        assert Path(rows[0]["xbrl_path"]).is_dir()
         conn.close()
 
 

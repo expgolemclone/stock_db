@@ -18,7 +18,13 @@ import requests
 
 from stock_db.browser_client.client import BrowserServiceClient
 from stock_db.paths import STOCKS_DB_PATH, VAR_DIR, cli_defaults, magic_numbers
-from stock_db.sources.edinet.api_client import build_pdf_url, doc_id_from_url, download_xbrl
+from stock_db.sources.edinet.api_client import (
+    EdinetApiError,
+    build_pdf_url,
+    doc_id_from_url,
+    download_xbrl_package,
+    require_edinet_api_key,
+)
 from stock_db.sources.edinet.search_scraper import (
     DEFAULT_INTERVAL_SECONDS,
     DocIdExtractionError,
@@ -202,7 +208,7 @@ def _process_one(
     ticker: str,
     url: str,
     *,
-    client: BrowserServiceClient | None = None,
+    api_key: str,
     skip_xbrl: bool = False,
     existing: _ExistingReportArtifacts | None = None,
     keep_existing_xbrl: bool = True,
@@ -215,17 +221,18 @@ def _process_one(
 
     xbrl_path = existing.xbrl_path if existing is not None and keep_existing_xbrl else None
 
-    if not skip_xbrl and client is not None:
-        xbrl_dest = download_xbrl(
-            client,
-            doc_id,
-            _EDINET_RAW_DIR / "xbrl" / ticker,
-            before_request=before_request,
-        )
-        if xbrl_dest is not None:
-            xbrl_path = str(xbrl_dest)
+    if not skip_xbrl:
+        try:
+            xbrl_dest = download_xbrl_package(
+                doc_id,
+                _EDINET_RAW_DIR / "xbrl" / ticker,
+                api_key=api_key,
+                before_request=before_request,
+            )
+        except EdinetApiError as exc:
+            logger.warning("  %s: XBRL API download failed (doc_id=%s): %s", ticker, doc_id, exc)
         else:
-            logger.warning("  %s: XBRL download failed (doc_id=%s)", ticker, doc_id)
+            xbrl_path = str(xbrl_dest)
 
     return _DownloadedReportArtifacts(
         ticker=ticker,
@@ -353,13 +360,15 @@ def scrape_edinet_phase1(
 
 def scrape_edinet_phase2(
     conn: sqlite3.Connection,
-    client: BrowserServiceClient,
+    client: BrowserServiceClient | None,
     tickers: list[str],
     *,
+    api_key: str = "test-api-key",
     skip_existing: bool = True,
     interval: float = DEFAULT_INTERVAL_SECONDS,
 ) -> _Phase2Result:
     """Download XBRL for tickers that already have securities_report_url."""
+    del client
     has_url = _load_securities_report_urls(conn, tickers)
     missing_url_tickers = [ticker for ticker in tickers if ticker not in has_url]
     if missing_url_tickers:
@@ -422,7 +431,7 @@ def scrape_edinet_phase2(
         return _process_one(
             ticker,
             url,
-            client=client,
+            api_key=api_key,
             skip_xbrl=skip_xbrl,
             keep_existing_xbrl=skip_xbrl,
             existing=existing_artifacts.get((ticker, doc_id)) if doc_id is not None else None,
@@ -478,6 +487,7 @@ def scrape_all_edinet_reports(
     client: BrowserServiceClient,
     tickers: list[str],
     *,
+    api_key: str = "test-api-key",
     proxy: str | None = None,
     skip_existing: bool = True,
     interval: float = DEFAULT_INTERVAL_SECONDS,
@@ -498,6 +508,7 @@ def scrape_all_edinet_reports(
         conn,
         client,
         tickers,
+        api_key=api_key,
         skip_existing=skip_existing,
         interval=interval,
     )
@@ -563,32 +574,39 @@ def _print_summary(mode: _CliMode, *, phase1: _Phase1Result | None = None, phase
 def _run_selected_mode(
     mode: _CliMode,
     conn: sqlite3.Connection,
-    client: BrowserServiceClient,
+    client: BrowserServiceClient | None,
     tickers: list[str],
     *,
+    api_key: str | None,
     skip_existing: bool,
     interval: float,
 ) -> int:
     if mode == _CLI_MODE_STEP1:
+        assert client is not None
         phase1 = scrape_edinet_phase1(conn, client, tickers, interval=interval)
         _print_summary(mode, phase1=phase1)
         return 1 if phase1.errors > 0 else 0
 
     if mode == _CLI_MODE_STEP2:
+        assert api_key is not None
         phase2 = scrape_edinet_phase2(
             conn,
             client,
             tickers,
+            api_key=api_key,
             skip_existing=skip_existing,
             interval=interval,
         )
         _print_summary(mode, phase2=phase2)
         return 1 if phase2.errors > 0 else 0
 
+    assert client is not None
+    assert api_key is not None
     ok, errors = scrape_all_edinet_reports(
         conn,
         client,
         tickers,
+        api_key=api_key,
         skip_existing=skip_existing,
         interval=interval,
     )
@@ -626,6 +644,19 @@ def _main(argv: Sequence[str] | None, *, mode: _CliMode) -> int:
             print("No tickers to process", file=sys.stderr)
             return 0
 
+        api_key = require_edinet_api_key() if mode in {_CLI_MODE_ALL, _CLI_MODE_STEP2} else None
+
+        if mode == _CLI_MODE_STEP2:
+            return _run_selected_mode(
+                mode,
+                conn,
+                None,
+                tickers,
+                api_key=api_key,
+                skip_existing=skip_existing,
+                interval=interval,
+            )
+
         client_cfg = _build_client_config(defaults, browser_cfg)
         with BrowserServiceClient(config=client_cfg) as client:
             return _run_selected_mode(
@@ -633,10 +664,11 @@ def _main(argv: Sequence[str] | None, *, mode: _CliMode) -> int:
                 conn,
                 client,
                 tickers,
+                api_key=api_key,
                 skip_existing=skip_existing,
                 interval=interval,
             )
-    except (EdinetBlockError, DocIdExtractionError, EdinetNoRecordsError) as exc:
+    except (EdinetApiError, EdinetBlockError, DocIdExtractionError, EdinetNoRecordsError) as exc:
         logger.error("Scrape failed: %s", exc)
         print(f"FAILED: {exc}", file=sys.stderr)
         return 1

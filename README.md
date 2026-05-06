@@ -16,8 +16,11 @@
 # Python 依存関係のインストール
 uv sync --frozen
 
-# ブラウザサービスの依存関係（スクレイピングに使用）
+# ブラウザサービスの依存関係（EDINET step1 / Yahoo / Stooq に使用）
 npm ci --prefix services/browser
+
+# EDINET API キー（step2 / parse 用 raw 取得に使用）
+export EDINET_API_KEY=...
 ```
 
 ## CLI コマンド
@@ -25,19 +28,25 @@ npm ci --prefix services/browser
 ### EDINET
 
 ```bash
-# 有報取得 (step1: 書類一覧取得 → step2: XBRL 取得)
+# 有報取得 (step1: ブラウザ検索 → step2: EDINET API ZIP 取得)
 uv run scrape-edinet-reports
 
 # step1 / step2 のみ個別実行
 uv run scrape-edinet-reports-step1
 uv run scrape-edinet-reports-step2
 
-# XBRL から棚卸資産を抽出
+# 既存書類の API 再取得
+uv run scrape-edinet-reports-step2 --force
+
+# XBRL から棚卸資産総額を抽出
 uv run parse-xbrl-bs
 
 # 進捗レポート
 uv run report-edinet-progress
 ```
+
+- `scrape-edinet-reports-step2` と `scrape-edinet-reports` は `EDINET_API_KEY` が必要
+- raw EDINET 書類は `var/raw/edinet/xbrl/{ticker}/{doc_id}.zip` と `var/raw/edinet/xbrl/{ticker}/{doc_id}/` に保存される
 
 ### 株価
 
@@ -81,4 +90,4 @@ SQLite (`var/db/stocks.db`)。WAL モード・外部キー制約有効。
 | `stocks` | 銘柄マスタ |
 | `financial_items` | 財務データ (EDINET XBRL) |
 | `prices` | 日次株価 (Stooq / Yahoo Finance) |
-| `sec_reports` | 有価証券報告書メタデータ |
+| `sec_reports` | 有価証券報告書メタデータ (`xbrl_path` は展開済み XBRL アーティファクトのルート) |

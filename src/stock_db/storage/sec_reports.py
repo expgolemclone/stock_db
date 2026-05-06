@@ -17,6 +17,14 @@ class _RawEdinetReport:
     artifact_mtime_ns: int = 0
 
 
+def _max_mtime_ns(path: Path) -> int:
+    max_mtime = path.stat().st_mtime_ns
+    if path.is_dir():
+        for child in path.rglob("*"):
+            max_mtime = max(max_mtime, child.stat().st_mtime_ns)
+    return max_mtime
+
+
 def upsert_sec_report(
     conn: sqlite3.Connection,
     *,
@@ -82,16 +90,39 @@ def get_sec_reports_for_ticker(
 def _discover_raw_edinet_reports(raw_dir: Path) -> list[_RawEdinetReport]:
     reports: dict[tuple[str, str], _RawEdinetReport] = {}
 
-    for path in sorted((raw_dir / "xbrl").glob("*/*.xhtml")):
-        ticker = path.parent.name
-        doc_id = path.stem
-        key = (ticker, doc_id)
-        report = reports.get(key)
-        if report is None:
-            report = _RawEdinetReport(ticker=ticker, doc_id=doc_id)
-            reports[key] = report
-        report.xbrl_path = str(path.resolve())
-        report.artifact_mtime_ns = max(report.artifact_mtime_ns, path.stat().st_mtime_ns)
+    xbrl_root = raw_dir / "xbrl"
+    if not xbrl_root.is_dir():
+        return []
+
+    for ticker_dir in sorted(path for path in xbrl_root.iterdir() if path.is_dir()):
+        ticker = ticker_dir.name
+
+        for extract_dir in sorted(path for path in ticker_dir.iterdir() if path.is_dir()):
+            zip_path = ticker_dir / f"{extract_dir.name}.zip"
+            if not zip_path.is_file():
+                continue
+            key = (ticker, extract_dir.name)
+            report = reports.get(key)
+            if report is None:
+                report = _RawEdinetReport(ticker=ticker, doc_id=extract_dir.name)
+                reports[key] = report
+            report.xbrl_path = str(extract_dir.resolve())
+            report.artifact_mtime_ns = max(
+                report.artifact_mtime_ns,
+                _max_mtime_ns(extract_dir),
+                zip_path.stat().st_mtime_ns,
+            )
+
+        for legacy_file in sorted(ticker_dir.glob("*.xhtml")):
+            if (ticker_dir / legacy_file.stem).is_dir() and (ticker_dir / f"{legacy_file.stem}.zip").is_file():
+                continue
+            key = (ticker, legacy_file.stem)
+            report = reports.get(key)
+            if report is None:
+                report = _RawEdinetReport(ticker=ticker, doc_id=legacy_file.stem)
+                reports[key] = report
+            report.xbrl_path = str(legacy_file.resolve())
+            report.artifact_mtime_ns = max(report.artifact_mtime_ns, legacy_file.stat().st_mtime_ns)
 
     return sorted(reports.values(), key=lambda report: (report.ticker, report.doc_id))
 

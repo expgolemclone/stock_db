@@ -138,14 +138,14 @@ class TestSecReports:
             ticker="7203",
             fiscal_year="latest",
             doc_id="S100XBR1",
-            xbrl_path="var/raw/edinet/xbrl/7203/S100XBR1.xhtml",
+            xbrl_path="var/raw/edinet/xbrl/7203/S100XBR1",
         )
         db_conn.commit()
 
         rows = get_sec_reports_for_ticker(db_conn, "7203")
 
         assert len(rows) == 1
-        assert rows[0]["xbrl_path"] == "var/raw/edinet/xbrl/7203/S100XBR1.xhtml"
+        assert rows[0]["xbrl_path"] == "var/raw/edinet/xbrl/7203/S100XBR1"
 
     def test_sync_edinet_raw_to_db_recovers_reports_and_urls(
         self, db_conn: sqlite3.Connection, tmp_path: Path,
@@ -154,9 +154,12 @@ class TestSecReports:
         (raw_dir / "xbrl" / "7203").mkdir(parents=True)
         (raw_dir / "xbrl" / "6758").mkdir(parents=True)
 
-        (raw_dir / "xbrl" / "7203" / "S100ABCDE.xhtml").write_text(
+        (raw_dir / "xbrl" / "7203" / "S100ABCDE").mkdir()
+        (raw_dir / "xbrl" / "7203" / "S100ABCDE" / "XBRL").mkdir()
+        (raw_dir / "xbrl" / "7203" / "S100ABCDE" / "XBRL" / "report.xhtml").write_text(
             "<html>7203</html>", encoding="utf-8",
         )
+        (raw_dir / "xbrl" / "7203" / "S100ABCDE.zip").write_bytes(b"zip")
         (raw_dir / "xbrl" / "6758" / "S100FGHIJ.xhtml").write_text(
             "<html>6758</html>", encoding="utf-8",
         )
@@ -174,7 +177,7 @@ class TestSecReports:
         toyota_rows = get_sec_reports_for_ticker(db_conn, "7203")
         assert len(toyota_rows) == 1
         assert toyota_rows[0]["doc_id"] == "S100ABCDE"
-        assert toyota_rows[0]["xbrl_path"] == str((raw_dir / "xbrl" / "7203" / "S100ABCDE.xhtml").resolve())
+        assert toyota_rows[0]["xbrl_path"] == str((raw_dir / "xbrl" / "7203" / "S100ABCDE").resolve())
 
         sony_rows = get_sec_reports_for_ticker(db_conn, "6758")
         assert len(sony_rows) == 1

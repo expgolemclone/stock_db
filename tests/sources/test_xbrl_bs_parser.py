@@ -17,6 +17,73 @@ def _xbrl_path(ticker: str) -> str:
     return f"/home/exp/projects/stock_db/var/raw/edinet/xbrl/{ticker}"
 
 
+def _write_api_artifact(root: Path) -> Path:
+    artifact = root / "S100PKG"
+    public_doc = artifact / "XBRL" / "PublicDoc"
+    public_doc.mkdir(parents=True)
+    (root / "S100PKG.zip").write_bytes(b"zip")
+    (public_doc / "report.xhtml").write_text(
+        """
+        <html xmlns="http://www.w3.org/1999/xhtml"
+              xmlns:ix="http://www.xbrl.org/2008/inlineXBRL"
+              xmlns:xbrli="http://www.xbrl.org/2003/instance"
+              xmlns:link="http://www.xbrl.org/2003/linkbase"
+              xmlns:xlink="http://www.w3.org/1999/xlink"
+              xmlns:iso4217="http://www.xbrl.org/2003/iso4217"
+              xmlns:jpdei_cor="http://disclosure.edinet-fsa.go.jp/taxonomy/jpdei/2013-08-31/jpdei_cor"
+              xmlns:ext="http://example.com/ext">
+          <head></head>
+          <body>
+            <xbrli:context id="CurrentYearInstant">
+              <xbrli:entity><xbrli:identifier scheme="test">E1</xbrli:identifier></xbrli:entity>
+              <xbrli:period><xbrli:instant>2025-03-31</xbrli:instant></xbrli:period>
+            </xbrli:context>
+            <xbrli:context id="Prior1YearInstant">
+              <xbrli:entity><xbrli:identifier scheme="test">E1</xbrli:identifier></xbrli:entity>
+              <xbrli:period><xbrli:instant>2024-03-31</xbrli:instant></xbrli:period>
+            </xbrli:context>
+            <xbrli:unit id="JPY"><xbrli:measure>iso4217:JPY</xbrli:measure></xbrli:unit>
+            <ix:hidden>
+              <ix:nonnumeric contextRef="CurrentYearInstant" name="jpdei_cor:CurrentFiscalYearEndDateDEI">2025年3月31日</ix:nonnumeric>
+            </ix:hidden>
+            <ix:references>
+              <link:schemaref xlink:type="simple" xlink:href="ext.xsd"></link:schemaref>
+            </ix:references>
+            <ix:nonfraction contextRef="CurrentYearInstant" unitRef="JPY" name="ext:SpecialProjectInventory">600</ix:nonfraction>
+            <ix:nonfraction contextRef="Prior1YearInstant" unitRef="JPY" name="ext:SpecialProjectInventory">400</ix:nonfraction>
+          </body>
+        </html>
+        """,
+        encoding="utf-8",
+    )
+    (public_doc / "ext.xsd").write_text(
+        """
+        <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+                   targetNamespace="http://example.com/ext"
+                   xmlns:ext="http://example.com/ext"
+                   elementFormDefault="qualified">
+          <xs:element id="ext_Inventories" name="Inventories" type="xs:decimal"/>
+          <xs:element id="ext_SpecialProjectInventory" name="SpecialProjectInventory" type="xs:decimal"/>
+        </xs:schema>
+        """,
+        encoding="utf-8",
+    )
+    (public_doc / "ext_pre.xml").write_text(
+        """
+        <link:linkbase xmlns:link="http://www.xbrl.org/2003/linkbase"
+                       xmlns:xlink="http://www.w3.org/1999/xlink">
+          <link:presentationLink xlink:type="extended" xlink:role="urn:test:inventories">
+            <link:loc xlink:type="locator" xlink:label="loc_root" xlink:href="ext.xsd#ext_Inventories"/>
+            <link:loc xlink:type="locator" xlink:label="loc_child" xlink:href="ext.xsd#ext_SpecialProjectInventory"/>
+            <link:presentationArc xlink:type="arc" xlink:from="loc_root" xlink:to="loc_child"/>
+          </link:presentationLink>
+        </link:linkbase>
+        """,
+        encoding="utf-8",
+    )
+    return artifact
+
+
 class TestRealFixtures:
     def test_yoshicon_sums_real_estate_components(self) -> None:
         parsed = parse_xbrl_bs(_xbrl_path("5280"))
@@ -69,6 +136,11 @@ class TestValidationHelpers:
         path = next(Path(_xbrl_path("5280")).glob("*.xhtml"))
         assert is_valid_xbrl_path(path) is True
 
+    def test_saved_artifact_dir_validation(self, tmp_path: Path) -> None:
+        artifact = _write_api_artifact(tmp_path)
+
+        assert is_valid_xbrl_path(artifact) is True
+
     def test_invalid_saved_path_validation(self, tmp_path: Path) -> None:
         invalid = tmp_path / "header.xhtml"
         invalid.write_text("<html><body>header only</body></html>", encoding="utf-8")
@@ -116,3 +188,11 @@ class TestSyntheticCases:
 
         with pytest.raises(InventoriesTagMismatchError, match="MysteryInventoriesCA"):
             parse_xbrl_bs(str(tmp_path))
+
+    def test_parses_artifact_dir_via_presentation_fallback(self, tmp_path: Path) -> None:
+        artifact = _write_api_artifact(tmp_path)
+
+        parsed = parse_xbrl_bs(str(artifact))
+
+        assert parsed["2025-03"]["inventories"] == pytest.approx(600)
+        assert parsed["2024-03"]["inventories"] == pytest.approx(400)

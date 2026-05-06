@@ -1,21 +1,47 @@
 from __future__ import annotations
 
+import io
+import zipfile
 from pathlib import Path
 
-from unittest.mock import MagicMock
+import pytest
 
-from stock_db.sources.edinet.api_client import build_pdf_url, build_xbrl_url, doc_id_from_url, download_xbrl
+from stock_db.sources.edinet.api_client import (
+    EdinetApiError,
+    build_documents_api_url,
+    build_pdf_url,
+    build_xbrl_url,
+    doc_id_from_url,
+    download_xbrl_package,
+    get_edinet_api_key,
+    require_edinet_api_key,
+)
 
 
-def _valid_ixbrl_html(*, inventory_value: str = "500") -> str:
-    return (
-        '<html xmlns:ix="http://www.xbrl.org/2008/inlineXBRL"><head></head><body>'
-        '<ix:nonnumeric contextref="FilingDateInstant" '
-        'name="jpdei_cor:CurrentFiscalYearEndDateDEI">2025年3月31日</ix:nonnumeric>'
-        '<ix:nonfraction contextref="CurrentYearInstant" '
-        f'name="jppfs_cor:Inventories">{inventory_value}</ix:nonfraction>'
-        "</body></html>"
-    )
+def _xbrl_zip_bytes() -> bytes:
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr(
+            "XBRL/PublicDoc/report.xhtml",
+            (
+                '<html xmlns:ix="http://www.xbrl.org/2008/inlineXBRL">'
+                "<body><ix:nonfraction name=\"jppfs_cor:Inventories\">500</ix:nonfraction></body></html>"
+            ),
+        )
+    return buf.getvalue()
+
+
+class _FakeResponse:
+    def __init__(self, body: bytes, *, content_type: str = "application/octet-stream") -> None:
+        self._body = body
+        self.headers = {"Content-Type": content_type}
+
+    def raise_for_status(self) -> None:
+        return None
+
+    def iter_content(self, chunk_size: int = 1024 * 1024) -> list[bytes]:
+        del chunk_size
+        return [self._body]
 
 
 class TestDocIdFromUrl:
@@ -31,79 +57,76 @@ class TestDocIdFromUrl:
 
         assert result is None
 
-    def test_returns_none_for_empty_string(self) -> None:
-        result = doc_id_from_url("")
 
-        assert result is None
+class TestBuildUrls:
+    def test_builds_standard_pdf_url(self) -> None:
+        assert build_pdf_url("S100VWVY") == "https://disclosure2dl.edinet-fsa.go.jp/searchdocument/pdf/S100VWVY.pdf"
 
-
-class TestBuildPdfUrl:
-    def test_builds_standard_url(self) -> None:
-        result = build_pdf_url("S100VWVY")
-
-        assert result == "https://disclosure2dl.edinet-fsa.go.jp/searchdocument/pdf/S100VWVY.pdf"
-
-    def test_roundtrip_with_doc_id_from_url(self) -> None:
-        doc_id = "S100ABCDE"
-        url = build_pdf_url(doc_id)
-
-        assert doc_id_from_url(url) == doc_id
-
-
-class TestBuildXbrlUrl:
     def test_builds_viewer_url(self) -> None:
-        result = build_xbrl_url("S100VWVY")
+        assert build_xbrl_url("S100VWVY") == "https://disclosure2.edinet-fsa.go.jp/WZEK0040.aspx?S100VWVY,,"
 
-        assert result == "https://disclosure2.edinet-fsa.go.jp/WZEK0040.aspx?S100VWVY,,"
+    def test_builds_documents_api_url(self) -> None:
+        assert build_documents_api_url("S100VWVY") == "https://api.edinet-fsa.go.jp/api/v2/documents/S100VWVY"
 
 
-class TestDownloadXbrl:
-    def test_saves_html_to_file(self, tmp_path: Path) -> None:
-        html = _valid_ixbrl_html()
-        client = MagicMock()
-        client.evaluate.return_value = html
+class TestApiKeyHelpers:
+    def test_reads_api_key_from_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("EDINET_API_KEY", "  secret  ")
 
-        dest = download_xbrl(client, "S100TEST", tmp_path)
+        assert get_edinet_api_key() == "secret"
 
-        assert dest is not None
-        assert dest.name == "S100TEST.xhtml"
-        assert dest.read_text(encoding="utf-8") == html
+    def test_require_api_key_raises_when_missing(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("EDINET_API_KEY", raising=False)
 
-    def test_returns_none_on_empty_result(self, tmp_path: Path) -> None:
-        client = MagicMock()
-        client.evaluate.return_value = "<p>short</p>"
+        with pytest.raises(EdinetApiError, match="EDINET_API_KEY"):
+            require_edinet_api_key()
 
-        dest = download_xbrl(client, "S100TEST", tmp_path)
 
-        assert dest is None
+class TestDownloadXbrlPackage:
+    def test_saves_zip_and_extracts_artifact(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(
+            "stock_db.sources.edinet.api_client.requests.get",
+            lambda *args, **kwargs: _FakeResponse(_xbrl_zip_bytes()),
+        )
 
-    def test_returns_none_on_exception(self, tmp_path: Path) -> None:
-        client = MagicMock()
-        client.evaluate.side_effect = RuntimeError("browser crashed")
+        dest = download_xbrl_package("S100TEST", tmp_path, api_key="dummy")
 
-        dest = download_xbrl(client, "S100TEST", tmp_path)
+        assert dest == tmp_path / "S100TEST"
+        assert (tmp_path / "S100TEST.zip").is_file()
+        assert (dest / "XBRL" / "PublicDoc" / "report.xhtml").is_file()
 
-        assert dest is None
-
-    def test_calls_before_request_hook(self, tmp_path: Path) -> None:
-        client = MagicMock()
-        client.evaluate.return_value = _valid_ixbrl_html()
+    def test_calls_before_request_hook(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            "stock_db.sources.edinet.api_client.requests.get",
+            lambda *args, **kwargs: _FakeResponse(_xbrl_zip_bytes()),
+        )
         calls: list[str] = []
 
-        dest = download_xbrl(
-            client,
+        download_xbrl_package(
             "S100TEST",
             tmp_path,
+            api_key="dummy",
             before_request=lambda: calls.append("called"),
         )
 
-        assert dest is not None
         assert calls == ["called"]
 
-    def test_rejects_header_only_html(self, tmp_path: Path) -> None:
-        client = MagicMock()
-        client.evaluate.return_value = "<html><head><title>0000000_header.htm</title></head><body>header</body></html>"
+    def test_rejects_non_zip_content_type(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            "stock_db.sources.edinet.api_client.requests.get",
+            lambda *args, **kwargs: _FakeResponse(b"{}", content_type="application/json; charset=utf-8"),
+        )
 
-        dest = download_xbrl(client, "S100TEST", tmp_path)
+        with pytest.raises(EdinetApiError, match="content type"):
+            download_xbrl_package("S100TEST", tmp_path, api_key="dummy")
 
-        assert dest is None
+    def test_rejects_invalid_zip(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            "stock_db.sources.edinet.api_client.requests.get",
+            lambda *args, **kwargs: _FakeResponse(b"not a zip"),
+        )
+
+        with pytest.raises(EdinetApiError, match="invalid"):
+            download_xbrl_package("S100TEST", tmp_path, api_key="dummy")
