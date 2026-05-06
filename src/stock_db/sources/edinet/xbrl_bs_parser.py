@@ -372,7 +372,8 @@ def _collect_nsmap(path: Path) -> dict[str, str]:
         for _, node in ET.iterparse(path, events=("start-ns",)):
             prefix, uri = node
             nsmap[prefix or ""] = uri
-    except ET.ParseError:
+    except ET.ParseError as exc:
+        logger.warning("Failed to collect namespace map from %s: %s", path, exc)
         return {}
     return nsmap
 

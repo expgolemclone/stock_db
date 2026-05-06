@@ -9,6 +9,8 @@ from stock_db.storage.stocks import (
     get_existing_tickers,
     get_stock_names,
     get_ticker_edinet_map,
+    get_ticker_suffix_map,
+    get_validation_targets,
     upsert_company_metadata,
     upsert_stock,
 )
@@ -124,3 +126,48 @@ class TestCompanyMetadata:
         row = db_conn.execute("SELECT * FROM stocks WHERE ticker='1234'").fetchone()
         assert row["name"] == "テスト"
         assert row["sector"] == "情報通信"
+
+
+class TestGetValidationTargets:
+    def test_returns_stocks_ordered_by_market_cap(self, db_conn: sqlite3.Connection) -> None:
+        from stock_db.storage.prices import upsert_price, upsert_shares_outstanding
+
+        upsert_stock(db_conn, "1111", "Alpha", "", "")
+        upsert_shares_outstanding(db_conn, "1111", 100)
+        upsert_company_metadata(db_conn, "1111", securities_report_url="https://a.pdf")
+        upsert_price(db_conn, "1111", "2026-04-20", 100.0, 1)
+
+        upsert_stock(db_conn, "2222", "Beta", "", "")
+        upsert_shares_outstanding(db_conn, "2222", 50)
+        upsert_company_metadata(db_conn, "2222", securities_report_url="https://b.pdf")
+        upsert_price(db_conn, "2222", "2026-04-20", 300.0, 1)
+
+        db_conn.commit()
+
+        rows = get_validation_targets(db_conn, 2)
+        assert len(rows) == 2
+        assert rows[0]["ticker"] == "2222"  # 300*50=15000
+        assert rows[1]["ticker"] == "1111"  # 100*100=10000
+
+    def test_excludes_stocks_without_url_or_shares(self, db_conn: sqlite3.Connection) -> None:
+        from stock_db.storage.prices import upsert_price, upsert_shares_outstanding
+
+        upsert_stock(db_conn, "1111", "HasUrl", "", "")
+        upsert_shares_outstanding(db_conn, "1111", 100)
+        upsert_company_metadata(db_conn, "1111", securities_report_url="https://a.pdf")
+        upsert_price(db_conn, "1111", "2026-04-20", 100.0, 1)
+
+        upsert_stock(db_conn, "2222", "NoUrl", "", "")
+        upsert_shares_outstanding(db_conn, "2222", 100)
+        # No securities_report_url for 2222
+        upsert_price(db_conn, "2222", "2026-04-20", 500.0, 1)
+
+        upsert_stock(db_conn, "3333", "NoShares", "", "")
+        upsert_company_metadata(db_conn, "3333", securities_report_url="https://c.pdf")
+        # No shares_outstanding for 3333
+        upsert_price(db_conn, "3333", "2026-04-20", 999.0, 1)
+
+        db_conn.commit()
+
+        rows = get_validation_targets(db_conn, 10)
+        assert [r["ticker"] for r in rows] == ["1111"]

@@ -93,3 +93,42 @@ def get_ticker_suffix_map(conn: sqlite3.Connection) -> dict[str, str]:
         "SELECT ticker, yf_suffix FROM stocks WHERE yf_suffix IS NOT NULL"
     ).fetchall()
     return {r["ticker"]: r["yf_suffix"] for r in rows}
+
+
+def get_validation_targets(
+    conn: sqlite3.Connection,
+    limit: int,
+) -> list[sqlite3.Row]:
+    """Return stocks with price data ordered by market cap (descending).
+
+    Only includes stocks that have a securities_report_url, shares_outstanding,
+    and a latest closing price.
+    """
+    rows = conn.execute(
+        """
+        WITH latest_price AS (
+            SELECT ticker, MAX(date) AS latest_date
+            FROM prices
+            GROUP BY ticker
+        )
+        SELECT
+            s.ticker,
+            s.name,
+            s.securities_report_url,
+            p.close,
+            s.shares_outstanding
+        FROM stocks s
+        JOIN latest_price lp
+          ON lp.ticker = s.ticker
+        JOIN prices p
+          ON p.ticker = lp.ticker
+         AND p.date = lp.latest_date
+        WHERE s.securities_report_url IS NOT NULL
+          AND s.shares_outstanding IS NOT NULL
+          AND p.close IS NOT NULL
+        ORDER BY CAST(p.close * s.shares_outstanding AS REAL) DESC, s.ticker
+        LIMIT ?
+        """,
+        (limit,),
+    ).fetchall()
+    return list(rows)

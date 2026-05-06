@@ -158,3 +158,21 @@ def get_cached_periods(
         (ticker, statement),
     ).fetchall()
     return {r["period"] for r in rows}
+
+
+def get_items_by_source(
+    conn: sqlite3.Connection,
+    ticker: str,
+    source: str,
+) -> list[sqlite3.Row]:
+    """Return all financial_items rows for a ticker/source, ordered by period DESC."""
+    rows = conn.execute(
+        """
+        SELECT period, statement, item_name, value
+        FROM financial_items
+        WHERE ticker = ? AND source = ?
+        ORDER BY period DESC, statement, item_name
+        """,
+        (ticker, source),
+    ).fetchall()
+    return list(rows)

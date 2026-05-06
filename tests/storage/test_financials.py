@@ -6,6 +6,7 @@ from stock_db.storage.financials import (
     get_cached_periods,
     get_financial_dict,
     get_historical_items,
+    get_items_by_source,
     purge_financial_items_for_source,
     upsert_financial_item,
     upsert_financial_items_bulk,
@@ -95,3 +96,41 @@ class TestFinancialItems:
             "SELECT statement, item_name, source FROM financial_items ORDER BY statement, item_name"
         ).fetchall()
         assert [tuple(row) for row in rows] == [("pl", "y", "test_source")]
+
+
+class TestGetItemsBySource:
+    def test_returns_rows_for_matching_source(self, db_conn: sqlite3.Connection) -> None:
+        upsert_financial_item(db_conn, "8888", "2025-03", "bs", "current_assets", 38675872000.0, "xbrl_bs")
+        upsert_financial_item(db_conn, "8888", "2025-03", "bs", "inventories", 32974467000.0, "xbrl_bs")
+        upsert_financial_item(db_conn, "8888", "2025-03", "pl", "revenue", 1000.0, "other_source")
+        db_conn.commit()
+
+        rows = get_items_by_source(db_conn, "8888", "xbrl_bs")
+        assert len(rows) == 2
+        assert rows[0]["item_name"] == "current_assets"
+
+    def test_returns_empty_for_no_match(self, db_conn: sqlite3.Connection) -> None:
+        upsert_financial_item(db_conn, "1234", "2024", "pl", "revenue", 100.0, "other")
+        db_conn.commit()
+
+        rows = get_items_by_source(db_conn, "1234", "xbrl_bs")
+        assert rows == []
+
+    def test_includes_status_rows(self, db_conn: sqlite3.Connection) -> None:
+        upsert_financial_item(db_conn, "7000", "2025-03", "_status", "blocked", None, "xbrl_bs")
+        db_conn.commit()
+
+        rows = get_items_by_source(db_conn, "7000", "xbrl_bs")
+        assert len(rows) == 1
+        assert rows[0]["statement"] == "_status"
+        assert rows[0]["item_name"] == "blocked"
+
+    def test_orders_by_period_desc(self, db_conn: sqlite3.Connection) -> None:
+        upsert_financial_item(db_conn, "1234", "2023", "bs", "x", 1.0, "xbrl_bs")
+        upsert_financial_item(db_conn, "1234", "2025", "bs", "x", 3.0, "xbrl_bs")
+        upsert_financial_item(db_conn, "1234", "2024", "bs", "x", 2.0, "xbrl_bs")
+        db_conn.commit()
+
+        rows = get_items_by_source(db_conn, "1234", "xbrl_bs")
+        periods = [r["period"] for r in rows]
+        assert periods == ["2025", "2024", "2023"]
