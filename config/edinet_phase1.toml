@@ -1,0 +1,6 @@
+[search_aliases]
+8306 = ["株式会社三菱ＵＦＪフィナンシャル・グループ"]
+8703 = ["カブドットコム証券株式会社"]
+
+[excluded_tickers]
+1480 = "ETF。EDINET提出主体が銘柄名と一致せず、自己名義の securities_report_url を保持しない"

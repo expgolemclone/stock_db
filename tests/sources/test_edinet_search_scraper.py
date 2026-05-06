@@ -7,6 +7,7 @@ import pytest
 from stock_db.sources.edinet.search_scraper import (
     _build_search_and_extract_js,
     _extract_doc_id_from_url,
+    build_company_name_candidates,
     search_annual_reports,
 )
 
@@ -134,4 +135,99 @@ class TestSearchAnnualReports:
         assert calls == [
             ("8306", None, None),
             (None, None, "三菱UFJフィナンシャル・グループ"),
+        ]
+
+    def test_skips_ticker_code_search_for_alphanumeric_ticker(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        calls: list[tuple[str | None, str | None, str | None]] = []
+
+        def fake_run_search(
+            client: object,
+            ticker: str,
+            *,
+            proxy: str | None = None,
+            search_ticker: str | None = None,
+            edinet_code: str | None = None,
+            company_name: str | None = None,
+            before_request: object = None,
+        ) -> tuple[str | None, str | None, str | None]:
+            del client, proxy, before_request
+            calls.append((search_ticker, edinet_code, company_name))
+            return None, None, "no_records"
+
+        monkeypatch.setattr(
+            "stock_db.sources.edinet.search_scraper._run_search", fake_run_search,
+        )
+
+        search_annual_reports(
+            types.SimpleNamespace(),
+            "275A",
+            company_name_candidates=["ハンワホームズ株式会社"],
+        )
+
+        assert calls == [
+            (None, None, "ハンワホームズ株式会社"),
+            (None, None, "ハンワホームズ"),
+            (None, None, "株式会社ハンワホームズ"),
+        ]
+
+    def test_tries_company_name_candidates_in_supplied_order(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        calls: list[str] = []
+        responses = iter([
+            (None, None, "no_records"),
+            (None, None, "no_records"),
+            ("S100ALIAS", "E11111", None),
+        ])
+
+        def fake_run_search(
+            client: object,
+            ticker: str,
+            *,
+            proxy: str | None = None,
+            search_ticker: str | None = None,
+            edinet_code: str | None = None,
+            company_name: str | None = None,
+            before_request: object = None,
+        ) -> tuple[str | None, str | None, str | None]:
+            del client, ticker, proxy, search_ticker, edinet_code, before_request
+            if company_name is not None:
+                calls.append(company_name)
+            return next(responses)
+
+        monkeypatch.setattr(
+            "stock_db.sources.edinet.search_scraper._run_search", fake_run_search,
+        )
+
+        doc_id, found_edinet = search_annual_reports(
+            types.SimpleNamespace(),
+            "8306",
+            company_name_candidates=[
+                "株式会社三菱ＵＦＪフィナンシャル・グループ",
+                "三菱ＵＦＪフィナンシャル・グループ",
+            ],
+        )
+
+        assert doc_id == "S100ALIAS"
+        assert found_edinet == "E11111"
+        assert calls == [
+            "株式会社三菱UFJフィナンシャル・グループ",
+            "三菱UFJフィナンシャル・グループ",
+        ]
+
+
+class TestBuildCompanyNameCandidates:
+    def test_normalizes_html_entities_fullwidth_and_corporate_markers(self) -> None:
+        assert build_company_name_candidates(
+            "ビッグツリーテクノロジー&amp;コンサルティング",
+            "  (株)ファイントゥデイホールディングス  ",
+        ) == [
+            "ビッグツリーテクノロジー&コンサルティング",
+            "株式会社ビッグツリーテクノロジー&コンサルティング",
+            "ビッグツリーテクノロジー&コンサルティング株式会社",
+            "株式会社ファイントゥデイホールディングス",
+            "ファイントゥデイホールディングス",
+            "ファイントゥデイホールディングス株式会社",
         ]

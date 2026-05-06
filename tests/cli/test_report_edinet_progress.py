@@ -14,6 +14,7 @@ def _build_db(db_path: Path) -> None:
     init_db(conn)
 
     upsert_stock(conn, "1111", "Alpha", "Auto", "Prime", edinet_code="E11111")
+    upsert_stock(conn, "1480", "Excluded ETF", "ETF", "ETF")
     upsert_stock(conn, "2222", "Beta", "Tech", "Prime")
     upsert_stock(conn, "3333", "Gamma", "Retail", "Standard")
     upsert_stock(conn, "4444", "Delta", "Retail", "Standard")
@@ -62,21 +63,28 @@ class TestReportEdinetProgress:
         captured = capsys.readouterr()
 
         assert rc == 0
-        assert "total_stocks: 4" in captured.out
-        assert "phase1_pending: 1" in captured.out
+        assert "total_stocks: 5" in captured.out
+        assert "phase1_pending: 2" in captured.out
+        assert "phase1_excluded: 1" in captured.out
+        assert "phase1_pending_actionable: 1" in captured.out
         assert "phase2_pending: 2" in captured.out
         assert "with_url_no_report: 1" in captured.out
         assert "with_url_report_no_xbrl: 1" in captured.out
 
         phase1_path = out_dir / "edinet_phase1_unresolved_pass1.tsv"
+        phase1_excluded_path = out_dir / "edinet_phase1_excluded_pass1.tsv"
         no_report_path = out_dir / "edinet_phase2_no_report_pass1.tsv"
         no_xbrl_path = out_dir / "edinet_phase2_no_xbrl_pass1.tsv"
 
         assert phase1_path.exists()
+        assert phase1_excluded_path.exists()
         assert no_report_path.exists()
         assert no_xbrl_path.exists()
 
         assert "1111\tAlpha\tE11111" in phase1_path.read_text(encoding="utf-8")
+        excluded_text = phase1_excluded_path.read_text(encoding="utf-8")
+        assert "1480\tExcluded ETF" in excluded_text
+        assert "ETF。EDINET提出主体が銘柄名と一致せず" in excluded_text
         assert "2222\tBeta\thttps://example.test/S100NOREP.pdf" in no_report_path.read_text(
             encoding="utf-8",
         )

@@ -4,11 +4,12 @@ import argparse
 import csv
 import sqlite3
 import sys
+from collections.abc import Mapping
 from datetime import datetime
 from pathlib import Path
 from typing import Sequence
 
-from stock_db.paths import STOCKS_DB_PATH, VAR_DIR
+from stock_db.paths import STOCKS_DB_PATH, VAR_DIR, edinet_phase1_config
 
 
 def _connect_readonly(db_path: Path) -> sqlite3.Connection:
@@ -21,8 +22,12 @@ def _default_label() -> str:
     return datetime.now().strftime("%Y%m%d_%H%M%S")
 
 
-def _fetch_count(conn: sqlite3.Connection, query: str) -> int:
-    row = conn.execute(query).fetchone()
+def _fetch_count(
+    conn: sqlite3.Connection,
+    query: str,
+    params: Sequence[object] = (),
+) -> int:
+    row = conn.execute(query, params).fetchone()
     if row is None:
         return 0
     return int(row[0])
@@ -37,13 +42,26 @@ def _fetch_rows(
     return headers, rows
 
 
-def _write_tsv(path: Path, headers: list[str], rows: list[sqlite3.Row]) -> None:
+def _write_tsv(path: Path, headers: list[str], rows: Sequence[object]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8", newline="") as f:
         writer = csv.writer(f, delimiter="\t", lineterminator="\n")
         writer.writerow(headers)
         for row in rows:
+            if isinstance(row, Mapping):
+                writer.writerow([row[h] for h in headers])
+                continue
             writer.writerow([row[h] for h in headers])
+
+
+def _excluded_ticker_reasons() -> dict[str, str]:
+    raw = edinet_phase1_config()
+    excluded = raw.get("excluded_tickers", {})
+    return {
+        str(ticker): str(reason).strip()
+        for ticker, reason in excluded.items()
+        if str(reason).strip()
+    }
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -84,10 +102,23 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     conn = _connect_readonly(db_path)
     try:
+        excluded_tickers = _excluded_ticker_reasons()
+        excluded_keys = sorted(excluded_tickers)
+        excluded_placeholders = ",".join("?" for _ in excluded_keys)
         total_stocks = _fetch_count(conn, "SELECT COUNT(*) FROM stocks")
         phase1_pending = _fetch_count(
             conn,
             "SELECT COUNT(*) FROM stocks WHERE securities_report_url IS NULL",
+        )
+        phase1_excluded = (
+            _fetch_count(
+                conn,
+                (
+                    "SELECT COUNT(*) FROM stocks "
+                    f"WHERE securities_report_url IS NULL AND ticker IN ({excluded_placeholders})"
+                ),
+                excluded_keys,
+            ) if excluded_keys else 0
         )
         with_url_no_report = _fetch_count(
             conn,
@@ -116,16 +147,53 @@ def main(argv: Sequence[str] | None = None) -> int:
             """,
         )
         phase2_pending = with_url_no_report + with_url_report_no_xbrl
+        phase1_pending_actionable = phase1_pending - phase1_excluded
 
-        phase1_headers, phase1_rows = _fetch_rows(
-            conn,
-            """
-            SELECT ticker, name, COALESCE(edinet_code, '') AS edinet_code, updated_at
-            FROM stocks
-            WHERE securities_report_url IS NULL
-            ORDER BY ticker
-            """,
-        )
+        if excluded_keys:
+            phase1_headers = ["ticker", "name", "edinet_code", "updated_at"]
+            phase1_rows = conn.execute(
+                f"""
+                SELECT ticker, name, COALESCE(edinet_code, '') AS edinet_code, updated_at
+                FROM stocks
+                WHERE securities_report_url IS NULL
+                  AND ticker NOT IN ({excluded_placeholders})
+                ORDER BY ticker
+                """,
+                excluded_keys,
+            ).fetchall()
+            phase1_excluded_headers = ["ticker", "name", "edinet_code", "reason", "updated_at"]
+            excluded_rows = conn.execute(
+                f"""
+                SELECT ticker, name, COALESCE(edinet_code, '') AS edinet_code, updated_at
+                FROM stocks
+                WHERE securities_report_url IS NULL
+                  AND ticker IN ({excluded_placeholders})
+                ORDER BY ticker
+                """,
+                excluded_keys,
+            ).fetchall()
+            phase1_excluded_rows = [
+                {
+                    "ticker": row["ticker"],
+                    "name": row["name"],
+                    "edinet_code": row["edinet_code"],
+                    "reason": excluded_tickers[row["ticker"]],
+                    "updated_at": row["updated_at"],
+                }
+                for row in excluded_rows
+            ]
+        else:
+            phase1_headers, phase1_rows = _fetch_rows(
+                conn,
+                """
+                SELECT ticker, name, COALESCE(edinet_code, '') AS edinet_code, updated_at
+                FROM stocks
+                WHERE securities_report_url IS NULL
+                ORDER BY ticker
+                """,
+            )
+            phase1_excluded_headers = ["ticker", "name", "edinet_code", "reason", "updated_at"]
+            phase1_excluded_rows: list[dict[str, str]] = []
         no_report_headers, no_report_rows = _fetch_rows(
             conn,
             """
@@ -167,10 +235,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         conn.close()
 
     phase1_path = output_dir / f"edinet_phase1_unresolved_{label}.tsv"
+    phase1_excluded_path = output_dir / f"edinet_phase1_excluded_{label}.tsv"
     no_report_path = output_dir / f"edinet_phase2_no_report_{label}.tsv"
     no_xbrl_path = output_dir / f"edinet_phase2_no_xbrl_{label}.tsv"
 
     _write_tsv(phase1_path, phase1_headers, phase1_rows)
+    _write_tsv(phase1_excluded_path, phase1_excluded_headers, phase1_excluded_rows)
     _write_tsv(no_report_path, no_report_headers, no_report_rows)
     _write_tsv(no_xbrl_path, no_xbrl_headers, no_xbrl_rows)
 
@@ -178,10 +248,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     print(f"label: {label}")
     print(f"total_stocks: {total_stocks}")
     print(f"phase1_pending: {phase1_pending}")
+    print(f"phase1_excluded: {phase1_excluded}")
+    print(f"phase1_pending_actionable: {phase1_pending_actionable}")
     print(f"phase2_pending: {phase2_pending}")
     print(f"with_url_no_report: {with_url_no_report}")
     print(f"with_url_report_no_xbrl: {with_url_report_no_xbrl}")
     print(f"wrote: {phase1_path}")
+    print(f"wrote: {phase1_excluded_path}")
     print(f"wrote: {no_report_path}")
     print(f"wrote: {no_xbrl_path}")
     return 0

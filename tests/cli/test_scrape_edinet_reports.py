@@ -131,6 +131,11 @@ class TestScrapeAllEdinetReports:
             "search_annual_reports",
             lambda client, ticker, **kwargs: ("S100STEP1", "E12345"),
         )
+        monkeypatch.setattr(
+            scrape_edinet_reports,
+            "_load_phase1_rules",
+            lambda: scrape_edinet_reports._Phase1Rules(search_aliases={}, excluded_tickers={}),
+        )
 
         result = scrape_edinet_reports.scrape_edinet_phase1(
             conn,
@@ -153,6 +158,7 @@ class TestScrapeAllEdinetReports:
             found=1,
             not_found=0,
             errors=0,
+            excluded=0,
         )
         assert stock["edinet_code"] == "E12345"
         assert stock["securities_report_url"].endswith("/S100STEP1.pdf")
@@ -167,7 +173,7 @@ class TestScrapeAllEdinetReports:
         upsert_stock(conn, "8306", "三菱UFJ FG", "Sector", "Prime")
         conn.commit()
 
-        search_calls: list[str | None] = []
+        search_calls: list[list[str]] = []
 
         def fake_search_annual_reports(
             client: object,
@@ -176,12 +182,15 @@ class TestScrapeAllEdinetReports:
             proxy: str | None = None,
             edinet_code: str | None = None,
             company_name: str | None = None,
+            company_name_candidates: list[str] | None = None,
             before_request: object = None,
         ) -> tuple[str | None, str | None]:
-            del client, proxy, edinet_code, before_request
+            del client, proxy, edinet_code, before_request, company_name
             assert ticker == "8306"
-            search_calls.append(company_name)
-            if company_name == "株式会社三菱ＵＦＪフィナンシャル・グループ":
+            search_calls.append(list(company_name_candidates or []))
+            if company_name_candidates and (
+                "株式会社三菱UFJフィナンシャル・グループ" in company_name_candidates
+            ):
                 return "S100W4FB", "E03606"
             return None, None
 
@@ -189,6 +198,11 @@ class TestScrapeAllEdinetReports:
             scrape_edinet_reports,
             "search_annual_reports",
             fake_search_annual_reports,
+        )
+        monkeypatch.setattr(
+            scrape_edinet_reports,
+            "_load_phase1_rules",
+            lambda: scrape_edinet_reports._Phase1Rules(search_aliases={}, excluded_tickers={}),
         )
         monkeypatch.setattr(
             scrape_edinet_reports,
@@ -216,15 +230,57 @@ class TestScrapeAllEdinetReports:
             found=1,
             not_found=0,
             errors=0,
+            excluded=0,
         )
         assert search_calls == [
-            "三菱UFJ FG",
-            "株式会社三菱ＵＦＪフィナンシャル・グループ",
+            ["三菱UFJ FG", "株式会社三菱UFJ FG", "三菱UFJ FG株式会社"],
+            [
+                "株式会社三菱UFJフィナンシャル・グループ",
+                "三菱UFJフィナンシャル・グループ",
+                "三菱UFJフィナンシャル・グループ株式会社",
+            ],
         ]
         assert stock["name"] == "株式会社三菱ＵＦＪフィナンシャル・グループ"
         assert stock["edinet_code"] == "E03606"
         assert stock["yf_suffix"] == "T"
         assert stock["securities_report_url"].endswith("/S100W4FB.pdf")
+        conn.close()
+
+    def test_phase1_skips_excluded_tickers(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        db_path = tmp_path / "stocks.db"
+        conn = _build_db(db_path)
+        upsert_stock(conn, "1480", "ETF", "ETF", "ETF")
+        conn.commit()
+
+        def fail_search(*args: object, **kwargs: object) -> tuple[str | None, str | None]:
+            raise AssertionError("search_annual_reports should not be called for excluded ticker")
+
+        monkeypatch.setattr(scrape_edinet_reports, "search_annual_reports", fail_search)
+        monkeypatch.setattr(
+            scrape_edinet_reports,
+            "_load_phase1_rules",
+            lambda: scrape_edinet_reports._Phase1Rules(
+                search_aliases={},
+                excluded_tickers={"1480": "ETF exclusion"},
+            ),
+        )
+
+        result = scrape_edinet_reports.scrape_edinet_phase1(
+            conn,
+            _EvaluateClient([], threading.Lock()),
+            ["1480"],
+            interval=0.0,
+        )
+
+        assert result == scrape_edinet_reports._Phase1Result(
+            searched=0,
+            found=0,
+            not_found=0,
+            errors=0,
+            excluded=1,
+        )
         conn.close()
 
     def test_combined_run_reloads_urls_discovered_in_phase1(
@@ -242,6 +298,11 @@ class TestScrapeAllEdinetReports:
             scrape_edinet_reports,
             "search_annual_reports",
             lambda client, ticker, **kwargs: ("S100STEP12", "E54321"),
+        )
+        monkeypatch.setattr(
+            scrape_edinet_reports,
+            "_load_phase1_rules",
+            lambda: scrape_edinet_reports._Phase1Rules(search_aliases={}, excluded_tickers={}),
         )
         monkeypatch.setattr(
             scrape_edinet_reports,

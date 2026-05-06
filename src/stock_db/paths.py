@@ -30,3 +30,8 @@ def _cli_defaults_data() -> dict:
 
 def cli_defaults(section: str) -> dict:
     return dict(_cli_defaults_data()[section])
+
+
+@lru_cache(maxsize=1)
+def edinet_phase1_config() -> dict:
+    return _load_toml("edinet_phase1.toml")

@@ -17,7 +17,13 @@ from typing import Callable, Literal
 import requests
 
 from stock_db.browser_client.client import BrowserServiceClient
-from stock_db.paths import STOCKS_DB_PATH, VAR_DIR, cli_defaults, magic_numbers
+from stock_db.paths import (
+    STOCKS_DB_PATH,
+    VAR_DIR,
+    cli_defaults,
+    edinet_phase1_config,
+    magic_numbers,
+)
 from stock_db.sources.edinet.api_client import (
     EdinetApiError,
     build_pdf_url,
@@ -30,6 +36,7 @@ from stock_db.sources.edinet.search_scraper import (
     DocIdExtractionError,
     EdinetBlockError,
     EdinetNoRecordsError,
+    build_company_name_candidates,
     search_annual_reports,
 )
 from stock_db.sources.edinet.xbrl_bs_parser import is_valid_xbrl_path
@@ -81,6 +88,7 @@ class _Phase1Result:
     found: int
     not_found: int
     errors: int
+    excluded: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -89,6 +97,12 @@ class _Phase2Result:
     errors: int
     xbrl_failures: int
     skipped_missing_url: int
+
+
+@dataclass(frozen=True, slots=True)
+class _Phase1Rules:
+    search_aliases: dict[str, tuple[str, ...]]
+    excluded_tickers: dict[str, str]
 
 
 class _RequestThrottle:
@@ -195,6 +209,29 @@ def _build_client_config(defaults: dict, browser_cfg: dict) -> dict:
     }
 
 
+def _load_phase1_rules() -> _Phase1Rules:
+    raw = edinet_phase1_config()
+    alias_rows = raw.get("search_aliases", {})
+    aliases: dict[str, tuple[str, ...]] = {}
+    for ticker, values in alias_rows.items():
+        if isinstance(values, str):
+            normalized_values = (values,)
+        else:
+            normalized_values = tuple(
+                str(value).strip() for value in values if str(value).strip()
+            )
+        if normalized_values:
+            aliases[str(ticker)] = normalized_values
+
+    excluded_rows = raw.get("excluded_tickers", {})
+    excluded = {
+        str(ticker): str(reason).strip()
+        for ticker, reason in excluded_rows.items()
+        if str(reason).strip()
+    }
+    return _Phase1Rules(search_aliases=aliases, excluded_tickers=excluded)
+
+
 def _resolve_tickers(
     conn: sqlite3.Connection,
     ticker: str | None,
@@ -250,20 +287,35 @@ def scrape_edinet_phase1(
     interval: float = DEFAULT_INTERVAL_SECONDS,
 ) -> _Phase1Result:
     """Discover EDINET annual report URLs for tickers without securities_report_url."""
+    rules = _load_phase1_rules()
     has_url = _load_securities_report_urls(conn, tickers)
     no_url_tickers = [ticker for ticker in tickers if ticker not in has_url]
+    excluded_tickers = [ticker for ticker in no_url_tickers if ticker in rules.excluded_tickers]
+    search_tickers = [ticker for ticker in no_url_tickers if ticker not in rules.excluded_tickers]
     if not no_url_tickers:
         logger.info("Phase 1: all %d tickers already have securities_report_url", len(tickers))
-        return _Phase1Result(searched=0, found=0, not_found=0, errors=0)
+        return _Phase1Result(searched=0, found=0, not_found=0, errors=0, excluded=0)
+    if excluded_tickers:
+        logger.info("Phase 1: excluding %d tickers via config", len(excluded_tickers))
+        for ticker in excluded_tickers:
+            logger.info("  %s: %s", ticker, rules.excluded_tickers[ticker])
+    if not search_tickers:
+        return _Phase1Result(
+            searched=0,
+            found=0,
+            not_found=0,
+            errors=0,
+            excluded=len(excluded_tickers),
+        )
 
     throttle = _RequestThrottle(interval)
     names = get_stock_names(conn)
-    edinet_codes = {ticker: get_edinet_code(conn, ticker) for ticker in no_url_tickers}
+    edinet_codes = {ticker: get_edinet_code(conn, ticker) for ticker in search_tickers}
     suffixes = get_ticker_suffix_map(conn)
 
     logger.info(
         "Phase 1: Discovering %d tickers via EDINET search (%d workers)",
-        len(no_url_tickers),
+        len(search_tickers),
         _WORKERS,
     )
 
@@ -274,11 +326,13 @@ def scrape_edinet_phase1(
         ticker: str,
     ) -> tuple[str, str | None, str | None, str | None, str | None]:
         company_name = names.get(ticker)
+        alias_names = list(rules.search_aliases.get(ticker, ()))
+        initial_candidates = build_company_name_candidates(*alias_names, company_name)
         doc_id, found_edinet = search_annual_reports(
             client,
             ticker,
             edinet_code=edinet_codes.get(ticker),
-            company_name=company_name,
+            company_name_candidates=initial_candidates,
             before_request=throttle.wait,
         )
         yahoo_name = None
@@ -291,12 +345,17 @@ def scrape_edinet_phase1(
                 known_suffix=suffixes.get(ticker),
                 interval=0.0,
             )
-            if yahoo_name and yahoo_name != company_name:
+            yahoo_candidates = [
+                candidate
+                for candidate in build_company_name_candidates(yahoo_name)
+                if candidate not in initial_candidates
+            ]
+            if yahoo_candidates:
                 doc_id, fallback_edinet = search_annual_reports(
                     client,
                     ticker,
                     edinet_code=edinet_codes.get(ticker),
-                    company_name=yahoo_name,
+                    company_name_candidates=yahoo_candidates,
                     before_request=throttle.wait,
                 )
                 found_edinet = found_edinet or fallback_edinet
@@ -304,7 +363,7 @@ def scrape_edinet_phase1(
         return ticker, doc_id, found_edinet, yahoo_name, yahoo_suffix
 
     with ThreadPoolExecutor(max_workers=_WORKERS) as executor:
-        futures = {executor.submit(_search_worker, ticker): ticker for ticker in no_url_tickers}
+        futures = {executor.submit(_search_worker, ticker): ticker for ticker in search_tickers}
         done_count = 0
         for future in as_completed(futures):
             done_count += 1
@@ -312,7 +371,7 @@ def scrape_edinet_phase1(
             logger.info(
                 "[Phase1 %d/%d] %s: docID=%s edinet=%s",
                 done_count,
-                len(no_url_tickers),
+                len(search_tickers),
                 ticker,
                 doc_id,
                 found_edinet,
@@ -345,16 +404,18 @@ def scrape_edinet_phase1(
             conn.commit()
 
     logger.info(
-        "Phase 1 complete: searched=%d found=%d not_found=%d",
-        len(no_url_tickers),
+        "Phase 1 complete: searched=%d found=%d not_found=%d excluded=%d",
+        len(search_tickers),
         found,
         not_found,
+        len(excluded_tickers),
     )
     return _Phase1Result(
-        searched=len(no_url_tickers),
+        searched=len(search_tickers),
         found=found,
         not_found=not_found,
         errors=0,
+        excluded=len(excluded_tickers),
     )
 
 
@@ -513,10 +574,11 @@ def scrape_all_edinet_reports(
         interval=interval,
     )
     logger.info(
-        "Combined run complete: phase1 searched=%d found=%d not_found=%d; phase2 ok=%d errors=%d",
+        "Combined run complete: phase1 searched=%d found=%d not_found=%d excluded=%d; phase2 ok=%d errors=%d",
         phase1.searched,
         phase1.found,
         phase1.not_found,
+        phase1.excluded,
         phase2.ok,
         phase2.errors,
     )
@@ -558,7 +620,8 @@ def _print_summary(mode: _CliMode, *, phase1: _Phase1Result | None = None, phase
             (
                 "Done: "
                 f"{phase1.searched} searched, {phase1.found} found, "
-                f"{phase1.not_found} not found, {phase1.errors} errors"
+                f"{phase1.not_found} not found, {phase1.excluded} excluded, "
+                f"{phase1.errors} errors"
             ),
             file=sys.stderr,
         )

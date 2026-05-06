@@ -20,6 +20,7 @@ stock_db/
   config/
     cli_defaults.toml      # CLI のデフォルト引数
     magic_numbers.toml     # タイムアウト・インターバル等の定数
+    edinet_phase1.toml     # EDINET Phase 1 の社名 alias / 対象外 ticker
   services/
     browser/               # Node.js ブラウザサービス（Puppeteer）
       server.js            # Express API サーバー（/fetch, /download, /shutdown）
@@ -34,6 +35,7 @@ stock_db/
       scrape_edinet_reports_step2.py # EDINET step2（XBRL取得）のみ
       parse_xbrl_bs.py     # EDINET XBRL から inventories のみを保存
       scrape_edinet_watchdog.py # メモリ監視付き watchdog ラッパー
+      report_edinet_progress.py # Phase 1/2 の raw / actionable 進捗を集計
       scrape_stooq_prices.py # Stooq 日次価格取り込み CLI
       scrape_yahoo_finance_prices.py # Yahoo Finance JP 価格スクレイプ CLI
       generate_validation_site_list.py
@@ -69,6 +71,7 @@ stock_db/
 
 ```
 EDINET search (browser) ──docID発見──→ stocks.securities_report_url
+config/edinet_phase1.toml ──alias / exclusion──→ Phase 1 search plan
 EDINET API v2 documents/{docID}?type=1 ──ZIP保存/展開──→ var/raw/edinet/xbrl/
 var/raw/edinet/xbrl/ ──parse-xbrl-bs──→ financial_items (source=xbrl_bs, inventoriesのみ)
 Stooq 日次CSV ──ダウンロード──→ parser ──→ prices
@@ -108,7 +111,11 @@ SQLite を使用。WAL モード・外部キー制約有効。
 
 `search_scraper` は書類種別ラジオを明示的に「指定する」に切り替えたうえで `有価証券報告書` チェックを付与し、提出者名検索で大量保有報告書などに埋もれて annual report を取り逃がさないようにしている。
 
-`scrape_edinet_reports` の Phase 1 は EDINET 検索で docID が見つからなかった銘柄に対して Yahoo Finance JP の quote title から表示名（例: `キタムラHD` → `株式会社キタムラ・ホールディングス`）と `yf_suffix` を補完し、その正規化名で再検索する。補完した名称・suffix は `stocks` に保存して次回以降の探索に再利用する。
+`scrape_edinet_reports` の Phase 1 は `config/edinet_phase1.toml` の alias、`stocks.name`、Yahoo Finance JP の quote title から提出者名称候補を作る。候補は HTML entity デコード、Unicode NFKC、空白正規化、`(株)` / `（株）` → `株式会社` 変換をかけ、`株式会社` の前置 / 後置バリアントも生成したうえで順に試す。Yahoo で補完した名称・suffix は `stocks` に保存して次回以降の探索に再利用する。
+
+英字付き ticker (`275A` など) は EDINET の提出者証券コード欄が 4 桁数値専用のため、証券コード検索を行わず提出者名称候補だけで探索する。
+
+`config/edinet_phase1.toml` の `excluded_tickers` は、ETF など自己名義の `securities_report_url` を保持しない銘柄を Phase 1 の対象外として扱う。`report_edinet_progress` は raw の `phase1_pending` とは別に `phase1_excluded` と `phase1_pending_actionable` を出力し、actionable 未解決と除外済みを別 TSV に書き出す。
 
 `scrape_edinet_reports` の Phase 2 は `EDINET_API_KEY` を必須とし、`sec_reports.xbrl_path` には展開済みアーティファクトのルートディレクトリを保存する。skip 判定では `xbrl_path` だけでなく、ZIP+展開済み artifact が有効かを再検証し、legacy `.xhtml` の header-only / invalid 保存物は再取得対象に戻す。
 
@@ -147,3 +154,4 @@ EDINET API を使う `scrape-edinet-reports` / `scrape-edinet-reports-step2` で
 - workflow は `Update Stooq prices` の前に `fonts-dejavu-extra` / `fonts-freefont-ttf` / `fonts-liberation` を install し、Stooq CAPTCHA OCR に必要な DejaVu / FreeSans / Liberation Sans 系フォントを runner に揃える
 - `stocks.db` は GitHub Actions Artifacts（名前 `stocks-db`）で永続化する。workflow 開始時に前回の artifact をダウンロードし、スクレイプ後にアップロードする
 - 手動検証時は `gh workflow run update-stooq-prices.yml --repo expgolemclone/stock_db --ref main` で `workflow_dispatch` を発火し、各ステップが success になることを確認する
+- EDINET Phase 1 の手動検証は `uv run scrape-edinet-reports-step1` 実行後に `uv run report-edinet-progress` を実行し、`phase1_pending_actionable` が 0 か、残件が alias / exclusion 追加対象として妥当かを確認する

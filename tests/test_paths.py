@@ -4,7 +4,13 @@ import os
 from pathlib import Path
 from unittest.mock import patch
 
-from stock_db.paths import BROWSER_SERVICE_DIR, PROJECT_ROOT, STOOQ_DIR, VAR_DIR
+from stock_db.paths import (
+    BROWSER_SERVICE_DIR,
+    PROJECT_ROOT,
+    STOOQ_DIR,
+    VAR_DIR,
+    edinet_phase1_config,
+)
 
 
 class TestProjectRoot:
@@ -33,3 +39,13 @@ class TestBrowserServiceDir:
 class TestStooqDir:
     def test_default_is_under_var_raw(self) -> None:
         assert STOOQ_DIR == PROJECT_ROOT / "var" / "raw" / "stooq"
+
+
+class TestEdinetPhase1Config:
+    def test_loads_repo_managed_alias_and_exclusion_rules(self) -> None:
+        config = edinet_phase1_config()
+
+        assert "search_aliases" in config
+        assert "excluded_tickers" in config
+        assert "8306" in config["search_aliases"]
+        assert config["excluded_tickers"]["1480"]

@@ -12,6 +12,7 @@ import json
 import logging
 import re
 import threading
+import unicodedata
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
@@ -58,6 +59,56 @@ def _reset_no_records() -> None:
     global _consecutive_no_records
     with _no_records_lock:
         _consecutive_no_records = 0
+
+
+def _normalize_company_name(name: str | None) -> str | None:
+    if name is None:
+        return None
+    normalized = html.unescape(name).strip()
+    if not normalized:
+        return None
+    normalized = unicodedata.normalize("NFKC", normalized)
+    normalized = re.sub(r"\s+", " ", normalized)
+    normalized = normalized.replace("（株）", "株式会社").replace("(株)", "株式会社")
+    return normalized.strip() or None
+
+
+def _dedupe_preserve_order(names: list[str]) -> list[str]:
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for name in names:
+        if name not in seen:
+            seen.add(name)
+            ordered.append(name)
+    return ordered
+
+
+def build_company_name_candidates(*names: str | None) -> list[str]:
+    candidates: list[str] = []
+    for raw_name in names:
+        name = _normalize_company_name(raw_name)
+        if not name:
+            continue
+        variants = [name]
+        if name.startswith("株式会社"):
+            stripped = name.removeprefix("株式会社").strip()
+            if stripped:
+                variants.append(stripped)
+                variants.append(f"{stripped}株式会社")
+        elif name.endswith("株式会社"):
+            stripped = name.removesuffix("株式会社").strip()
+            if stripped:
+                variants.append(stripped)
+                variants.append(f"株式会社{stripped}")
+        else:
+            variants.append(f"株式会社{name}")
+            variants.append(f"{name}株式会社")
+        candidates.extend(variants)
+    return _dedupe_preserve_order([candidate for candidate in candidates if candidate])
+
+
+def _supports_ticker_code_search(ticker: str) -> bool:
+    return ticker.isdigit()
 
 
 def _build_search_and_extract_js(
@@ -237,6 +288,7 @@ def search_annual_reports(
     proxy: str | None = None,
     edinet_code: str | None = None,
     company_name: str | None = None,
+    company_name_candidates: list[str] | None = None,
     before_request: Callable[[], None] | None = None,
 ) -> tuple[str | None, str | None]:
     """Search EDINET for the latest annual report of a given ticker.
@@ -254,18 +306,25 @@ def search_annual_reports(
             logger.info("Found docID %s for ticker %s via EDINET code", doc_id, ticker)
             return doc_id, found_edinet or edinet_code
 
-    # 2. 証券コードで検索
-    doc_id, found_edinet, err = _run_search(
-        client, ticker, proxy=proxy, search_ticker=ticker,
-        before_request=before_request,
-    )
-    if doc_id:
-        logger.info("Found docID %s for ticker %s via ticker code", doc_id, ticker)
-        return doc_id, found_edinet
-    if company_name:
+    if _supports_ticker_code_search(ticker):
+        # 2. 証券コードで検索
+        doc_id, found_edinet, err = _run_search(
+            client, ticker, proxy=proxy, search_ticker=ticker,
+            before_request=before_request,
+        )
+        if doc_id:
+            logger.info("Found docID %s for ticker %s via ticker code", doc_id, ticker)
+            return doc_id, found_edinet
+
+    candidates = build_company_name_candidates(*(company_name_candidates or []))
+    if company_name is not None:
+        candidates = _dedupe_preserve_order(
+            candidates + build_company_name_candidates(company_name),
+        )
+    for candidate in candidates:
         # 3. 提出者名称でフォールバック
         doc_id, found_edinet, err = _run_search(
-            client, ticker, proxy=proxy, company_name=company_name,
+            client, ticker, proxy=proxy, company_name=candidate,
             before_request=before_request,
         )
         if doc_id:
