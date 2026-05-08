@@ -23,6 +23,33 @@ npm ci --prefix services/browser
 export EDINET_API_KEY=...
 ```
 
+## 既存 stocks.db の取得
+
+GitHub Actions の最新成功 run から `stocks-db` artifact を取得すると、既存の
+`var/db/stocks.db` を使い始められる。Artifact の取得には GitHub CLI の認証が必要。
+
+```bash
+gh auth login
+run_id=$(gh run list --repo expgolemclone/stock_db --workflow update-stooq-prices.yml --branch main --status success --limit 1 --json databaseId --jq '.[0].databaseId')
+mkdir -p var/db
+gh run download "$run_id" --repo expgolemclone/stock_db --name stocks-db --dir var/db
+uv run inspect-stock-db 7203 --limit 1
+```
+
+PowerShell では以下のように実行する。
+
+```powershell
+gh auth login
+$runId = gh run list --repo expgolemclone/stock_db --workflow update-stooq-prices.yml --branch main --status success --limit 1 --json databaseId --jq '.[0].databaseId'
+New-Item -ItemType Directory -Force -Path var/db
+gh run download $runId --repo expgolemclone/stock_db --name stocks-db --dir var/db
+uv run inspect-stock-db 7203 --limit 1
+```
+
+既に `var/db/stocks.db` がある場合は、必要に応じて `stocks.db-wal` / `stocks.db-shm`
+と一緒に事前退避する。Artifact が期限切れまたは存在しない場合は、
+`uv run scrape-stooq-prices --headless` で新規作成する。
+
 ## CLI コマンド
 
 ### EDINET
