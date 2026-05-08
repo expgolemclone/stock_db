@@ -6,9 +6,9 @@
 
 | ソース | 取得内容 | 取得方式 |
 |---|---|---|
-| **EDINET** | 有価証券報告書 (XBRL) | EDINET API v2 |
-| **Stooq** | 日次株価 (JP 全銘柄) | CSV ダウンロード (CAPTCHA 対応) |
-| **Yahoo Finance JP** | 非東証銘柄の前日終値 | スクレイピング |
+| **[EDINET](https://disclosure2.edinet-fsa.go.jp/)** | 有価証券報告書 (XBRL) | EDINET API v2 |
+| **[Stooq](https://stooq.com/db/)** | 日次株価 (JP 全銘柄) | CSV ダウンロード (CAPTCHA 対応) |
+| **[Yahoo Finance JP](https://finance.yahoo.co.jp/)** | 非東証銘柄の前日終値 | スクレイピング |
 
 ## セットアップ
 
