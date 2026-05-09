@@ -124,7 +124,7 @@ SQLite を使用。WAL モード・外部キー制約有効。
 
 raw 同期 (`sync_edinet_raw_to_db`) は `xbrl/{ticker}/{doc_id}/` と sibling の `{doc_id}.zip` を正規形として回収する。既存 `*.xhtml` は移行期間の互換入力としてのみ扱い、同じ `doc_id` に新旧両形式がある場合は ZIP+展開形式を優先する。
 
-`parse_xbrl_financials` は `sec_reports` 上の同一 ticker の全 artifact を fiscal year 昇順で畳み込み、後続 filing の同一 `(period, statement, item_name)` を優先する。その後 `financial_items` の同一 ticker に対する `irbank` / `irbank_bs` / `irbank_forecast` / `xbrl_bs` / 旧 `edinet_xbrl` を削除し、再構築した rows を `source=edinet_xbrl` で一括登録する。`financial_items` の主キーは `(ticker, period, statement, item_name)` で `source` を含まないため、source 単位ではなく ticker 単位で置換する。
+`parse_xbrl_financials` は `sec_reports` 上の同一 ticker の全 artifact を fiscal year 昇順で畳み込み、後続 filing の同一 `(period, statement, item_name)` を優先する。その後 `financial_items` の同一 ticker に対する `xbrl_bs` / 旧 `edinet_xbrl` を削除し、再構築した rows を `source=edinet_xbrl` で一括登録する。`financial_items` の主キーは `(ticker, period, statement, item_name)` で `source` を含まないため、source 単位ではなく ticker 単位で置換する。
 
 ### Stooq Sources
 

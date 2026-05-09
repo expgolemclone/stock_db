@@ -139,7 +139,7 @@ class TestGetItemsBySource:
 
 class TestReplaceFinancialItemsForTickerSources:
     def test_replaces_only_requested_sources(self, db_conn: sqlite3.Connection) -> None:
-        upsert_financial_item(db_conn, "1234", "2024", "bs", "current_assets", 100.0, "irbank_bs")
+        upsert_financial_item(db_conn, "1234", "2024", "bs", "current_assets", 100.0, "legacy_bs")
         upsert_financial_item(db_conn, "1234", "2024", "bs", "inventories", 20.0, "xbrl_bs")
         upsert_financial_item(db_conn, "1234", "2024", "pl", "revenue", 300.0, "manual")
         db_conn.commit()
@@ -147,7 +147,7 @@ class TestReplaceFinancialItemsForTickerSources:
         replace_financial_items_for_ticker_sources(
             db_conn,
             ticker="1234",
-            sources=("irbank_bs", "xbrl_bs", "edinet_xbrl"),
+            sources=("legacy_bs", "xbrl_bs", "edinet_xbrl"),
             rows=[
                 {
                     "ticker": "1234",
