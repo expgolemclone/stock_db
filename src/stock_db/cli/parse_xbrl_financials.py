@@ -25,7 +25,7 @@ def main() -> None:
     parser.add_argument(
         "--skip-existing",
         action="store_true",
-        default=True,
+        default=False,
         help="Skip tickers with existing edinet_xbrl data",
     )
     parser.add_argument("--force", action="store_true", help="Disable --skip-existing")
