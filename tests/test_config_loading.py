@@ -29,3 +29,8 @@ class TestCliDefaults:
         assert defaults["headless"] is False
         assert defaults["disable_xvfb"] is True
         assert defaults["output_dir"] == "var/raw/stooq"
+
+    def test_parse_xbrl_financials_defaults(self) -> None:
+        defaults = cli_defaults("parse_xbrl_financials")
+
+        assert defaults["skip_existing"] is True

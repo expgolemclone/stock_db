@@ -7,6 +7,9 @@ skip_existing = true
 headless = false
 disable_xvfb = true
 
+[parse_xbrl_financials]
+skip_existing = true
+
 [scrape_stooq_prices]
 pool_size = 1
 headless = false

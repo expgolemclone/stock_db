@@ -5,8 +5,9 @@ import logging
 import sqlite3
 import sys
 from collections import defaultdict
+from typing import Sequence
 
-from stock_db.paths import STOCKS_DB_PATH
+from stock_db.paths import STOCKS_DB_PATH, cli_defaults
 from stock_db.sources.edinet.xbrl_bs_parser import InventoriesTagMismatchError
 from stock_db.sources.edinet.xbrl_financials_parser import parse_xbrl_financials
 from stock_db.storage.connection import get_connection
@@ -19,17 +20,18 @@ _REPLACED_SOURCES = (
 )
 
 
-def main() -> None:
+def main(argv: Sequence[str] | None = None) -> int:
+    defaults = cli_defaults("parse_xbrl_financials")
     parser = argparse.ArgumentParser(description="Parse EDINET XBRL files and store financial data")
     parser.add_argument("--ticker", type=str, help="Single ticker to parse")
     parser.add_argument(
         "--skip-existing",
         action="store_true",
-        default=False,
-        help="Skip tickers with existing edinet_xbrl data",
+        default=defaults.get("skip_existing", True),
+        help="Skip tickers with existing edinet_xbrl data (default)",
     )
     parser.add_argument("--force", action="store_true", help="Disable --skip-existing")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     logger = logging.getLogger("parse_xbrl_financials")
@@ -56,7 +58,7 @@ def main() -> None:
 
         if not tickers:
             print("No XBRL files to parse", file=sys.stderr)
-            sys.exit(1)
+            return 1
 
         if skip_existing:
             existing = {
@@ -121,6 +123,10 @@ def main() -> None:
             ok += 1
 
         print(f"Done: {ok} ok, {errors} errors", file=sys.stderr)
-        sys.exit(1 if errors > 0 else 0)
+        return 1 if errors > 0 else 0
     finally:
         conn.close()
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

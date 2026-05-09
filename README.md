@@ -77,6 +77,7 @@ uv run report-edinet-progress
 
 - `scrape-edinet-reports-step2` と `scrape-edinet-reports` は `EDINET_API_KEY` が必要
 - raw EDINET 書類は `var/raw/edinet/xbrl/{ticker}/{doc_id}.zip` と `var/raw/edinet/xbrl/{ticker}/{doc_id}/` に保存される
+- `parse-xbrl-financials` は既定で既存 `edinet_xbrl` を持つ ticker を skip し、`--force` 指定時だけ再パースする
 - `parse-xbrl-financials` は `financial_items` を `source=edinet_xbrl` で再構築し、同一 ticker の旧 XBRL rows を置き換える
 
 ### 株価
