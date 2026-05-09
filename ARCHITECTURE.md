@@ -37,6 +37,7 @@ stock_db/
       scrape_edinet_watchdog.py # メモリ監視付き watchdog ラッパー
       report_edinet_progress.py # Phase 1/2 の raw / actionable 進捗を集計
       scrape_stooq_prices.py # Stooq 日次価格取り込み CLI
+      sync_shikiho_forecasts.py # 会社四季報予想の純利益同期 CLI
       scrape_yahoo_finance_prices.py # Yahoo Finance JP 価格補完 CLI
       generate_validation_site_list.py
     sources/edinet/
@@ -78,6 +79,7 @@ var/raw/edinet/xbrl/ ──parse-xbrl-financials──→ financial_items (sourc
 Stooq 日次CSV ──ダウンロード──→ parser ──→ prices
 Yahoo Finance JP ──スクレイピング──→ parser ──→ prices
                                                   stocks.yf_suffix
+japan_company_handbook stock_performance.db ──sync-shikiho-forecasts──→ financial_items (source=shikiho)
 ```
 
 ## Key Components

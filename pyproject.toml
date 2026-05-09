@@ -16,6 +16,7 @@ dependencies = [
 [dependency-groups]
 dev = [
     "pytest>=8.0,<9",
+    "maturin>=1.0,<2",
 ]
 
 [project.scripts]
@@ -30,10 +31,13 @@ parse-xbrl-bs = "stock_db.cli.parse_xbrl_bs:main"
 parse-xbrl-financials = "stock_db.cli.parse_xbrl_financials:main"
 inspect-stock-db = "stock_db.cli.inspect_stock_db:main"
 purge-irbank-financials = "stock_db.cli.purge_irbank_financials:main"
+sync-shikiho-forecasts = "stock_db.cli.sync_shikiho_forecasts:main"
 
 [build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
+requires = ["maturin>=1.0,<2"]
+build-backend = "maturin"
 
-[tool.hatch.build.targets.wheel]
-packages = ["src/stock_db"]
+[tool.maturin]
+manifest-dir = "rust"
+module-name = "stock_db._edinet_xbrl"
+python-packages = ["src/stock_db"]

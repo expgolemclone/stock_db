@@ -153,6 +153,41 @@ class TestGetItemsBySource:
         assert periods == ["2025", "2024", "2023"]
 
 
+class TestGetFinancialDictShikiho:
+    def test_includes_shikiho_forecast_items(self, db_conn: sqlite3.Connection) -> None:
+        upsert_financial_item(db_conn, "1234", "2024", "pl", "revenue", 1000.0, "edinet_xbrl")
+        upsert_financial_item(db_conn, "1234", "26.3", "forecast", "net_income_current", 5_400_000_000.0, "shikiho")
+        upsert_financial_item(db_conn, "1234", "26.3", "forecast", "net_income_next", 6_000_000_000.0, "shikiho")
+        db_conn.commit()
+
+        result = get_financial_dict(db_conn, "1234", "2024")
+
+        assert result["forecast"]["net_income_current"] == 5_400_000_000.0
+        assert result["forecast"]["net_income_next"] == 6_000_000_000.0
+
+    def test_shikiho_forecast_loaded_even_without_xbrl_forecast(self, db_conn: sqlite3.Connection) -> None:
+        upsert_financial_item(db_conn, "1234", "2024", "pl", "revenue", 1000.0, "edinet_xbrl")
+        upsert_financial_item(db_conn, "1234", "26.3", "forecast", "net_income_current", 5_400_000_000.0, "shikiho")
+        db_conn.commit()
+
+        result = get_financial_dict(db_conn, "1234", "2024")
+
+        assert result["forecast"]["net_income_current"] == 5_400_000_000.0
+
+    def test_shikiho_and_xbrl_forecasts_coexist(self, db_conn: sqlite3.Connection) -> None:
+        upsert_financial_item(db_conn, "1234", "2024", "pl", "revenue", 1000.0, "edinet_xbrl")
+        upsert_financial_item(db_conn, "1234", "2024", "forecast", "revenue", 1200.0, "edinet_xbrl")
+        upsert_financial_item(db_conn, "1234", "2024", "forecast", "net_income", 500.0, "edinet_xbrl")
+        upsert_financial_item(db_conn, "1234", "26.3", "forecast", "net_income_current", 5_400_000_000.0, "shikiho")
+        db_conn.commit()
+
+        result = get_financial_dict(db_conn, "1234", "2024")
+
+        assert result["forecast"]["revenue"] == 1200.0
+        assert result["forecast"]["net_income"] == 500.0
+        assert result["forecast"]["net_income_current"] == 5_400_000_000.0
+
+
 class TestReplaceFinancialItemsForTickerSources:
     def test_replaces_only_requested_sources(self, db_conn: sqlite3.Connection) -> None:
         upsert_financial_item(db_conn, "1234", "2024", "bs", "current_assets", 100.0, "irbank_bs")

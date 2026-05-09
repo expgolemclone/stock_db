@@ -144,6 +144,16 @@ def get_financial_dict(
     for r in forecast_rows:
         result.setdefault("forecast", {})[r["item_name"]] = r["value"]
 
+    shikiho_rows = conn.execute(
+        """
+        SELECT item_name, value FROM financial_items
+        WHERE ticker = ? AND statement = 'forecast' AND source = 'shikiho'
+        """,
+        (ticker,),
+    ).fetchall()
+    for r in shikiho_rows:
+        result.setdefault("forecast", {})[r["item_name"]] = r["value"]
+
     return result
 
 
