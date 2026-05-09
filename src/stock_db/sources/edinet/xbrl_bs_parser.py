@@ -914,7 +914,6 @@ def _parse_artifact_dir(artifact_root: Path) -> dict[str, dict[str, float | None
         if unknown_tags:
             unknown_list = ", ".join(sorted(unknown_tags))
             raise InventoriesTagMismatchError(f"Unknown inventory-like XBRL tags: {unknown_list}")
-        result[period] = {"inventories": 0.0}
 
     return result
 
@@ -1015,14 +1014,15 @@ def _parse_legacy_content(content: str) -> dict[str, dict[str, float | None]]:
                 raise InventoriesTagMismatchError(
                     f"Conflicting direct inventory totals in {period}: {unique_totals}"
                 )
-            inventories = unique_totals[0]
+            result[period] = {"inventories": unique_totals[0]}
         else:
             inventories = sum(
                 value
                 for value in component_values.get(period, {}).values()
                 if value is not None
             )
-        result[period] = {"inventories": inventories}
+            if inventories:
+                result[period] = {"inventories": inventories}
 
     return result
 
