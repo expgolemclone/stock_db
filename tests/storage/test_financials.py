@@ -8,6 +8,7 @@ from stock_db.storage.financials import (
     get_historical_items,
     get_items_by_source,
     purge_financial_items_for_source,
+    replace_financial_items_for_ticker_sources,
     upsert_financial_item,
     upsert_financial_items_bulk,
 )
@@ -134,3 +135,41 @@ class TestGetItemsBySource:
         rows = get_items_by_source(db_conn, "1234", "xbrl_bs")
         periods = [r["period"] for r in rows]
         assert periods == ["2025", "2024", "2023"]
+
+
+class TestReplaceFinancialItemsForTickerSources:
+    def test_replaces_only_requested_sources(self, db_conn: sqlite3.Connection) -> None:
+        upsert_financial_item(db_conn, "1234", "2024", "bs", "current_assets", 100.0, "irbank_bs")
+        upsert_financial_item(db_conn, "1234", "2024", "bs", "inventories", 20.0, "xbrl_bs")
+        upsert_financial_item(db_conn, "1234", "2024", "pl", "revenue", 300.0, "manual")
+        db_conn.commit()
+
+        replace_financial_items_for_ticker_sources(
+            db_conn,
+            ticker="1234",
+            sources=("irbank_bs", "xbrl_bs", "edinet_xbrl"),
+            rows=[
+                {
+                    "ticker": "1234",
+                    "period": "2024",
+                    "statement": "bs",
+                    "item_name": "current_assets",
+                    "value": 111.0,
+                    "source": "edinet_xbrl",
+                }
+            ],
+        )
+        db_conn.commit()
+
+        rows = db_conn.execute(
+            """
+            SELECT statement, item_name, value, source
+            FROM financial_items
+            WHERE ticker = '1234'
+            ORDER BY statement, item_name
+            """
+        ).fetchall()
+        assert [tuple(row) for row in rows] == [
+            ("bs", "current_assets", 111.0, "edinet_xbrl"),
+            ("pl", "revenue", 300.0, "manual"),
+        ]

@@ -121,14 +121,17 @@ class TestRealFixtures:
 
         assert parsed["2025-03"]["inventories"] == pytest.approx(42_683_591_000)
 
-    def test_valid_consolidated_xbrl_without_inventory_tags_returns_zero(self) -> None:
+    def test_1802_extracts_current_inventory_totals(self) -> None:
         parsed = parse_xbrl_bs(_xbrl_path("1802"))
 
-        assert parsed["2025-03"]["inventories"] == 0.0
-        assert parsed["2024-03"]["inventories"] == 0.0
+        assert parsed["2025-03"]["inventories"] == pytest.approx(131_646_000_000)
+        assert parsed["2024-03"]["inventories"] == pytest.approx(116_948_000_000)
 
-    def test_header_only_html_returns_empty(self) -> None:
-        assert parse_xbrl_bs(_xbrl_path("143A")) == {}
+    def test_143a_fixture_contains_inventory_data(self) -> None:
+        parsed = parse_xbrl_bs(_xbrl_path("143A"))
+
+        assert parsed["2025-03"]["inventories"] == pytest.approx(9_003_000)
+        assert parsed["2024-03"]["inventories"] == pytest.approx(4_852_000)
 
 
 class TestValidationHelpers:

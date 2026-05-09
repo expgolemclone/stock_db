@@ -65,7 +65,10 @@ uv run scrape-edinet-reports-step2
 # 既存書類の API 再取得
 uv run scrape-edinet-reports-step2 --force
 
-# XBRL から棚卸資産総額を抽出
+# XBRL から財務データを抽出
+uv run parse-xbrl-financials
+
+# 旧コマンド名（互換ラッパー）
 uv run parse-xbrl-bs
 
 # 進捗レポート
@@ -74,6 +77,7 @@ uv run report-edinet-progress
 
 - `scrape-edinet-reports-step2` と `scrape-edinet-reports` は `EDINET_API_KEY` が必要
 - raw EDINET 書類は `var/raw/edinet/xbrl/{ticker}/{doc_id}.zip` と `var/raw/edinet/xbrl/{ticker}/{doc_id}/` に保存される
+- `parse-xbrl-financials` は `financial_items` を `source=edinet_xbrl` で再構築し、同一 ticker の `irbank` / `irbank_bs` / `irbank_forecast` / `xbrl_bs` を置き換える
 
 ### 株価
 
@@ -124,6 +128,6 @@ SQLite (`var/db/stocks.db`)。WAL モード・外部キー制約有効。
 | テーブル | 内容 |
 |---|---|
 | `stocks` | 銘柄マスタ |
-| `financial_items` | 財務データ (EDINET XBRL) |
+| `financial_items` | 財務データ (`source=edinet_xbrl` を正とする) |
 | `prices` | 日次株価 (Stooq / Yahoo Finance) |
 | `sec_reports` | 有価証券報告書メタデータ (`xbrl_path` は展開済み XBRL アーティファクトのルート) |

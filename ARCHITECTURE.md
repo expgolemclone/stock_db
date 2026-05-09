@@ -33,7 +33,8 @@ stock_db/
       scrape_edinet_reports.py # EDINET 有報取得 CLI（step1: browser search, step2: EDINET API ZIP取得）
       scrape_edinet_reports_step1.py # EDINET step1（書類一覧取得）のみ
       scrape_edinet_reports_step2.py # EDINET step2（XBRL取得）のみ
-      parse_xbrl_bs.py     # EDINET XBRL から inventories のみを保存
+      parse_xbrl_bs.py     # 旧コマンド名の互換ラッパー
+      parse_xbrl_financials.py # EDINET XBRL から PL / BS / CF / dividend / forecast を保存
       scrape_edinet_watchdog.py # メモリ監視付き watchdog ラッパー
       report_edinet_progress.py # Phase 1/2 の raw / actionable 進捗を集計
       scrape_stooq_prices.py # Stooq 日次価格取り込み CLI
@@ -43,6 +44,7 @@ stock_db/
       api_client.py        # EDINET API v2 クライアント（書類ZIP取得・展開）
       search_scraper.py    # EDINET 検索フォーム経由で docID 発見（スレッドセーフ）
       xbrl_bs_parser.py    # EDINET XBRL artifact から inventories 総額を抽出
+      xbrl_financials_parser.py # EDINET XBRL artifact から canonical financial_items を抽出
     sources/stooq/
       downloader.py        # Stooq 日次ファイルダウンロード（CAPTCHA 対応）
       parser.py            # Stooq CSV パーサー（4桁・5桁・英字付きティッカー対応）
@@ -73,7 +75,7 @@ stock_db/
 EDINET search (browser) ──docID発見──→ stocks.securities_report_url
 config/edinet_phase1.toml ──alias / exclusion──→ Phase 1 search plan
 EDINET API v2 documents/{docID}?type=1 ──ZIP保存/展開──→ var/raw/edinet/xbrl/
-var/raw/edinet/xbrl/ ──parse-xbrl-bs──→ financial_items (source=xbrl_bs, inventoriesのみ)
+var/raw/edinet/xbrl/ ──parse-xbrl-financials──→ financial_items (source=edinet_xbrl)
 Stooq 日次CSV ──ダウンロード──→ parser ──→ prices
 Yahoo Finance JP ──スクレイピング──→ parser ──→ prices + yf_suffix
                                                   stocks
@@ -108,6 +110,7 @@ SQLite を使用。WAL モード・外部キー制約有効。
 | `api_client` | EDINET API v2 `documents/{docID}?type=1` で提出本文書・監査報告書・taxonomy・linkbase を含む ZIP を取得し、`{doc_id}.zip` と展開ディレクトリを原子的に保存 |
 | `search_scraper` | EDINET 検索フォーム経由で有報 docID を発見（スレッドセーフ）。HTML entity デコード・企業名フォールバック付き |
 | `xbrl_bs_parser` | EDINET XBRL artifact から棚卸資産総額を抽出。direct total を最優先し、次に calculation linkbase、最後に presentation linkbase を使って taxonomy-aware に集計する。legacy `.xhtml` 形式も移行期間中は互換サポート |
+| `xbrl_financials_parser` | EDINET XBRL artifact から `financial_items` の canonical 名へ正規化して抽出する。BS / PL / CF / dividend は direct fact を優先し、`inventories` だけは `xbrl_bs_parser` の taxonomy-aware 集計を再利用する。`forecast` は XBRL に数値 fact がある場合のみ登録し、無ければ補完しない |
 
 `search_scraper` は書類種別ラジオを明示的に「指定する」に切り替えたうえで `有価証券報告書` チェックを付与し、提出者名検索で大量保有報告書などに埋もれて annual report を取り逃がさないようにしている。
 
@@ -120,6 +123,8 @@ SQLite を使用。WAL モード・外部キー制約有効。
 `scrape_edinet_reports` の Phase 2 は `EDINET_API_KEY` を必須とし、`sec_reports.xbrl_path` には展開済みアーティファクトのルートディレクトリを保存する。skip 判定では `xbrl_path` だけでなく、ZIP+展開済み artifact が有効かを再検証し、legacy `.xhtml` の header-only / invalid 保存物は再取得対象に戻す。
 
 raw 同期 (`sync_edinet_raw_to_db`) は `xbrl/{ticker}/{doc_id}/` と sibling の `{doc_id}.zip` を正規形として回収する。既存 `*.xhtml` は移行期間の互換入力としてのみ扱い、同じ `doc_id` に新旧両形式がある場合は ZIP+展開形式を優先する。
+
+`parse_xbrl_financials` は `sec_reports` 上の同一 ticker の全 artifact を fiscal year 昇順で畳み込み、後続 filing の同一 `(period, statement, item_name)` を優先する。その後 `financial_items` の同一 ticker に対する `irbank` / `irbank_bs` / `irbank_forecast` / `xbrl_bs` / 旧 `edinet_xbrl` を削除し、再構築した rows を `source=edinet_xbrl` で一括登録する。`financial_items` の主キーは `(ticker, period, statement, item_name)` で `source` を含まないため、source 単位ではなく ticker 単位で置換する。
 
 ### Stooq Sources
 

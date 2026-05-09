@@ -27,6 +27,7 @@ report-edinet-progress = "stock_db.cli.report_edinet_progress:main"
 scrape-stooq-prices = "stock_db.cli.scrape_stooq_prices:main"
 scrape-yahoo-finance-prices = "stock_db.cli.scrape_yahoo_finance_prices:main"
 parse-xbrl-bs = "stock_db.cli.parse_xbrl_bs:main"
+parse-xbrl-financials = "stock_db.cli.parse_xbrl_financials:main"
 inspect-stock-db = "stock_db.cli.inspect_stock_db:main"
 
 [build-system]
