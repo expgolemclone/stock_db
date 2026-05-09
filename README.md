@@ -10,10 +10,19 @@
 | **[Stooq](https://stooq.com/db/)** | 日次株価 (JP 全銘柄) | CSV ダウンロード (CAPTCHA 対応) |
 | **[Yahoo Finance JP](https://finance.yahoo.co.jp/)** | 前日終値の補完取得 | スクレイピング |
 
+## 前提
+
+- Python 3.11+
+- Rust toolchain (stable) — XBRL パーサコアが Rust (PyO3 + maturin) で実装されている
+- Node.js 24+ (ブラウザサービス用)
+
 ## セットアップ
 
 ```bash
-# Python 依存関係のインストール
+# Rust toolchain のインストール（未導入の場合）
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+
+# Python・Rust 依存関係のビルド・インストール
 uv sync --frozen
 
 # ブラウザサービスの依存関係（EDINET step1 / Yahoo / Stooq に使用）
