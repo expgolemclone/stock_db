@@ -4,15 +4,17 @@ from pathlib import Path
 
 import pytest
 
-from stock_db.sources.edinet.xbrl_financials_parser import parse_xbrl_financials
+from stock_db.sources.edinet.xbrl_bs_parser import LoadedXbrlArtifact
+from stock_db.sources.edinet import xbrl_financials_parser
 
 
 def _xbrl_path(ticker: str) -> str:
-    return f"/home/exp/projects/stock_db/var/raw/edinet/xbrl/{ticker}"
+    ticker_dir = Path(f"/home/exp/projects/stock_db/var/raw/edinet/xbrl/{ticker}")
+    return str(next(path for path in sorted(ticker_dir.iterdir()) if path.is_dir()))
 
 
 def test_extracts_current_financials_from_real_fixture() -> None:
-    parsed = parse_xbrl_financials(_xbrl_path("2991"))
+    parsed = xbrl_financials_parser.parse_xbrl_financials(_xbrl_path("2991"))
 
     current = parsed["2025-07"]
     assert current["bs"]["current_assets"] == pytest.approx(28_512_698_000)
@@ -85,7 +87,7 @@ def test_parses_synthetic_forecast_tags(tmp_path: Path) -> None:
         encoding="utf-8",
     )
 
-    parsed = parse_xbrl_financials(str(xbrl))
+    parsed = xbrl_financials_parser.parse_xbrl_financials(str(xbrl))
 
     current = parsed["2025-03"]
     assert current["bs"]["current_assets"] == pytest.approx(1000)
@@ -96,3 +98,37 @@ def test_parses_synthetic_forecast_tags(tmp_path: Path) -> None:
     assert current["forecast"]["operating_income"] == pytest.approx(750)
     assert current["forecast"]["ordinary_income"] == pytest.approx(700)
     assert current["forecast"]["net_income"] == pytest.approx(540)
+
+
+def test_reuses_loaded_artifact_for_inventory_aggregation(monkeypatch: pytest.MonkeyPatch) -> None:
+    artifact = LoadedXbrlArtifact(
+        path=Path("/tmp/sample.xbrl"),
+        fact_documents=(),
+        financial_facts={
+            "2025-03": {
+                ("urn:test", "CurrentAssets"): 1000.0,
+                ("urn:test", "CurrentLiabilities"): 400.0,
+            }
+        },
+        inventory_facts={},
+        non_consolidated_facts={},
+    )
+    load_calls: list[str] = []
+    inventory_calls: list[LoadedXbrlArtifact] = []
+
+    def fake_load(path: str) -> LoadedXbrlArtifact:
+        load_calls.append(path)
+        return artifact
+
+    def fake_parse_loaded(loaded: LoadedXbrlArtifact) -> dict[str, dict[str, float | None]]:
+        inventory_calls.append(loaded)
+        return {"2025-03": {"inventories": 250.0}}
+
+    monkeypatch.setattr(xbrl_financials_parser, "load_xbrl_artifact", fake_load)
+    monkeypatch.setattr(xbrl_financials_parser, "parse_xbrl_bs_loaded", fake_parse_loaded)
+
+    parsed = xbrl_financials_parser.parse_xbrl_financials("/tmp/S100TEST")
+
+    assert load_calls == ["/tmp/S100TEST"]
+    assert inventory_calls == [artifact]
+    assert parsed["2025-03"]["bs"]["inventories"] == pytest.approx(250.0)

@@ -41,7 +41,7 @@ def _build_db(db_path: Path) -> None:
         ticker="4444",
         fiscal_year="latest",
         doc_id="S100DONE",
-        xbrl_path="var/raw/edinet/xbrl/4444/S100DONE.xhtml",
+        xbrl_path="var/raw/edinet/xbrl/4444/S100DONE",
     )
     conn.commit()
     conn.close()

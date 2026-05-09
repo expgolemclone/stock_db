@@ -113,17 +113,6 @@ def _discover_raw_edinet_reports(raw_dir: Path) -> list[_RawEdinetReport]:
                 zip_path.stat().st_mtime_ns,
             )
 
-        for legacy_file in sorted(ticker_dir.glob("*.xhtml")):
-            if (ticker_dir / legacy_file.stem).is_dir() and (ticker_dir / f"{legacy_file.stem}.zip").is_file():
-                continue
-            key = (ticker, legacy_file.stem)
-            report = reports.get(key)
-            if report is None:
-                report = _RawEdinetReport(ticker=ticker, doc_id=legacy_file.stem)
-                reports[key] = report
-            report.xbrl_path = str(legacy_file.resolve())
-            report.artifact_mtime_ns = max(report.artifact_mtime_ns, legacy_file.stat().st_mtime_ns)
-
     return sorted(reports.values(), key=lambda report: (report.ticker, report.doc_id))
 
 

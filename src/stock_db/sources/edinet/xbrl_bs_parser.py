@@ -17,18 +17,12 @@ class InventoriesTagMismatchError(RuntimeError):
     """Raised when the inventories total cannot be determined safely."""
 
 
-_CONTEXT_DATE_RE = re.compile(r"^Prior(\d+)YearInstant$")
-_NONFRACTION_RE = re.compile(
-    r"<ix:nonfraction\s+([^>]*?)>([^<]*)</ix:nonfraction>",
-    re.DOTALL | re.IGNORECASE,
-)
 _NONFRACTION_TAG_RE = re.compile(r"<ix:nonfraction\b", re.IGNORECASE)
 _FISCAL_END_RE = re.compile(
     r'<ix:nonnumeric[^>]*name="jpdei_cor:CurrentFiscalYearEndDateDEI"[^>]*>'
     r"(\d{4})[年/-](\d{1,2})",
     re.IGNORECASE,
 )
-_ATTR_RE = re.compile(r'(\w+)\s*=\s*"([^"]*)"')
 _YEN_SEN_RE = re.compile(r"^(\d+)円(\d+)銭$")
 
 _XML_NS = "http://www.w3.org/XML/1998/namespace"
@@ -243,6 +237,7 @@ class _ContextInfo:
     is_instant: bool
     has_dimensions: bool
     is_non_consolidated: bool
+    dimension_count: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -253,16 +248,18 @@ class _ParsedDocument:
 
 
 @dataclass(frozen=True, slots=True)
+class LoadedXbrlArtifact:
+    path: Path
+    fact_documents: tuple[_ParsedDocument, ...]
+    financial_facts: dict[str, dict[ConceptKey, float | None]]
+    inventory_facts: dict[str, dict[ConceptKey, float | None]]
+    non_consolidated_facts: dict[str, dict[ConceptKey, float | None]]
+
+
+@dataclass(frozen=True, slots=True)
 class _CalculationEdge:
     child: ConceptKey
     weight: float
-
-
-def _parse_attrs(attr_str: str) -> dict[str, str]:
-    attrs: dict[str, str] = {}
-    for match in _ATTR_RE.finditer(attr_str):
-        attrs[match.group(1)] = match.group(2)
-    return attrs
 
 
 def _parse_xbrl_value(raw: str, decimals: str, scale: str, sign: str) -> float | None:
@@ -286,20 +283,6 @@ def _parse_xbrl_value(raw: str, decimals: str, scale: str, sign: str) -> float |
     return value
 
 
-def _resolve_period(ctx: str, base_end_date: tuple[int, int] | None) -> str | None:
-    """Resolve exact consolidated instant contexts into YYYY-MM periods."""
-    if base_end_date is None:
-        return None
-    if ctx == "CurrentYearInstant":
-        return f"{base_end_date[0]:04d}-{base_end_date[1]:02d}"
-
-    match = _CONTEXT_DATE_RE.match(ctx)
-    if match is None:
-        return None
-    year = base_end_date[0] - int(match.group(1))
-    return f"{year:04d}-{base_end_date[1]:02d}"
-
-
 def is_valid_xbrl_text(content: str) -> bool:
     """Return True when the payload looks like a parseable EDINET iXBRL body."""
     return _NONFRACTION_TAG_RE.search(content) is not None and _FISCAL_END_RE.search(content) is not None
@@ -311,11 +294,7 @@ def is_valid_xbrl_path(path: str | Path | None) -> bool:
         return False
     xbrl_path = Path(path)
     if xbrl_path.is_file():
-        try:
-            return is_valid_xbrl_text(xbrl_path.read_text(encoding="utf-8"))
-        except OSError:
-            logger.warning("Failed to read XBRL file %s", xbrl_path)
-            return False
+        return False
     if not xbrl_path.is_dir():
         return False
 
@@ -331,9 +310,6 @@ def is_valid_xbrl_path(path: str | Path | None) -> bool:
                 logger.warning("Failed to read XBRL artifact file %s", candidate)
         return False
 
-    if _is_legacy_xbrl_dir(xbrl_path):
-        target = _legacy_target_file(xbrl_path)
-        return target is not None and is_valid_xbrl_path(target)
     return False
 
 
@@ -366,25 +342,19 @@ def _iter_fact_document_paths(root: Path) -> list[Path]:
     return paths
 
 
-def _collect_nsmap(path: Path) -> dict[str, str]:
-    nsmap: dict[str, str] = {}
-    try:
-        for _, node in ET.iterparse(path, events=("start-ns",)):
-            prefix, uri = node
-            nsmap[prefix or ""] = uri
-    except ET.ParseError as exc:
-        logger.warning("Failed to collect namespace map from %s: %s", path, exc)
-        return {}
-    return nsmap
-
-
 def _parse_xml_document(path: Path) -> _ParsedDocument | None:
     try:
-        root = ET.parse(path).getroot()
+        parser = ET.iterparse(path, events=("start", "start-ns"))
+        nsmap: dict[str, str] = {}
+        for event, payload in parser:
+            if event == "start-ns":
+                prefix, uri = payload
+                nsmap[prefix or ""] = uri
+        root = parser.root
     except (ET.ParseError, OSError) as exc:
         logger.warning("Failed to parse XML document %s: %s", path, exc)
         return None
-    return _ParsedDocument(path=path, root=root, nsmap=_collect_nsmap(path))
+    return _ParsedDocument(path=path, root=root, nsmap=nsmap)
 
 
 def _resolve_qname(name: str, nsmap: dict[str, str], fallback_uri: str = "") -> ConceptKey | None:
@@ -421,9 +391,11 @@ def _parse_contexts(root: ET.Element) -> dict[str, _ContextInfo]:
             continue
 
         instant_text: str | None = None
+        end_date_text: str | None = None
         is_instant = False
         has_dimensions = False
         is_non_consolidated = False
+        dimension_count = 0
 
         for child in elem.iter():
             namespace = _namespace_uri(child.tag)
@@ -432,10 +404,14 @@ def _parse_contexts(root: ET.Element) -> dict[str, _ContextInfo]:
                 instant_text = (child.text or "").strip()
                 is_instant = bool(instant_text)
                 continue
+            if namespace == _XBRLI_NS and local_name == "endDate":
+                end_date_text = (child.text or "").strip()
+                continue
             if namespace != _XBRLDI_NS:
                 continue
             if local_name == "explicitMember":
                 has_dimensions = True
+                dimension_count += 1
                 dimension_name = child.attrib.get("dimension", "").split(":")[-1]
                 member_name = (child.text or "").strip().split(":")[-1]
                 if (
@@ -446,13 +422,19 @@ def _parse_contexts(root: ET.Element) -> dict[str, _ContextInfo]:
                     is_non_consolidated = True
             elif local_name == "typedMember":
                 has_dimensions = True
+                dimension_count += 1
+
+        period = _context_period_from_instant(instant_text)
+        if period is None and end_date_text and len(end_date_text) >= 7:
+            period = end_date_text[:7]
 
         contexts[context_id] = _ContextInfo(
-            period=_context_period_from_instant(instant_text),
+            period=period,
             instant=instant_text,
             is_instant=is_instant,
             has_dimensions=has_dimensions,
             is_non_consolidated=is_non_consolidated,
+            dimension_count=dimension_count,
         )
     return contexts
 
@@ -494,6 +476,24 @@ def _should_use_context(context: _ContextInfo | None) -> bool:
     )
 
 
+def _should_use_financial_context(context: _ContextInfo | None) -> bool:
+    return bool(
+        context is not None
+        and context.period is not None
+        and not context.is_non_consolidated
+        and not context.has_dimensions
+    )
+
+
+def _should_use_non_consolidated_dividend_context(context: _ContextInfo | None) -> bool:
+    return bool(
+        context is not None
+        and context.period is not None
+        and context.is_non_consolidated
+        and context.dimension_count == 1
+    )
+
+
 def _store_concept_value(
     bucket: dict[str, dict[ConceptKey, float | None]],
     period: str,
@@ -516,19 +516,49 @@ def _store_concept_value(
     )
 
 
-def _extract_inline_facts(
+def _collect_documents(artifact_root: Path) -> list[_ParsedDocument]:
+    documents: list[_ParsedDocument] = []
+    for path in _iter_fact_document_paths(artifact_root):
+        parsed = _parse_xml_document(path)
+        if parsed is not None:
+            documents.append(parsed)
+    return documents
+
+
+def _store_fact_buckets(
+    context: _ContextInfo | None,
+    concept: ConceptKey,
+    value: float | None,
+    *,
+    financial_facts: dict[str, dict[ConceptKey, float | None]],
+    inventory_facts: dict[str, dict[ConceptKey, float | None]],
+    non_consolidated_facts: dict[str, dict[ConceptKey, float | None]],
+) -> None:
+    if context is None or context.period is None:
+        return
+    if _should_use_financial_context(context):
+        _store_concept_value(financial_facts, context.period, concept, value)
+    if _should_use_context(context):
+        _store_concept_value(inventory_facts, context.period, concept, value)
+    if _should_use_non_consolidated_dividend_context(context):
+        _store_concept_value(non_consolidated_facts, context.period, concept, value)
+
+
+def _extract_inline_facts_to_buckets(
     document: _ParsedDocument,
     contexts: dict[str, _ContextInfo],
     units: dict[str, bool],
-    facts: dict[str, dict[ConceptKey, float | None]],
-    periods_seen: set[str],
+    *,
+    financial_facts: dict[str, dict[ConceptKey, float | None]],
+    inventory_facts: dict[str, dict[ConceptKey, float | None]],
+    non_consolidated_facts: dict[str, dict[ConceptKey, float | None]],
 ) -> None:
     for elem in document.root.iter():
         if _namespace_uri(elem.tag) != _IX_NS or _local_name(elem.tag) != "nonfraction":
             continue
         context_id = elem.attrib.get("contextRef") or elem.attrib.get("contextref")
         context = contexts.get(context_id or "")
-        if not _should_use_context(context):
+        if context is None:
             continue
         unit_id = elem.attrib.get("unitRef") or elem.attrib.get("unitref")
         if unit_id is None or not units.get(unit_id, False):
@@ -536,7 +566,6 @@ def _extract_inline_facts(
         concept = _resolve_qname(elem.attrib.get("name", ""), document.nsmap)
         if concept is None:
             continue
-        periods_seen.add(context.period)
         raw_value = "" if _is_nil(elem) else "".join(elem.itertext()).strip()
         value = _parse_xbrl_value(
             raw_value,
@@ -544,15 +573,24 @@ def _extract_inline_facts(
             elem.attrib.get("scale", ""),
             elem.attrib.get("sign", ""),
         )
-        _store_concept_value(facts, context.period, concept, value)
+        _store_fact_buckets(
+            context,
+            concept,
+            value,
+            financial_facts=financial_facts,
+            inventory_facts=inventory_facts,
+            non_consolidated_facts=non_consolidated_facts,
+        )
 
 
-def _extract_instance_facts(
+def _extract_instance_facts_to_buckets(
     document: _ParsedDocument,
     contexts: dict[str, _ContextInfo],
     units: dict[str, bool],
-    facts: dict[str, dict[ConceptKey, float | None]],
-    periods_seen: set[str],
+    *,
+    financial_facts: dict[str, dict[ConceptKey, float | None]],
+    inventory_facts: dict[str, dict[ConceptKey, float | None]],
+    non_consolidated_facts: dict[str, dict[ConceptKey, float | None]],
 ) -> None:
     for elem in document.root.iter():
         namespace = _namespace_uri(elem.tag)
@@ -562,7 +600,7 @@ def _extract_instance_facts(
         if context_id is None:
             continue
         context = contexts.get(context_id)
-        if not _should_use_context(context):
+        if context is None:
             continue
         unit_id = elem.attrib.get("unitRef")
         if unit_id is None or not units.get(unit_id, False):
@@ -570,7 +608,6 @@ def _extract_instance_facts(
         concept = _resolve_qname(elem.tag, document.nsmap)
         if concept is None:
             continue
-        periods_seen.add(context.period)
         raw_value = "" if _is_nil(elem) else "".join(elem.itertext()).strip()
         value = _parse_xbrl_value(
             raw_value,
@@ -578,16 +615,69 @@ def _extract_instance_facts(
             elem.attrib.get("scale", ""),
             elem.attrib.get("sign", ""),
         )
-        _store_concept_value(facts, context.period, concept, value)
+        _store_fact_buckets(
+            context,
+            concept,
+            value,
+            financial_facts=financial_facts,
+            inventory_facts=inventory_facts,
+            non_consolidated_facts=non_consolidated_facts,
+        )
 
 
-def _collect_documents(artifact_root: Path) -> list[_ParsedDocument]:
-    documents: list[_ParsedDocument] = []
-    for path in _iter_fact_document_paths(artifact_root):
-        parsed = _parse_xml_document(path)
-        if parsed is not None:
-            documents.append(parsed)
-    return documents
+def load_xbrl_artifact(path: str | Path) -> LoadedXbrlArtifact | None:
+    artifact_path = Path(path)
+    if artifact_path.is_file():
+        if artifact_path.suffix.lower() != ".xbrl":
+            return None
+        parsed = _parse_xml_document(artifact_path)
+        if parsed is None:
+            return None
+        documents = (parsed,)
+    elif artifact_path.is_dir():
+        if not (artifact_path / "XBRL").is_dir():
+            return None
+        documents = tuple(_collect_documents(artifact_path))
+    else:
+        return None
+
+    if not documents:
+        return None
+
+    contexts: dict[str, _ContextInfo] = {}
+    units: dict[str, bool] = {}
+    for document in documents:
+        contexts.update(_parse_contexts(document.root))
+        units.update(_parse_units(document.root))
+
+    financial_facts: dict[str, dict[ConceptKey, float | None]] = {}
+    inventory_facts: dict[str, dict[ConceptKey, float | None]] = {}
+    non_consolidated_facts: dict[str, dict[ConceptKey, float | None]] = {}
+    for document in documents:
+        _extract_inline_facts_to_buckets(
+            document,
+            contexts,
+            units,
+            financial_facts=financial_facts,
+            inventory_facts=inventory_facts,
+            non_consolidated_facts=non_consolidated_facts,
+        )
+        _extract_instance_facts_to_buckets(
+            document,
+            contexts,
+            units,
+            financial_facts=financial_facts,
+            inventory_facts=inventory_facts,
+            non_consolidated_facts=non_consolidated_facts,
+        )
+
+    return LoadedXbrlArtifact(
+        path=artifact_path,
+        fact_documents=documents,
+        financial_facts=financial_facts,
+        inventory_facts=inventory_facts,
+        non_consolidated_facts=non_consolidated_facts,
+    )
 
 
 def _build_concept_lookup(artifact_root: Path) -> tuple[dict[tuple[Path, str], ConceptKey], dict[tuple[str, str], ConceptKey]]:
@@ -863,33 +953,18 @@ def _unknown_inventory_like_tags(facts: dict[ConceptKey, float | None]) -> set[s
     return unknown_tags
 
 
-def _parse_artifact_dir(artifact_root: Path) -> dict[str, dict[str, float | None]]:
-    documents = _collect_documents(artifact_root)
-    if not documents:
-        return {}
-
-    contexts: dict[str, _ContextInfo] = {}
-    units: dict[str, bool] = {}
-    for document in documents:
-        contexts.update(_parse_contexts(document.root))
-        units.update(_parse_units(document.root))
-
-    facts: dict[str, dict[ConceptKey, float | None]] = {}
-    periods_seen: set[str] = set()
-    for document in documents:
-        _extract_inline_facts(document, contexts, units, facts, periods_seen)
-        _extract_instance_facts(document, contexts, units, facts, periods_seen)
-
-    if not periods_seen:
-        return {}
-
-    by_path, by_basename = _build_concept_lookup(artifact_root)
-    calculation_graphs = _build_calculation_graphs(artifact_root, by_path, by_basename)
-    presentation_graphs = _build_presentation_graphs(artifact_root, by_path, by_basename)
+def parse_xbrl_bs_loaded(artifact: LoadedXbrlArtifact) -> dict[str, dict[str, float | None]]:
+    """Build inventories-only balance sheet data from a loaded XBRL artifact."""
+    calculation_graphs: dict[str, dict[ConceptKey, list[_CalculationEdge]]] = {}
+    presentation_graphs: dict[str, dict[ConceptKey, set[ConceptKey]]] = {}
+    if artifact.path.is_dir():
+        by_path, by_basename = _build_concept_lookup(artifact.path)
+        calculation_graphs = _build_calculation_graphs(artifact.path, by_path, by_basename)
+        presentation_graphs = _build_presentation_graphs(artifact.path, by_path, by_basename)
 
     result: dict[str, dict[str, float | None]] = {}
-    for period in sorted(periods_seen, reverse=True):
-        period_facts = facts.get(period, {})
+    for period in sorted(artifact.inventory_facts, reverse=True):
+        period_facts = artifact.inventory_facts.get(period, {})
         direct_total = _unique_candidate("direct inventory", period, _matching_concepts(period_facts, _INVENTORY_TOTAL_TAGS))
         if direct_total is not None:
             result[period] = {"inventories": direct_total}
@@ -918,132 +993,9 @@ def _parse_artifact_dir(artifact_root: Path) -> dict[str, dict[str, float | None
     return result
 
 
-def _legacy_target_file(xbrl_dir: Path) -> Path | None:
-    xhtml_files = list(xbrl_dir.glob("*.xhtml"))
-    if not xhtml_files:
-        return None
-    return max(xhtml_files, key=lambda path: path.stat().st_size)
-
-
-def _is_legacy_xbrl_dir(path: Path) -> bool:
-    return next(path.glob("*.xhtml"), None) is not None and next(path.rglob("*.xsd"), None) is None
-
-
-def _store_legacy_fact(
-    bucket: dict[str, dict[str, float | None]],
-    period: str,
-    short_name: str,
-    value: float | None,
-) -> None:
-    by_period = bucket.setdefault(period, {})
-    if short_name not in by_period:
-        by_period[short_name] = value
-        return
-
-    existing = by_period[short_name]
-    if existing is None:
-        by_period[short_name] = value
-        return
-    if value is None or existing == value:
-        return
-    raise InventoriesTagMismatchError(
-        f"Conflicting values for inventory tag {short_name} in {period}: {existing} vs {value}"
-    )
-
-
-def _parse_legacy_content(content: str) -> dict[str, dict[str, float | None]]:
-    if not is_valid_xbrl_text(content):
-        return {}
-
-    fiscal_end = _FISCAL_END_RE.search(content)
-    if fiscal_end is None:
-        return {}
-    base_end_date = (int(fiscal_end.group(1)), int(fiscal_end.group(2)))
-
-    direct_totals: dict[str, dict[str, float | None]] = {}
-    component_values: dict[str, dict[str, float | None]] = {}
-    periods_seen: set[str] = set()
-    unknown_tags: set[str] = set()
-
-    for match in _NONFRACTION_RE.finditer(content):
-        attrs = _parse_attrs(match.group(1))
-        short_name = attrs.get("name", "").split(":")[-1]
-        period = _resolve_period(attrs.get("contextref", ""), base_end_date)
-        if period is None:
-            continue
-
-        periods_seen.add(period)
-        value = _parse_xbrl_value(
-            match.group(2).strip(),
-            attrs.get("decimals", ""),
-            attrs.get("scale", ""),
-            attrs.get("sign", ""),
-        )
-
-        if short_name in _INVENTORY_TOTAL_TAGS:
-            _store_legacy_fact(direct_totals, period, short_name, value)
-            continue
-
-        if short_name in _INVENTORY_COMPONENT_TAGS:
-            _store_legacy_fact(component_values, period, short_name, value)
-            continue
-
-        if value is None or not _is_inventory_like(short_name):
-            continue
-        if _is_ignored_inventory_candidate(short_name):
-            continue
-        unknown_tags.add(short_name)
-
-    if unknown_tags:
-        unknown_list = ", ".join(sorted(unknown_tags))
-        raise InventoriesTagMismatchError(f"Unknown inventory-like XBRL tags: {unknown_list}")
-
-    if not periods_seen:
-        return {}
-
-    result: dict[str, dict[str, float | None]] = {}
-    for period in sorted(periods_seen, reverse=True):
-        total_candidates = [
-            value
-            for value in direct_totals.get(period, {}).values()
-            if value is not None
-        ]
-        if total_candidates:
-            unique_totals = sorted(set(total_candidates))
-            if len(unique_totals) > 1:
-                raise InventoriesTagMismatchError(
-                    f"Conflicting direct inventory totals in {period}: {unique_totals}"
-                )
-            result[period] = {"inventories": unique_totals[0]}
-        else:
-            inventories = sum(
-                value
-                for value in component_values.get(period, {}).values()
-                if value is not None
-            )
-            if inventories:
-                result[period] = {"inventories": inventories}
-
-    return result
-
-
-def _parse_legacy_file(path: Path) -> dict[str, dict[str, float | None]]:
-    try:
-        content = path.read_text(encoding="utf-8")
-    except OSError:
-        logger.warning("Failed to read XBRL file %s", path)
-        return {}
-    return _parse_legacy_content(content)
-
-
 def parse_xbrl_bs(xbrl_path: str) -> dict[str, dict[str, float | None]]:
-    """Parse an EDINET XBRL artifact and return {period: {'inventories': value}}."""
-    artifact_path = Path(xbrl_path)
-    if artifact_path.is_file():
-        return _parse_legacy_file(artifact_path)
-    if not artifact_path.is_dir():
+    """Parse an EDINET XBRL artifact dir or single `.xbrl` file."""
+    artifact = load_xbrl_artifact(xbrl_path)
+    if artifact is None:
         return {}
-    if _is_legacy_xbrl_dir(artifact_path):
-        target = _legacy_target_file(artifact_path)
-        return _parse_legacy_file(target) if target is not None else {}
-    return _parse_artifact_dir(artifact_path)
+    return parse_xbrl_bs_loaded(artifact)

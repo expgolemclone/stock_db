@@ -92,6 +92,16 @@ def _fake_download_xbrl_package_factory(
     return _fake_download_xbrl_package
 
 
+def _write_saved_artifact(raw_dir: Path, ticker: str, doc_id: str, *, html: str | None = None) -> Path:
+    payload = html or _valid_ixbrl_html()
+    artifact_dir = raw_dir / "xbrl" / ticker / doc_id
+    public_doc = artifact_dir / "XBRL" / "PublicDoc"
+    public_doc.mkdir(parents=True, exist_ok=True)
+    (artifact_dir.parent / f"{doc_id}.zip").write_bytes(b"zip")
+    (public_doc / "report.xhtml").write_text(payload, encoding="utf-8")
+    return artifact_dir
+
+
 class TestRequestThrottle:
     def test_wait_enforces_shared_min_interval(self, monkeypatch: pytest.MonkeyPatch) -> None:
         now = {"value": 100.0}
@@ -401,9 +411,12 @@ class TestScrapeAllEdinetReports:
         db_path = tmp_path / "stocks.db"
         conn = _build_db(db_path)
         raw_dir = tmp_path / "var" / "raw" / "edinet"
-        xbrl_path = raw_dir / "xbrl" / "3333" / "S100CCC3.xhtml"
-        xbrl_path.parent.mkdir(parents=True, exist_ok=True)
-        xbrl_path.write_text(_valid_ixbrl_html(inventory_value="600"), encoding="utf-8")
+        xbrl_path = _write_saved_artifact(
+            raw_dir,
+            "3333",
+            "S100CCC3",
+            html=_valid_ixbrl_html(inventory_value="600"),
+        )
 
         upsert_stock(conn, "3333", "Name 3333", "Sector", "Prime")
         upsert_company_metadata(
@@ -441,7 +454,7 @@ class TestScrapeAllEdinetReports:
             """
         ).fetchone()
         assert row["xbrl_path"] is not None
-        assert Path(row["xbrl_path"]).is_file()
+        assert Path(row["xbrl_path"]).is_dir()
         conn.close()
 
     def test_phase2_skips_tickers_without_url(

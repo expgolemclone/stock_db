@@ -109,8 +109,8 @@ SQLite を使用。WAL モード・外部キー制約有効。
 |---|---|
 | `api_client` | EDINET API v2 `documents/{docID}?type=1` で提出本文書・監査報告書・taxonomy・linkbase を含む ZIP を取得し、`{doc_id}.zip` と展開ディレクトリを原子的に保存 |
 | `search_scraper` | EDINET 検索フォーム経由で有報 docID を発見（スレッドセーフ）。HTML entity デコード・企業名フォールバック付き |
-| `xbrl_bs_parser` | EDINET XBRL artifact から棚卸資産総額を抽出。direct total を最優先し、次に calculation linkbase、最後に presentation linkbase を使って taxonomy-aware に集計する。legacy `.xhtml` 形式も移行期間中は互換サポート |
-| `xbrl_financials_parser` | EDINET XBRL artifact から `financial_items` の canonical 名へ正規化して抽出する。BS / PL / CF / dividend は direct fact を優先し、`inventories` だけは `xbrl_bs_parser` の taxonomy-aware 集計を再利用する。`forecast` は XBRL に数値 fact がある場合のみ登録し、無ければ補完しない |
+| `xbrl_bs_parser` | EDINET XBRL artifact から棚卸資産総額を抽出。shared loader で fact document を 1 回だけ読み込み、direct total を最優先し、次に calculation linkbase、最後に presentation linkbase を使って taxonomy-aware に集計する |
+| `xbrl_financials_parser` | EDINET XBRL artifact から `financial_items` の canonical 名へ正規化して抽出する。shared loader の fact bucket を `xbrl_bs_parser` と共有し、同一 artifact を再パースしない。BS / PL / CF / dividend は direct fact を優先し、`inventories` だけは taxonomy-aware 集計を再利用する。`forecast` は XBRL に数値 fact がある場合のみ登録し、無ければ補完しない |
 
 `search_scraper` は書類種別ラジオを明示的に「指定する」に切り替えたうえで `有価証券報告書` チェックを付与し、提出者名検索で大量保有報告書などに埋もれて annual report を取り逃がさないようにしている。
 
@@ -120,9 +120,9 @@ SQLite を使用。WAL モード・外部キー制約有効。
 
 `config/edinet_phase1.toml` の `excluded_tickers` は、ETF など自己名義の `securities_report_url` を保持しない銘柄を Phase 1 の対象外として扱う。`report_edinet_progress` は raw の `phase1_pending` とは別に `phase1_excluded` と `phase1_pending_actionable` を出力し、actionable 未解決と除外済みを別 TSV に書き出す。
 
-`scrape_edinet_reports` の Phase 2 は `EDINET_API_KEY` を必須とし、`sec_reports.xbrl_path` には展開済みアーティファクトのルートディレクトリを保存する。skip 判定では `xbrl_path` だけでなく、ZIP+展開済み artifact が有効かを再検証し、legacy `.xhtml` の header-only / invalid 保存物は再取得対象に戻す。
+`scrape_edinet_reports` の Phase 2 は `EDINET_API_KEY` を必須とし、`sec_reports.xbrl_path` には展開済みアーティファクトのルートディレクトリを保存する。skip 判定では `xbrl_path` だけでなく、ZIP+展開済み artifact が有効かを再検証し、旧 `.xhtml` file や invalid 保存物は再取得対象に戻す。
 
-raw 同期 (`sync_edinet_raw_to_db`) は `xbrl/{ticker}/{doc_id}/` と sibling の `{doc_id}.zip` を正規形として回収する。既存 `*.xhtml` は移行期間の互換入力としてのみ扱い、同じ `doc_id` に新旧両形式がある場合は ZIP+展開形式を優先する。
+raw 同期 (`sync_edinet_raw_to_db`) は `xbrl/{ticker}/{doc_id}/` と sibling の `{doc_id}.zip` だけを正規入力として回収する。top-level の legacy `*.xhtml` は同期対象に含めない。
 
 `purge_irbank_financials` は `financial_items` の `source LIKE 'irbank%'` を一括削除し、WAL checkpoint と `VACUUM` を実行して artifact に `irbank` 系 source を残さない。
 

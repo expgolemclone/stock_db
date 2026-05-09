@@ -14,7 +14,8 @@ from stock_db.sources.edinet.xbrl_bs_parser import (
 
 
 def _xbrl_path(ticker: str) -> str:
-    return f"/home/exp/projects/stock_db/var/raw/edinet/xbrl/{ticker}"
+    ticker_dir = Path(f"/home/exp/projects/stock_db/var/raw/edinet/xbrl/{ticker}")
+    return str(next(path for path in sorted(ticker_dir.iterdir()) if path.is_dir()))
 
 
 def _write_api_artifact(root: Path) -> Path:
@@ -84,6 +85,32 @@ def _write_api_artifact(root: Path) -> Path:
     return artifact
 
 
+def _write_single_xbrl(
+    path: Path,
+    *,
+    fact_name: str,
+    fact_value: str,
+    fact_attrs: str = "",
+) -> Path:
+    path.write_text(
+        f"""
+        <xbrli:xbrl
+            xmlns:xbrli="http://www.xbrl.org/2003/instance"
+            xmlns:iso4217="http://www.xbrl.org/2003/iso4217"
+            xmlns:jppfs_cor="http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor">
+          <xbrli:context id="CurrentYearInstant">
+            <xbrli:entity><xbrli:identifier scheme="test">E1</xbrli:identifier></xbrli:entity>
+            <xbrli:period><xbrli:instant>2025-03-31</xbrli:instant></xbrli:period>
+          </xbrli:context>
+          <xbrli:unit id="JPY"><xbrli:measure>iso4217:JPY</xbrli:measure></xbrli:unit>
+          <jppfs_cor:{fact_name} contextRef="CurrentYearInstant" unitRef="JPY"{fact_attrs}>{fact_value}</jppfs_cor:{fact_name}>
+        </xbrli:xbrl>
+        """,
+        encoding="utf-8",
+    )
+    return path
+
+
 class TestRealFixtures:
     def test_yoshicon_sums_real_estate_components(self) -> None:
         parsed = parse_xbrl_bs(_xbrl_path("5280"))
@@ -136,7 +163,7 @@ class TestRealFixtures:
 
 class TestValidationHelpers:
     def test_saved_fixture_path_validation(self) -> None:
-        path = next(Path(_xbrl_path("5280")).glob("*.xhtml"))
+        path = Path(_xbrl_path("5280"))
         assert is_valid_xbrl_path(path) is True
 
     def test_saved_artifact_dir_validation(self, tmp_path: Path) -> None:
@@ -152,7 +179,7 @@ class TestValidationHelpers:
 
 
 class TestSyntheticCases:
-    def test_returns_empty_for_tiny_header_only_file(self, tmp_path: Path) -> None:
+    def test_returns_empty_for_legacy_flat_dir(self, tmp_path: Path) -> None:
         xbrl = tmp_path / "test.xhtml"
         xbrl.write_text(
             '<html xmlns:ix="http://www.xbrl.org/2008/inlineXBRL">'
@@ -163,34 +190,26 @@ class TestSyntheticCases:
         assert parse_xbrl_bs(str(tmp_path)) == {}
 
     def test_parses_negative_inventory_value(self, tmp_path: Path) -> None:
-        xbrl = tmp_path / "S9999.xhtml"
-        xbrl.write_text(
-            '<html xmlns:ix="http://www.xbrl.org/2008/inlineXBRL">'
-            '<ix:nonnumeric contextref="FilingDateInstant" '
-            'name="jpdei_cor:CurrentFiscalYearEndDateDEI">2025年3月31日</ix:nonnumeric>'
-            '<body><ix:nonfraction contextref="CurrentYearInstant" '
-            'name="jppfs_cor:Inventories" decimals="-3" scale="3" sign="negative">'
-            "500</ix:nonfraction></body></html>",
-            encoding="utf-8",
+        xbrl = _write_single_xbrl(
+            tmp_path / "sample.xbrl",
+            fact_name="Inventories",
+            fact_value="500",
+            fact_attrs=' decimals="-3" scale="3" sign="negative"',
         )
 
-        parsed = parse_xbrl_bs(str(tmp_path))
+        parsed = parse_xbrl_bs(str(xbrl))
         assert parsed["2025-03"]["inventories"] == pytest.approx(-500_000)
 
     def test_raises_for_unknown_inventory_like_tag(self, tmp_path: Path) -> None:
-        xbrl = tmp_path / "S9998.xhtml"
-        xbrl.write_text(
-            '<html xmlns:ix="http://www.xbrl.org/2008/inlineXBRL">'
-            '<ix:nonnumeric contextref="FilingDateInstant" '
-            'name="jpdei_cor:CurrentFiscalYearEndDateDEI">2025年3月31日</ix:nonnumeric>'
-            '<body><ix:nonfraction contextref="CurrentYearInstant" '
-            'name="jppfs_cor:MysteryInventoriesCA" decimals="-3" scale="3">'
-            "500</ix:nonfraction></body></html>",
-            encoding="utf-8",
+        xbrl = _write_single_xbrl(
+            tmp_path / "sample.xbrl",
+            fact_name="MysteryInventoriesCA",
+            fact_value="500",
+            fact_attrs=' decimals="-3" scale="3"',
         )
 
         with pytest.raises(InventoriesTagMismatchError, match="MysteryInventoriesCA"):
-            parse_xbrl_bs(str(tmp_path))
+            parse_xbrl_bs(str(xbrl))
 
     def test_parses_artifact_dir_via_presentation_fallback(self, tmp_path: Path) -> None:
         artifact = _write_api_artifact(tmp_path)

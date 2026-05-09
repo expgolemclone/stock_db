@@ -171,8 +171,8 @@ class TestSecReports:
         synced_reports, synced_urls = sync_edinet_raw_to_db(db_conn, raw_dir)
         db_conn.commit()
 
-        assert synced_reports == 2
-        assert synced_urls == 2
+        assert synced_reports == 1
+        assert synced_urls == 1
 
         toyota_rows = get_sec_reports_for_ticker(db_conn, "7203")
         assert len(toyota_rows) == 1
@@ -180,14 +180,12 @@ class TestSecReports:
         assert toyota_rows[0]["xbrl_path"] == str((raw_dir / "xbrl" / "7203" / "S100ABCDE").resolve())
 
         sony_rows = get_sec_reports_for_ticker(db_conn, "6758")
-        assert len(sony_rows) == 1
-        assert sony_rows[0]["doc_id"] == "S100FGHIJ"
-        assert sony_rows[0]["xbrl_path"] == str((raw_dir / "xbrl" / "6758" / "S100FGHIJ.xhtml").resolve())
+        assert sony_rows == []
 
         rows = db_conn.execute(
             "SELECT ticker, securities_report_url FROM stocks ORDER BY ticker",
         ).fetchall()
         assert [(row["ticker"], row["securities_report_url"]) for row in rows] == [
-            ("6758", build_pdf_url("S100FGHIJ")),
+            ("6758", None),
             ("7203", build_pdf_url("S100ABCDE")),
         ]

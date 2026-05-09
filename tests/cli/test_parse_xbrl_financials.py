@@ -20,14 +20,14 @@ def _build_db(db_path: Path) -> None:
         ticker="1301",
         fiscal_year="2025-03",
         doc_id="S100TEST1",
-        xbrl_path="/tmp/1301.xhtml",
+        xbrl_path="/tmp/1301/S100TEST1",
     )
     upsert_sec_report(
         conn,
         ticker="1302",
         fiscal_year="2025-03",
         doc_id="S100TEST2",
-        xbrl_path="/tmp/1302.xhtml",
+        xbrl_path="/tmp/1302/S100TEST2",
     )
     upsert_financial_item(conn, "1301", "2025-03", "pl", "revenue", 100.0, "edinet_xbrl")
     conn.commit()
@@ -63,7 +63,7 @@ def test_main_skips_existing_by_default(tmp_path: Path, monkeypatch: object, cap
     captured = capsys.readouterr()
 
     assert rc == 0
-    assert parse_calls == ["/tmp/1302.xhtml"]
+    assert parse_calls == ["/tmp/1302/S100TEST2"]
     assert [call["ticker"] for call in replace_calls] == ["1302"]
     assert "Done: 1 ok, 0 errors" in captured.err
 
@@ -133,7 +133,7 @@ def test_main_force_reparses_existing_ticker(tmp_path: Path, monkeypatch: object
     captured = capsys.readouterr()
 
     assert rc == 0
-    assert parse_calls == ["/tmp/1301.xhtml"]
+    assert parse_calls == ["/tmp/1301/S100TEST1"]
     assert len(replace_calls) == 1
     assert replace_calls[0]["ticker"] == "1301"
     assert replace_calls[0]["sources"] == cli._REPLACED_SOURCES
