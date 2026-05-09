@@ -8,7 +8,7 @@
 |---|---|---|
 | **[EDINET](https://disclosure2.edinet-fsa.go.jp/)** | 有価証券報告書 (XBRL) | EDINET API v2 |
 | **[Stooq](https://stooq.com/db/)** | 日次株価 (JP 全銘柄) | CSV ダウンロード (CAPTCHA 対応) |
-| **[Yahoo Finance JP](https://finance.yahoo.co.jp/)** | 非東証銘柄の前日終値 | スクレイピング |
+| **[Yahoo Finance JP](https://finance.yahoo.co.jp/)** | 前日終値の補完取得 | スクレイピング |
 
 ## セットアップ
 
@@ -19,7 +19,7 @@ uv sync --frozen
 # ブラウザサービスの依存関係（EDINET step1 / Yahoo / Stooq に使用）
 npm ci --prefix services/browser
 
-# EDINET API キー（step2 / parse 用 raw 取得に使用）
+# EDINET API キー（step2 / combined run の raw 取得に使用）
 export EDINET_API_KEY=...
 ```
 
@@ -85,9 +85,11 @@ uv run report-edinet-progress
 # Stooq 日次株価の取り込み
 uv run scrape-stooq-prices
 
-# Yahoo Finance JP 株価スクレイプ
+# Yahoo Finance JP 価格補完
 uv run scrape-yahoo-finance-prices
 ```
+
+- `scrape-yahoo-finance-prices` は fresh でない銘柄を走査し、解決できた Yahoo Finance JP の quote page から前日終値を補完する
 
 ### その他
 
