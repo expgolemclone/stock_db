@@ -124,7 +124,9 @@ SQLite を使用。WAL モード・外部キー制約有効。
 
 raw 同期 (`sync_edinet_raw_to_db`) は `xbrl/{ticker}/{doc_id}/` と sibling の `{doc_id}.zip` を正規形として回収する。既存 `*.xhtml` は移行期間の互換入力としてのみ扱い、同じ `doc_id` に新旧両形式がある場合は ZIP+展開形式を優先する。
 
-`parse_xbrl_financials` は `sec_reports` 上の同一 ticker の全 artifact を fiscal year 昇順で畳み込み、後続 filing の同一 `(period, statement, item_name)` を優先する。その後 `financial_items` の同一 ticker に対する `xbrl_bs` / 旧 `edinet_xbrl` を削除し、再構築した rows を `source=edinet_xbrl` で一括登録する。`financial_items` の主キーは `(ticker, period, statement, item_name)` で `source` を含まないため、source 単位ではなく ticker 単位で置換する。`--skip-existing` はデフォルトで有効であり、既存 `edinet_xbrl` を持つ ticker を skip する。再パースが必要な場合だけ `--force` を使う。
+`purge_irbank_financials` は `financial_items` の `source LIKE 'irbank%'` を一括削除し、WAL checkpoint と `VACUUM` を実行して artifact に `irbank` 系 source を残さない。
+
+`parse_xbrl_financials` は `sec_reports` 上の同一 ticker の全 artifact を fiscal year 昇順で畳み込み、後続 filing の同一 `(period, statement, item_name)` を優先する。その後 `financial_items` の同一 ticker に対する `irbank` / `irbank_bs` / `irbank_forecast` / `xbrl_bs` / 旧 `edinet_xbrl` を削除し、再構築した rows を `source=edinet_xbrl` で一括登録する。`financial_items` の主キーは `(ticker, period, statement, item_name)` で `source` を含まないため、source 単位ではなく ticker 単位で置換する。`--skip-existing` はデフォルトで有効であり、既存 `edinet_xbrl` を持つ ticker を skip する。再パースが必要な場合だけ `--force` を使う。
 
 ### Stooq Sources
 
@@ -157,6 +159,7 @@ EDINET API を使う `scrape-edinet-reports` / `scrape-edinet-reports-step2` で
 
 - GitHub Actions `update-stooq-prices.yml` が毎日 **16:00 JST**（cron `0 7 * * *`）に `uv run scrape-stooq-prices --headless` を実行する
 - workflow は `Update Stooq prices` の前に `fonts-dejavu-extra` / `fonts-freefont-ttf` / `fonts-liberation` を install し、Stooq CAPTCHA OCR に必要な DejaVu / FreeSans / Liberation Sans 系フォントを runner に揃える
+- workflow は upload 前に `uv run purge-irbank-financials` を実行し、artifact の `financial_items` から `irbank` 系 source を除去する
 - `stocks.db` は GitHub Actions Artifacts（名前 `stocks-db`）で永続化する。workflow 開始時に前回の artifact をダウンロードし、スクレイプ後にアップロードする
 - 手動検証時は `gh workflow run update-stooq-prices.yml --repo expgolemclone/stock_db --ref main` で `workflow_dispatch` を発火し、各ステップが success になることを確認する
 - EDINET Phase 1 の手動検証は `uv run scrape-edinet-reports-step1` 実行後に `uv run report-edinet-progress` を実行し、`phase1_pending_actionable` が 0 か、残件が alias / exclusion 追加対象として妥当かを確認する

@@ -16,6 +16,9 @@ from stock_db.storage.financials import replace_financial_items_for_ticker_sourc
 _SOURCE = "edinet_xbrl"
 _REPLACED_SOURCES = (
     "edinet_xbrl",
+    "irbank",
+    "irbank_bs",
+    "irbank_forecast",
     "xbrl_bs",
 )
 

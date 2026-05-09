@@ -57,6 +57,9 @@ jobs:
       - name: Update Stooq prices
         run: uv run scrape-stooq-prices --headless
 
+      - name: Purge irbank financial_items
+        run: uv run purge-irbank-financials
+
       - name: Upload stocks.db artifact
         uses: actions/upload-artifact@v4
         with:

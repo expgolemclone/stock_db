@@ -86,6 +86,19 @@ def purge_financial_items_for_source(
         (source,),
     )
     return cursor.rowcount
+
+
+def purge_financial_items_for_source_like(
+    conn: sqlite3.Connection,
+    source_pattern: str,
+) -> int:
+    cursor = conn.execute(
+        "DELETE FROM financial_items WHERE source LIKE ?",
+        (source_pattern,),
+    )
+    return cursor.rowcount
+
+
 def get_financial_dict(
     conn: sqlite3.Connection,
     ticker: str,

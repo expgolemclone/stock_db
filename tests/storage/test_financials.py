@@ -7,6 +7,7 @@ from stock_db.storage.financials import (
     get_financial_dict,
     get_historical_items,
     get_items_by_source,
+    purge_financial_items_for_source_like,
     purge_financial_items_for_source,
     replace_financial_items_for_ticker_sources,
     upsert_financial_item,
@@ -98,6 +99,21 @@ class TestFinancialItems:
         ).fetchall()
         assert [tuple(row) for row in rows] == [("pl", "y", "test_source")]
 
+    def test_purge_financial_items_for_source_like(self, db_conn: sqlite3.Connection) -> None:
+        upsert_financial_item(db_conn, "1234", "2024", "bs", "x", 1.0, "irbank")
+        upsert_financial_item(db_conn, "1234", "2024", "pl", "y", 2.0, "irbank_forecast")
+        upsert_financial_item(db_conn, "1234", "2024", "cf", "z", 3.0, "edinet_xbrl")
+        db_conn.commit()
+
+        deleted = purge_financial_items_for_source_like(db_conn, "irbank%")
+        db_conn.commit()
+
+        assert deleted == 2
+        rows = db_conn.execute(
+            "SELECT statement, item_name, source FROM financial_items ORDER BY statement, item_name"
+        ).fetchall()
+        assert [tuple(row) for row in rows] == [("cf", "z", "edinet_xbrl")]
+
 
 class TestGetItemsBySource:
     def test_returns_rows_for_matching_source(self, db_conn: sqlite3.Connection) -> None:
@@ -139,7 +155,8 @@ class TestGetItemsBySource:
 
 class TestReplaceFinancialItemsForTickerSources:
     def test_replaces_only_requested_sources(self, db_conn: sqlite3.Connection) -> None:
-        upsert_financial_item(db_conn, "1234", "2024", "bs", "current_assets", 100.0, "legacy_bs")
+        upsert_financial_item(db_conn, "1234", "2024", "bs", "current_assets", 100.0, "irbank_bs")
+        upsert_financial_item(db_conn, "1234", "2025", "forecast", "revenue", 222.0, "irbank_forecast")
         upsert_financial_item(db_conn, "1234", "2024", "bs", "inventories", 20.0, "xbrl_bs")
         upsert_financial_item(db_conn, "1234", "2024", "pl", "revenue", 300.0, "manual")
         db_conn.commit()
@@ -147,7 +164,7 @@ class TestReplaceFinancialItemsForTickerSources:
         replace_financial_items_for_ticker_sources(
             db_conn,
             ticker="1234",
-            sources=("legacy_bs", "xbrl_bs", "edinet_xbrl"),
+            sources=("irbank", "irbank_bs", "irbank_forecast", "xbrl_bs", "edinet_xbrl"),
             rows=[
                 {
                     "ticker": "1234",
