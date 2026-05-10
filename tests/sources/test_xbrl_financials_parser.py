@@ -40,6 +40,23 @@ def test_extracts_current_financials_from_real_fixture() -> None:
     assert "forecast" not in current
 
 
+def test_extracts_non_consolidated_current_financials_from_real_fixture() -> None:
+    parsed = xbrl_financials_parser.parse_xbrl_financials(_xbrl_path("3477"))
+
+    current = parsed["2025-03"]
+    assert current["bs"]["current_assets"] == pytest.approx(9_278_918_000)
+    assert current["bs"]["current_liabilities"] == pytest.approx(5_532_920_000)
+    assert current["bs"]["non_current_liabilities"] == pytest.approx(112_069_000)
+    assert current["bs"]["inventories"] == pytest.approx(5_596_869_000)
+
+    assert current["pl"]["revenue"] == pytest.approx(14_771_438_000)
+    assert current["pl"]["operating_income"] == pytest.approx(591_307_000)
+    assert current["pl"]["net_income"] == pytest.approx(550_784_000)
+
+    assert current["cf"]["operating_cf"] == pytest.approx(-736_508_000)
+    assert current["cf"]["investing_cf"] == pytest.approx(840_371_000)
+
+
 def test_parses_synthetic_forecast_tags(tmp_path: Path) -> None:
     xbrl = tmp_path / "sample.xbrl"
     xbrl.write_text(
@@ -98,6 +115,94 @@ def test_parses_synthetic_forecast_tags(tmp_path: Path) -> None:
     assert current["forecast"]["operating_income"] == pytest.approx(750)
     assert current["forecast"]["ordinary_income"] == pytest.approx(700)
     assert current["forecast"]["net_income"] == pytest.approx(540)
+
+
+def test_primary_context_wins_over_non_consolidated_fallback(tmp_path: Path) -> None:
+    xbrl = tmp_path / "sample.xbrl"
+    xbrl.write_text(
+        """
+        <xbrli:xbrl
+            xmlns:xbrli="http://www.xbrl.org/2003/instance"
+            xmlns:xbrldi="http://xbrl.org/2006/xbrldi"
+            xmlns:iso4217="http://www.xbrl.org/2003/iso4217"
+            xmlns:jppfs_cor="http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor">
+          <xbrli:context id="CurrentYearInstant">
+            <xbrli:entity><xbrli:identifier scheme="test">E1</xbrli:identifier></xbrli:entity>
+            <xbrli:period><xbrli:instant>2025-03-31</xbrli:instant></xbrli:period>
+          </xbrli:context>
+          <xbrli:context id="CurrentYearDuration">
+            <xbrli:entity><xbrli:identifier scheme="test">E1</xbrli:identifier></xbrli:entity>
+            <xbrli:period>
+              <xbrli:startDate>2024-04-01</xbrli:startDate>
+              <xbrli:endDate>2025-03-31</xbrli:endDate>
+            </xbrli:period>
+          </xbrli:context>
+          <xbrli:context id="CurrentYearInstant_NonConsolidatedMember">
+            <xbrli:entity>
+              <xbrli:identifier scheme="test">E1</xbrli:identifier>
+              <xbrli:segment>
+                <xbrldi:explicitMember dimension="jppfs_cor:ConsolidatedOrNonConsolidatedAxis">jppfs_cor:NonConsolidatedMember</xbrldi:explicitMember>
+              </xbrli:segment>
+            </xbrli:entity>
+            <xbrli:period><xbrli:instant>2025-03-31</xbrli:instant></xbrli:period>
+          </xbrli:context>
+          <xbrli:context id="CurrentYearDuration_NonConsolidatedMember">
+            <xbrli:entity>
+              <xbrli:identifier scheme="test">E1</xbrli:identifier>
+              <xbrli:segment>
+                <xbrldi:explicitMember dimension="jppfs_cor:ConsolidatedOrNonConsolidatedAxis">jppfs_cor:NonConsolidatedMember</xbrldi:explicitMember>
+              </xbrli:segment>
+            </xbrli:entity>
+            <xbrli:period>
+              <xbrli:startDate>2024-04-01</xbrli:startDate>
+              <xbrli:endDate>2025-03-31</xbrli:endDate>
+            </xbrli:period>
+          </xbrli:context>
+          <xbrli:unit id="JPY"><xbrli:measure>iso4217:JPY</xbrli:measure></xbrli:unit>
+          <jppfs_cor:CurrentAssets contextRef="CurrentYearInstant" unitRef="JPY">1000</jppfs_cor:CurrentAssets>
+          <jppfs_cor:CurrentAssets contextRef="CurrentYearInstant_NonConsolidatedMember" unitRef="JPY">9000</jppfs_cor:CurrentAssets>
+          <jppfs_cor:NetSales contextRef="CurrentYearDuration" unitRef="JPY">2000</jppfs_cor:NetSales>
+          <jppfs_cor:NetSales contextRef="CurrentYearDuration_NonConsolidatedMember" unitRef="JPY">8000</jppfs_cor:NetSales>
+        </xbrli:xbrl>
+        """,
+        encoding="utf-8",
+    )
+
+    parsed = xbrl_financials_parser.parse_xbrl_financials(str(xbrl))
+
+    current = parsed["2025-03"]
+    assert current["bs"]["current_assets"] == pytest.approx(1000)
+    assert current["pl"]["revenue"] == pytest.approx(2000)
+
+
+def test_segment_non_consolidated_context_is_not_total_fallback(tmp_path: Path) -> None:
+    xbrl = tmp_path / "sample.xbrl"
+    xbrl.write_text(
+        """
+        <xbrli:xbrl
+            xmlns:xbrli="http://www.xbrl.org/2003/instance"
+            xmlns:xbrldi="http://xbrl.org/2006/xbrldi"
+            xmlns:iso4217="http://www.xbrl.org/2003/iso4217"
+            xmlns:jppfs_cor="http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor"
+            xmlns:jpcrp_cor="http://disclosure.edinet-fsa.go.jp/taxonomy/jpcrp/2024-11-01/jpcrp_cor">
+          <xbrli:context id="CurrentYearInstant_NonConsolidatedMember_SegmentMember">
+            <xbrli:entity>
+              <xbrli:identifier scheme="test">E1</xbrli:identifier>
+              <xbrli:segment>
+                <xbrldi:explicitMember dimension="jppfs_cor:ConsolidatedOrNonConsolidatedAxis">jppfs_cor:NonConsolidatedMember</xbrldi:explicitMember>
+                <xbrldi:explicitMember dimension="jpcrp_cor:OperatingSegmentsAxis">jpcrp_cor:ReportableSegmentsMember</xbrldi:explicitMember>
+              </xbrli:segment>
+            </xbrli:entity>
+            <xbrli:period><xbrli:instant>2025-03-31</xbrli:instant></xbrli:period>
+          </xbrli:context>
+          <xbrli:unit id="JPY"><xbrli:measure>iso4217:JPY</xbrli:measure></xbrli:unit>
+          <jppfs_cor:CurrentAssets contextRef="CurrentYearInstant_NonConsolidatedMember_SegmentMember" unitRef="JPY">777</jppfs_cor:CurrentAssets>
+        </xbrli:xbrl>
+        """,
+        encoding="utf-8",
+    )
+
+    assert xbrl_financials_parser.parse_xbrl_financials(str(xbrl)) == {}
 
 
 def test_rust_parse_financials_returns_dict() -> None:

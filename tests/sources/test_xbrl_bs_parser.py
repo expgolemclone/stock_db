@@ -160,6 +160,11 @@ class TestRealFixtures:
         assert parsed["2025-03"]["inventories"] == pytest.approx(9_003_000)
         assert parsed["2024-03"]["inventories"] == pytest.approx(4_852_000)
 
+    def test_3477_extracts_non_consolidated_inventory_components(self) -> None:
+        parsed = parse_xbrl_bs(_xbrl_path("3477"))
+
+        assert parsed["2025-03"]["inventories"] == pytest.approx(5_596_869_000)
+
 
 class TestValidationHelpers:
     def test_saved_fixture_path_validation(self) -> None:

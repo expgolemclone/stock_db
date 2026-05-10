@@ -1,0 +1,12 @@
+[package]
+name = "stock-db-xbrl"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "_edinet_xbrl"
+crate-type = ["cdylib", "lib"]
+
+[dependencies]
+pyo3 = { version = "0.24", features = ["extension-module"] }
+quick-xml = "0.37"
