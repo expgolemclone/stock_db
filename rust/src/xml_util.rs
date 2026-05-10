@@ -133,6 +133,13 @@ pub const INVENTORY_COMPONENT_TAGS: &[&str] = &[
     "WorkInProcessCAIFRS",
 ];
 
+/// Exact inventory-like tag names that should be ignored.
+pub const IGNORED_INVENTORY_TAGS: &[&str] = &[
+    // Financial-sector "stocks" are investment/insurance assets, not inventories.
+    "StocksAssetsINS",
+    "StocksAssetsInvestmentSecuritiesBNK",
+];
+
 /// Substrings that indicate an inventory-like tag should be ignored.
 pub const IGNORED_INVENTORY_SUBSTRINGS: &[&str] = &[
     "AccountsReceivable",
@@ -219,6 +226,9 @@ pub fn is_inventory_like(short_name: &str) -> bool {
 
 /// Check if an inventory-like tag should be ignored.
 pub fn is_ignored_inventory_candidate(short_name: &str) -> bool {
+    if IGNORED_INVENTORY_TAGS.contains(&short_name) {
+        return true;
+    }
     if short_name.starts_with("ConstructionInProgress") {
         return short_name != "ConstructionInProgressCAIFRS";
     }

@@ -216,6 +216,23 @@ class TestSyntheticCases:
         with pytest.raises(InventoriesTagMismatchError, match="MysteryInventoriesCA"):
             parse_xbrl_bs(str(xbrl))
 
+    @pytest.mark.parametrize(
+        "fact_name",
+        [
+            "StocksAssetsInvestmentSecuritiesBNK",
+            "StocksAssetsINS",
+        ],
+    )
+    def test_ignores_financial_sector_stock_asset_tags(self, tmp_path: Path, fact_name: str) -> None:
+        xbrl = _write_single_xbrl(
+            tmp_path / "sample.xbrl",
+            fact_name=fact_name,
+            fact_value="500",
+            fact_attrs=' decimals="-3" scale="3"',
+        )
+
+        assert parse_xbrl_bs(str(xbrl)) == {}
+
     def test_parses_artifact_dir_via_presentation_fallback(self, tmp_path: Path) -> None:
         artifact = _write_api_artifact(tmp_path)
 
