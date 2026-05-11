@@ -154,6 +154,20 @@ def get_financial_dict(
     for r in shikiho_rows:
         result.setdefault("forecast", {})[r["item_name"]] = r["value"]
 
+    shikiho_div_rows = conn.execute(
+        """
+        SELECT item_name, value FROM financial_items
+        WHERE ticker = ? AND statement = 'dividend' AND source = 'shikiho'
+          AND period = (
+              SELECT MAX(period) FROM financial_items
+              WHERE ticker = ? AND statement = 'dividend' AND source = 'shikiho'
+          )
+        """,
+        (ticker, ticker),
+    ).fetchall()
+    for r in shikiho_div_rows:
+        result.setdefault("dividend", {})[r["item_name"]] = r["value"]
+
     return result
 
 
