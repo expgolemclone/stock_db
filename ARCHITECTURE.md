@@ -48,6 +48,7 @@ stock_db/
       report_edinet_progress.py # Phase 1/2 の raw / actionable 進捗を集計
       scrape_stooq_prices.py # Stooq 日次価格取り込み CLI
       sync_shikiho_forecasts.py # 会社四季報予想の純利益同期 CLI
+      sync_shikiho_dividends.py # 会社四季報の配当同期 CLI
       compute_eps.py          # EPS 計算 CLI（過去: net_income / shares_outstanding、将来: 予想純利益 / 現在発行済株式数）
       scrape_yahoo_finance_prices.py # Yahoo Finance JP 価格補完 CLI
       generate_validation_site_list.py
@@ -91,6 +92,7 @@ Stooq 日次CSV ──ダウンロード──→ parser ──→ prices
 Yahoo Finance JP ──スクレイピング──→ parser ──→ prices
                                                   stocks.yf_suffix
 japan_company_handbook stock_performance.db ──sync-shikiho-forecasts──→ financial_items (source=shikiho)
+japan_company_handbook stock_performance.db ──sync-shikiho-dividends──→ financial_items (source=shikiho)
 financial_items (net_income + shares_outstanding) + stocks.shares_outstanding ──compute-eps──→ financial_items (source=computed)
 ```
 
