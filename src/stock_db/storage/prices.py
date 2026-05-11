@@ -89,6 +89,19 @@ def get_latest_price_with_shares(
     )
 
 
+def get_price_at_or_before(
+    conn: sqlite3.Connection,
+    ticker: str,
+    date_str: str,
+) -> float | None:
+    """Return the closing price on or before *date_str* (YYYY-MM-DD)."""
+    row = conn.execute(
+        "SELECT close FROM prices WHERE ticker = ? AND date <= ? ORDER BY date DESC LIMIT 1",
+        (ticker, date_str),
+    ).fetchone()
+    return row["close"] if row else None
+
+
 def is_price_stale(updated_at: str | None, stale_days: int) -> bool:
     if updated_at is None:
         return True
