@@ -14,8 +14,16 @@ pub struct ContextInfo {
     pub dimension_count: usize,
 }
 
-/// Parsed unit information — tracks whether a unit represents JPY.
-pub type UnitMap = HashMap<String, bool>;
+/// Kind of XBRL unit (affects which fact bucket a value is stored in).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum UnitKind {
+    JPY,
+    Shares,
+    Other,
+}
+
+/// Parsed unit information — tracks what kind of unit each ID represents.
+pub type UnitMap = HashMap<String, UnitKind>;
 
 /// Loaded XBRL artifact containing all extracted fact buckets.
 #[derive(Debug, Clone)]
@@ -32,6 +40,8 @@ pub struct LoadedXbrlArtifact {
     pub non_consolidated_inventory_facts: HashMap<String, HashMap<ConceptKey, Option<f64>>>,
     /// period → (ConceptKey → Option<f64>)
     pub non_consolidated_facts: HashMap<String, HashMap<ConceptKey, Option<f64>>>,
+    /// period → (ConceptKey → Option<f64>) — shares-denominated facts (unit=shares).
+    pub shares_facts: HashMap<String, HashMap<ConceptKey, Option<f64>>>,
 }
 
 /// An edge in a calculation linkbase graph.

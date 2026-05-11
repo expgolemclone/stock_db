@@ -5,7 +5,7 @@ use quick_xml::events::Event;
 use quick_xml::name::QName;
 use quick_xml::Reader;
 
-use crate::types::{ConceptKey, ContextInfo, ContextMode, LoadedXbrlArtifact, UnitMap};
+use crate::types::{ConceptKey, ContextInfo, ContextMode, LoadedXbrlArtifact, UnitKind, UnitMap};
 use crate::xml_util;
 
 /// Load an XBRL artifact from a file path or directory.
@@ -35,6 +35,7 @@ pub fn load_xbrl_artifact(path: &str) -> Result<LoadedXbrlArtifact, String> {
                 non_consolidated_financial_facts: HashMap::new(),
                 non_consolidated_inventory_facts: HashMap::new(),
                 non_consolidated_facts: HashMap::new(),
+                shares_facts: HashMap::new(),
             });
         }
         let fact_paths = xml_util::iter_fact_document_paths(artifact_path);
@@ -90,6 +91,7 @@ pub fn load_xbrl_artifact(path: &str) -> Result<LoadedXbrlArtifact, String> {
         HashMap::new();
     let mut non_consolidated_facts: HashMap<String, HashMap<ConceptKey, Option<f64>>> =
         HashMap::new();
+    let mut shares_facts: HashMap<String, HashMap<ConceptKey, Option<f64>>> = HashMap::new();
 
     for (i, facts) in all_inline_facts.iter().enumerate() {
         let nsmap = &all_nsmaps[i];
@@ -98,7 +100,7 @@ pub fn load_xbrl_artifact(path: &str) -> Result<LoadedXbrlArtifact, String> {
                 Some(c) => c,
                 None => continue,
             };
-            if !all_units.get(&fact.unit_ref).copied().unwrap_or(false) {
+            if all_units.get(&fact.unit_ref).copied().unwrap_or(UnitKind::Other) == UnitKind::Other {
                 continue;
             }
             let concept = match xml_util::resolve_qname(&fact.name, nsmap, "") {
@@ -110,15 +112,18 @@ pub fn load_xbrl_artifact(path: &str) -> Result<LoadedXbrlArtifact, String> {
             } else {
                 xml_util::parse_xbrl_value(&fact.text_value, "", &fact.scale, &fact.sign)
             };
+            let unit_kind = all_units.get(&fact.unit_ref).copied().unwrap_or(UnitKind::Other);
             store_fact_buckets(
                 ctx,
                 concept,
                 value,
+                unit_kind,
                 &mut financial_facts,
                 &mut inventory_facts,
                 &mut non_consolidated_financial_facts,
                 &mut non_consolidated_inventory_facts,
                 &mut non_consolidated_facts,
+                &mut shares_facts,
             )?;
         }
     }
@@ -130,7 +135,7 @@ pub fn load_xbrl_artifact(path: &str) -> Result<LoadedXbrlArtifact, String> {
                 Some(c) => c,
                 None => continue,
             };
-            if !all_units.get(&fact.unit_ref).copied().unwrap_or(false) {
+            if all_units.get(&fact.unit_ref).copied().unwrap_or(UnitKind::Other) == UnitKind::Other {
                 continue;
             }
             let concept = match xml_util::resolve_qname(&fact.tag, nsmap, "") {
@@ -147,15 +152,18 @@ pub fn load_xbrl_artifact(path: &str) -> Result<LoadedXbrlArtifact, String> {
                     &fact.sign,
                 )
             };
+            let unit_kind = all_units.get(&fact.unit_ref).copied().unwrap_or(UnitKind::Other);
             store_fact_buckets(
                 ctx,
                 concept,
                 value,
+                unit_kind,
                 &mut financial_facts,
                 &mut inventory_facts,
                 &mut non_consolidated_financial_facts,
                 &mut non_consolidated_inventory_facts,
                 &mut non_consolidated_facts,
+                &mut shares_facts,
             )?;
         }
     }
@@ -168,6 +176,7 @@ pub fn load_xbrl_artifact(path: &str) -> Result<LoadedXbrlArtifact, String> {
         non_consolidated_financial_facts,
         non_consolidated_inventory_facts,
         non_consolidated_facts,
+        shares_facts,
     })
 }
 
@@ -229,16 +238,25 @@ fn store_fact_buckets(
     ctx: &ContextInfo,
     concept: ConceptKey,
     value: Option<f64>,
+    unit_kind: UnitKind,
     financial_facts: &mut HashMap<String, HashMap<ConceptKey, Option<f64>>>,
     inventory_facts: &mut HashMap<String, HashMap<ConceptKey, Option<f64>>>,
     non_consolidated_financial_facts: &mut HashMap<String, HashMap<ConceptKey, Option<f64>>>,
     non_consolidated_inventory_facts: &mut HashMap<String, HashMap<ConceptKey, Option<f64>>>,
     non_consolidated_facts: &mut HashMap<String, HashMap<ConceptKey, Option<f64>>>,
+    shares_facts: &mut HashMap<String, HashMap<ConceptKey, Option<f64>>>,
 ) -> Result<(), String> {
     let period = match &ctx.period {
         Some(p) => p.clone(),
         None => return Ok(()),
     };
+
+    if unit_kind == UnitKind::Shares {
+        if xml_util::should_use_context(ctx, ContextMode::Instant) {
+            store_concept_value(shares_facts, &period, concept, value)?;
+        }
+        return Ok(());
+    }
 
     if xml_util::should_use_context(ctx, ContextMode::Financial) {
         store_concept_value(financial_facts, &period, concept.clone(), value)?;
@@ -533,16 +551,19 @@ fn extract_units(content: &str) -> UnitMap {
                     }
                     continue;
                 }
-                // Check for JPY measure inside the unit element
-                let mut is_jpy = false;
+                // Determine unit kind from measure text inside the unit element
+                let mut kind = UnitKind::Other;
                 let mut inner_buf = Vec::new();
                 let mut inner_depth: usize = 0;
                 loop {
                     match reader.read_event_into(&mut inner_buf) {
                         Ok(Event::Text(t)) => {
                             let text = t.unescape().unwrap_or_default();
-                            if xml_util::local_name(text.trim()) == "JPY" {
-                                is_jpy = true;
+                            let measure = xml_util::local_name(text.trim());
+                            if measure == "JPY" {
+                                kind = UnitKind::JPY;
+                            } else if measure == "shares" {
+                                kind = UnitKind::Shares;
                             }
                         }
                         Ok(Event::Start(_)) => inner_depth += 1,
@@ -559,7 +580,7 @@ fn extract_units(content: &str) -> UnitMap {
                     }
                     inner_buf.clear();
                 }
-                units.insert(unit_id.unwrap(), is_jpy);
+                units.insert(unit_id.unwrap(), kind);
             }
             Ok(Event::Eof) => break,
             _ => {}

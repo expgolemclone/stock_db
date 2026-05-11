@@ -139,6 +139,15 @@ const DIVIDEND_ITEM_CANDIDATES: ItemCandidates = &[
     ),
 ];
 
+const SHARES_ITEM_CANDIDATES: ItemCandidates = &[
+    (
+        "shares_outstanding",
+        &[
+            "NumberOfIssuedSharesAsOfFiscalYearEndIssuedSharesTotalNumberOfSharesEtc",
+        ],
+    ),
+];
+
 const FORECAST_ITEM_CANDIDATES: ItemCandidates = &[
     (
         "revenue",
@@ -273,6 +282,29 @@ pub fn parse_financials_from_artifact(
             if let Some(te) = bs_items.get("total_equity").copied().flatten() {
                 bs_items.insert("stockholders_equity".to_string(), Some(te));
             }
+        }
+
+        // Shares outstanding from shares-denominated facts.
+        // Shares facts use FilingDateInstant context (e.g. 2025-09) while
+        // financial periods use fiscal-year-end (e.g. 2025-06), so we search
+        // ALL shares_facts periods rather than doing an exact key lookup.
+        let shares_period_facts = artifact
+            .shares_facts
+            .values()
+            .find(|facts| {
+                facts.keys().any(|(_, local)| {
+                    SHARES_ITEM_CANDIDATES
+                        .iter()
+                        .any(|(_, candidates)| candidates.contains(&local.as_str()))
+                })
+            });
+        let shares_items = build_statement_items_with_fallback(
+            shares_period_facts,
+            None,
+            SHARES_ITEM_CANDIDATES,
+        );
+        for (name, value) in shares_items {
+            bs_items.insert(name, value);
         }
 
         let mut statements: HashMap<String, HashMap<String, Option<f64>>> = HashMap::new();

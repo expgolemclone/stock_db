@@ -32,6 +32,7 @@ parse-xbrl-financials = "stock_db.cli.parse_xbrl_financials:main"
 inspect-stock-db = "stock_db.cli.inspect_stock_db:main"
 purge-irbank-financials = "stock_db.cli.purge_irbank_financials:main"
 sync-shikiho-forecasts = "stock_db.cli.sync_shikiho_forecasts:main"
+compute-eps = "stock_db.cli.compute_eps:main"
 
 [build-system]
 requires = ["maturin>=1.0,<2"]
