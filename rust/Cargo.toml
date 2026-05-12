@@ -10,3 +10,4 @@ crate-type = ["cdylib", "lib"]
 [dependencies]
 pyo3 = { version = "0.24", features = ["extension-module"] }
 quick-xml = "0.37"
+rayon = "1"

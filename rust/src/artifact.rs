@@ -4,9 +4,34 @@ use std::path::Path;
 use quick_xml::events::Event;
 use quick_xml::name::QName;
 use quick_xml::Reader;
+use rayon::prelude::*;
 
 use crate::types::{ConceptKey, ContextInfo, ContextMode, LoadedXbrlArtifact, UnitKind, UnitMap};
 use crate::xml_util;
+
+/// Result of parsing a single XBRL document.
+struct ParsedDocument {
+    nsmap: HashMap<String, String>,
+    contexts: HashMap<String, ContextInfo>,
+    units: UnitMap,
+    inline_facts: Vec<InlineFact>,
+    instance_facts: Vec<InstanceFact>,
+}
+
+fn parse_document_parts(content: &str) -> ParsedDocument {
+    let nsmap = extract_nsmap(content);
+    let contexts = extract_contexts(content);
+    let units = extract_units(content);
+    let inline_facts = extract_inline_facts(content);
+    let instance_facts = extract_instance_facts(content, &nsmap);
+    ParsedDocument {
+        nsmap,
+        contexts,
+        units,
+        inline_facts,
+        instance_facts,
+    }
+}
 
 /// Load an XBRL artifact from a file path or directory.
 pub fn load_xbrl_artifact(path: &str) -> Result<LoadedXbrlArtifact, String> {
@@ -61,28 +86,21 @@ pub fn load_xbrl_artifact(path: &str) -> Result<LoadedXbrlArtifact, String> {
         return Err(format!("No parseable XBRL documents found in: {}", path));
     }
 
-    // Collect all contexts, units, and nsmaps across all documents
+    // Parse all documents in parallel, then merge sequentially
+    let parsed_docs: Vec<ParsedDocument> = file_contents
+        .par_iter()
+        .map(|content| parse_document_parts(content))
+        .collect();
+
     let mut all_contexts: HashMap<String, ContextInfo> = HashMap::new();
     let mut all_units: UnitMap = HashMap::new();
-    let mut all_nsmaps: Vec<HashMap<String, String>> = Vec::new();
-    let mut all_inline_facts: Vec<Vec<InlineFact>> = Vec::new();
-    let mut all_instance_facts: Vec<Vec<InstanceFact>> = Vec::new();
 
-    for content in &file_contents {
-        let nsmap = extract_nsmap(content);
-        let contexts = extract_contexts(content);
-        let units = extract_units(content);
-        let inline_facts = extract_inline_facts(content);
-        let instance_facts = extract_instance_facts(content, &nsmap);
-
-        all_contexts.extend(contexts);
-        all_units.extend(units);
-        all_nsmaps.push(nsmap);
-        all_inline_facts.push(inline_facts);
-        all_instance_facts.push(instance_facts);
+    for doc in &parsed_docs {
+        all_contexts.extend(doc.contexts.iter().map(|(k, v)| (k.clone(), v.clone())));
+        all_units.extend(doc.units.iter().map(|(k, v)| (k.clone(), *v)));
     }
 
-    // Store facts into buckets
+    // Store facts into buckets (sequential — shared HashMap writes)
     let mut financial_facts: HashMap<String, HashMap<ConceptKey, Option<f64>>> = HashMap::new();
     let mut inventory_facts: HashMap<String, HashMap<ConceptKey, Option<f64>>> = HashMap::new();
     let mut non_consolidated_financial_facts: HashMap<String, HashMap<ConceptKey, Option<f64>>> =
@@ -93,9 +111,8 @@ pub fn load_xbrl_artifact(path: &str) -> Result<LoadedXbrlArtifact, String> {
         HashMap::new();
     let mut shares_facts: HashMap<String, HashMap<ConceptKey, Option<f64>>> = HashMap::new();
 
-    for (i, facts) in all_inline_facts.iter().enumerate() {
-        let nsmap = &all_nsmaps[i];
-        for fact in facts {
+    for doc in &parsed_docs {
+        for fact in &doc.inline_facts {
             let ctx = match fact.context_ref.as_ref().and_then(|id| all_contexts.get(id)) {
                 Some(c) => c,
                 None => continue,
@@ -103,7 +120,7 @@ pub fn load_xbrl_artifact(path: &str) -> Result<LoadedXbrlArtifact, String> {
             if all_units.get(&fact.unit_ref).copied().unwrap_or(UnitKind::Other) == UnitKind::Other {
                 continue;
             }
-            let concept = match xml_util::resolve_qname(&fact.name, nsmap, "") {
+            let concept = match xml_util::resolve_qname(&fact.name, &doc.nsmap, "") {
                 Some(c) => c,
                 None => continue,
             };
@@ -126,11 +143,8 @@ pub fn load_xbrl_artifact(path: &str) -> Result<LoadedXbrlArtifact, String> {
                 &mut shares_facts,
             )?;
         }
-    }
 
-    for (i, facts) in all_instance_facts.iter().enumerate() {
-        let nsmap = &all_nsmaps[i];
-        for fact in facts {
+        for fact in &doc.instance_facts {
             let ctx = match fact.context_ref.as_ref().and_then(|id| all_contexts.get(id)) {
                 Some(c) => c,
                 None => continue,
@@ -138,7 +152,7 @@ pub fn load_xbrl_artifact(path: &str) -> Result<LoadedXbrlArtifact, String> {
             if all_units.get(&fact.unit_ref).copied().unwrap_or(UnitKind::Other) == UnitKind::Other {
                 continue;
             }
-            let concept = match xml_util::resolve_qname(&fact.tag, nsmap, "") {
+            let concept = match xml_util::resolve_qname(&fact.tag, &doc.nsmap, "") {
                 Some(c) => c,
                 None => continue,
             };

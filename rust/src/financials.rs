@@ -40,11 +40,23 @@ const BS_ITEM_CANDIDATES: ItemCandidates = &[
     ("non_current_liabilities", &["NoncurrentLiabilities"]),
     (
         "short_term_debt",
-        &["ShortTermLoansPayable", "ShortTermBorrowings"],
+        &[
+            "ShortTermLoansPayable",
+            "ShortTermBorrowings",
+            "CurrentPortionOfLongTermLoansPayable",
+            "CurrentPortionOfLongTermBorrowingsCLIFRS",
+            "BorrowingsCLIFRS",
+            "BondsAndBorrowingsCLIFRS",
+        ],
     ),
     (
         "long_term_debt",
-        &["LongTermLoansPayable", "LongTermBorrowings"],
+        &[
+            "LongTermLoansPayable",
+            "LongTermBorrowings",
+            "BorrowingsNCLIFRS",
+            "BondsAndBorrowingsNCLIFRS",
+        ],
     ),
     ("net_assets", &["NetAssets", "Equity"]),
     (
