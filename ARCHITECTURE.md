@@ -42,6 +42,7 @@ stock_db/
       scrape_edinet_reports.py # EDINET 有報取得 CLI（step1: browser search, step2: EDINET API ZIP取得）
       scrape_edinet_reports_step1.py # EDINET step1（書類一覧取得）のみ
       scrape_edinet_reports_step2.py # EDINET step2（XBRL取得）のみ
+      scrape_edinet_historical.py # 過去分の有報XBRL一括取得（EDINET API v2 書類一覧→ZIP取得）
       parse_xbrl_bs.py     # 旧コマンド名の互換ラッパー
       parse_xbrl_financials.py # EDINET XBRL から PL / BS / CF / dividend / forecast を保存
       scrape_edinet_watchdog.py # メモリ監視付き watchdog ラッパー
@@ -55,6 +56,7 @@ stock_db/
     sources/edinet/
       api_client.py        # EDINET API v2 クライアント（書類ZIP取得・展開）
       search_scraper.py    # EDINET 検索フォーム経由で docID 発見（スレッドセーフ）
+      document_list.py     # EDINET API v2 書類一覧取得（日付範囲で有報docIDを収集）
       xbrl_bs_parser.py    # 薄い Python ラッパー — Rust parse_inventories を呼び出し + 例外変換
       xbrl_financials_parser.py # 薄い Python ラッパー — Rust parse_financials を呼び出し + 例外変換
     sources/stooq/
@@ -87,6 +89,7 @@ stock_db/
 EDINET search (browser) ──docID発見──→ stocks.securities_report_url
 config/edinet_phase1.toml ──alias / exclusion──→ Phase 1 search plan
 EDINET API v2 documents/{docID}?type=1 ──ZIP保存/展開──→ var/raw/edinet/xbrl/
+EDINET API v2 documents.json?date=YYYY-MM-DD ──書類一覧→ secCode ticker照合──→ scrape-edinet-historical ──ZIP保存/展開──→ var/raw/edinet/xbrl/
 var/raw/edinet/xbrl/ ──parse-xbrl-financials──→ financial_items (source=edinet_xbrl)
 Stooq 日次CSV ──ダウンロード──→ parser ──→ prices
 Yahoo Finance JP ──スクレイピング──→ parser ──→ prices
@@ -137,6 +140,7 @@ SQLite を使用。WAL モード・外部キー制約有効。
 |---|---|
 | `api_client` | EDINET API v2 `documents/{docID}?type=1` で提出本文書・監査報告書・taxonomy・linkbase を含む ZIP を取得し、`{doc_id}.zip` と展開ディレクトリを原子的に保存 |
 | `search_scraper` | EDINET 検索フォーム経由で有報 docID を発見（スレッドセーフ）。HTML entity デコード・企業名フォールバック付き |
+| `document_list` | EDINET API v2 `documents.json?date=YYYY-MM-DD` で日付範囲の書類一覧を取得し、有価証券報告書 (`ordinanceCode=010, formCode=030000`) をフィルタ。`secCode` 先頭4桁で ticker 照合 |
 | `xbrl_bs_parser` | Rust 拡張 (`_edinet_xbrl.parse_inventories`) の薄い Python ラッパー。`is_valid_xbrl_text` / `is_valid_xbrl_path` のバリデーション辅助関数は Python 側に残存 |
 | `xbrl_financials_parser` | Rust 拡張 (`_edinet_xbrl.parse_financials`) の薄い Python ラッパー |
 
@@ -151,6 +155,8 @@ SQLite を使用。WAL モード・外部キー制約有効。
 `scrape_edinet_reports` の Phase 2 は `EDINET_API_KEY` を必須とし、`sec_reports.xbrl_path` には展開済みアーティファクトのルートディレクトリを保存する。skip 判定では `xbrl_path` だけでなく、ZIP+展開済み artifact が有効かを再検証し、旧 `.xhtml` file や invalid 保存物は再取得対象に戻す。
 
 raw 同期 (`sync_edinet_raw_to_db`) は `xbrl/{ticker}/{doc_id}/` と sibling の `{doc_id}.zip` だけを正規入力として回収する。top-level の legacy `*.xhtml` は同期対象に含めない。
+
+`scrape_edinet_historical` は EDINET API v2 の書類一覧API (`documents.json`) を日付範囲（2016-06-01 ～ 指定日）でイテレートし、各日の有価証券報告書を抽出する。`secCode`（5桁）の先頭4桁で DB 内の数値 ticker と照合し、一致する docID を収集後、既存の `download_xbrl_package` で ZIP を取得する。`sec_reports.fiscal_year` には API レスポンスの `periodEnd` から抽出した `FYXXXX` を格納する。英字付き ticker は `secCode` がないため対象外。`--skip-existing` がデフォルトで有効であり、`sec_reports` に既存の docID はスキップする。
 
 `purge_irbank_financials` は `financial_items` の `source LIKE 'irbank%'` を一括削除し、WAL checkpoint と `VACUUM` を実行して artifact に `irbank` 系 source を残さない。
 

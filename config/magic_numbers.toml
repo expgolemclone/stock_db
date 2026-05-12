@@ -9,3 +9,6 @@ interval_seconds = 1.0
 
 [yahoo_finance_jp]
 request_interval_seconds = 1.0
+
+[edinet_historical]
+interval_seconds = 2.0

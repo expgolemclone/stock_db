@@ -20,3 +20,7 @@ output_dir = "var/raw/stooq"
 pool_size = 1
 headless = false
 disable_xvfb = true
+
+[scrape_edinet_historical]
+skip_existing = true
+from_date = "2016-06-01"
