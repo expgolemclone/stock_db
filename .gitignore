@@ -9,6 +9,8 @@
 
 !src/
 !src/**
+src/stock_db/_edinet_xbrl*.so
+src/stock_db/_edinet_xbrl*.pyd
 
 !tests/
 !tests/**
