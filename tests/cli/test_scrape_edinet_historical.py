@@ -133,7 +133,11 @@ def test_main_writes_discovery_checkpoint_json(
     assert payload["from_date"] == "2024-01-01"
     assert payload["to_date"] == "2024-12-31"
     assert payload["completed_dates"] == ["2024-06-25"]
+    assert payload["failed_dates"] == {}
     assert payload["reports"]["7203"] == [doc_info]
+    status = payload["processing"]["statuses"]["7203:S100JSON"]
+    assert status["status"] == "synced_existing"
+    assert status["xbrl_path"] == str(artifact.resolve())
 
 
 def test_load_discovery_checkpoint_reuses_matching_range(tmp_path: Path) -> None:
@@ -145,16 +149,26 @@ def test_load_discovery_checkpoint_reuses_matching_range(tmp_path: Path) -> None
                 "from_date": "2024-01-01",
                 "to_date": "2024-12-31",
                 "completed_dates": ["2024-06-25"],
+                "failed_dates": {"2024-06-26": "timeout"},
                 "reports": {
                     "7203": [{"doc_id": "S100JSON"}],
                     "ABCD": [{"doc_id": "S100SKIP"}],
+                },
+                "processing": {
+                    "statuses": {
+                        "7203:S100JSON": {
+                            "ticker": "7203",
+                            "doc_id": "S100JSON",
+                            "status": "downloaded",
+                        }
+                    }
                 },
             }
         ),
         encoding="utf-8",
     )
 
-    reports, completed_dates = cli._load_discovery_checkpoint(
+    reports, completed_dates, failed_dates, processing_statuses = cli._load_discovery_checkpoint(
         checkpoint,
         from_date="2024-01-01",
         to_date="2024-12-31",
@@ -163,3 +177,57 @@ def test_load_discovery_checkpoint_reuses_matching_range(tmp_path: Path) -> None
 
     assert reports == {"7203": [{"doc_id": "S100JSON"}]}
     assert completed_dates == {"2024-06-25"}
+    assert failed_dates == {"2024-06-26": "timeout"}
+    assert processing_statuses == {
+        "7203:S100JSON": {
+            "ticker": "7203",
+            "doc_id": "S100JSON",
+            "status": "downloaded",
+        }
+    }
+
+
+def test_main_writes_download_error_progress(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    db_path = tmp_path / "stocks.db"
+    raw_dir = tmp_path / "raw" / "edinet"
+    checkpoint = raw_dir / "discovery" / "checkpoint.json"
+    doc_info = {
+        "doc_id": "S100FAIL",
+        "fiscal_year": "FY2024",
+        "period_end": "2024-03-31",
+        "submit_date": "2024-06-25T15:00:00",
+        "filer_name": "Toyota",
+    }
+    _init_stock_db(db_path)
+
+    def fake_discover_historical_reports(**kwargs):
+        kwargs["on_day_scanned"]("2024-06-25", [("7203", doc_info)], 1)
+        return {"7203": [doc_info]}
+
+    def fail_download(*args, **kwargs):
+        raise cli.EdinetApiError("boom")
+
+    monkeypatch.setenv("EDINET_API_KEY", "dummy")
+    monkeypatch.setattr(cli, "STOCKS_DB_PATH", db_path)
+    monkeypatch.setattr(cli, "_EDINET_RAW_DIR", raw_dir)
+    monkeypatch.setattr(cli, "discover_historical_reports", fake_discover_historical_reports)
+    monkeypatch.setattr(cli, "download_xbrl_package", fail_download)
+
+    assert cli.main([
+        "--from-date",
+        "2024-01-01",
+        "--to-date",
+        "2024-12-31",
+        "--discovery-json",
+        str(checkpoint),
+        "--commit-interval",
+        "1",
+    ]) == 1
+
+    payload = json.loads(checkpoint.read_text(encoding="utf-8"))
+    status = payload["processing"]["statuses"]["7203:S100FAIL"]
+    assert status["status"] == "error"
+    assert status["error"] == "boom"
+    assert payload["processing"]["counts"]["errors"] == 1

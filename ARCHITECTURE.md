@@ -156,7 +156,7 @@ SQLite を使用。WAL モード・外部キー制約有効。
 
 raw 同期 (`sync_edinet_raw_to_db`) は `xbrl/{ticker}/{doc_id}/` と sibling の `{doc_id}.zip` だけを正規入力として回収する。top-level の legacy `*.xhtml` は同期対象に含めない。
 
-`scrape_edinet_historical` は EDINET API v2 の書類一覧API (`documents.json`) を既定で `--to-date` から10年前までイテレートし、各日の有価証券報告書を抽出する。discovery は日付単位で `var/raw/edinet/discovery/*.json` に checkpoint 保存し、同じ日付範囲の再実行では `completed_dates` をスキップして再開する。`secCode`（5桁）の先頭4桁で DB 内の数値 ticker と照合し、一致する docID を収集後、既存の `download_xbrl_package` で ZIP を取得する。`sec_reports.fiscal_year` には API レスポンスの `periodEnd` から抽出した `FYXXXX` を格納する。英字付き ticker は `secCode` がないため対象外。`--skip-existing` がデフォルトで有効であり、`sec_reports` に既存の docID はスキップする。raw に有効な `xbrl/{ticker}/{doc_id}.zip` と `xbrl/{ticker}/{doc_id}/` が既にある場合は再ダウンロードせず、`sec_reports` に同期する。
+`scrape_edinet_historical` は EDINET API v2 の書類一覧API (`documents.json`) を既定で `--to-date` から10年前までイテレートし、各日の有価証券報告書を抽出する。discovery は日付単位で `var/raw/edinet/discovery/*.json` に checkpoint 保存し、同じ日付範囲の再実行では `completed_dates` をスキップして再開する。API 失敗日は `failed_dates` に残し、成功した日付は `failed_dates` から消す。`secCode`（5桁）の先頭4桁で DB 内の数値 ticker と照合し、一致する docID を収集後、既存の `download_xbrl_package` で ZIP を取得する。download/sync フェーズは同じ checkpoint の `processing.statuses` に docID 別の `skipped` / `synced_existing` / `downloaded` / `error` を保存し、DB 書き込みと checkpoint 保存を `--commit-interval` 件ごとに flush する。`sec_reports.fiscal_year` には API レスポンスの `periodEnd` から抽出した `FYXXXX` を格納する。英字付き ticker は `secCode` がないため対象外。`--skip-existing` がデフォルトで有効であり、`sec_reports` に既存の docID はスキップする。raw に有効な `xbrl/{ticker}/{doc_id}.zip` と `xbrl/{ticker}/{doc_id}/` が既にある場合は再ダウンロードせず、`sec_reports` に同期する。
 
 `purge_irbank_financials` は `financial_items` の `source LIKE 'irbank%'` を一括削除し、WAL checkpoint と `VACUUM` を実行して artifact に `irbank` 系 source を残さない。
 

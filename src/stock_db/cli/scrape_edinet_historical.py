@@ -27,6 +27,7 @@ logger = logging.getLogger("stock_db.cli.scrape_edinet_historical")
 
 _EDINET_RAW_DIR = VAR_DIR / "raw" / "edinet"
 _DISCOVERY_SCHEMA_VERSION = 1
+_FINAL_PROCESSING_STATUSES = {"downloaded", "skipped", "synced_existing"}
 
 
 class _RequestThrottle:
@@ -82,6 +83,37 @@ def _matched_reports(reports: dict[str, list[dict]]) -> dict[str, list[dict]]:
     return {ticker: docs for ticker, docs in sorted(reports.items()) if docs}
 
 
+def _processing_key(ticker: str, doc_id: str) -> str:
+    return f"{ticker}:{doc_id}"
+
+
+def _processing_status_counts(statuses: dict[str, dict]) -> dict[str, int]:
+    counts = {
+        "downloaded": 0,
+        "synced_existing": 0,
+        "skipped": 0,
+        "errors": 0,
+    }
+    for status in statuses.values():
+        name = status.get("status")
+        if name == "downloaded":
+            counts["downloaded"] += 1
+        elif name == "synced_existing":
+            counts["synced_existing"] += 1
+        elif name == "skipped":
+            counts["skipped"] += 1
+        elif name == "error":
+            counts["errors"] += 1
+    return counts
+
+
+def _updated_status(status: dict) -> dict:
+    return {
+        **status,
+        "updated_at": datetime.now(UTC).isoformat(),
+    }
+
+
 def _write_discovery_checkpoint(
     path: Path,
     *,
@@ -90,7 +122,12 @@ def _write_discovery_checkpoint(
     target_tickers: set[str],
     completed_dates: set[str],
     reports: dict[str, list[dict]],
+    failed_dates: dict[str, str] | None = None,
+    processing_statuses: dict[str, dict] | None = None,
+    total_docs: int | None = None,
 ) -> None:
+    processing_statuses = processing_statuses or {}
+    processing_counts = _processing_status_counts(processing_statuses)
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = {
         "schema_version": _DISCOVERY_SCHEMA_VERSION,
@@ -98,9 +135,16 @@ def _write_discovery_checkpoint(
         "to_date": to_date,
         "target_ticker_count": len(target_tickers),
         "completed_dates": sorted(completed_dates),
+        "failed_dates": dict(sorted((failed_dates or {}).items())),
         "last_scanned_date": max(completed_dates) if completed_dates else None,
         "report_count": sum(len(docs) for docs in reports.values()),
         "reports": _matched_reports(reports),
+        "processing": {
+            "total_docs": total_docs,
+            "processed_docs": len(processing_statuses),
+            "counts": processing_counts,
+            "statuses": dict(sorted(processing_statuses.items())),
+        },
         "updated_at": datetime.now(UTC).isoformat(),
     }
     temp_path = path.with_name(f"{path.name}.tmp")
@@ -117,21 +161,21 @@ def _load_discovery_checkpoint(
     from_date: str,
     to_date: str,
     target_tickers: set[str],
-) -> tuple[dict[str, list[dict]], set[str]]:
+) -> tuple[dict[str, list[dict]], set[str], dict[str, str], dict[str, dict]]:
     if not path.is_file():
-        return {}, set()
+        return {}, set(), {}, {}
 
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         logger.warning("Ignoring unreadable discovery checkpoint %s: %s", path, exc)
-        return {}, set()
+        return {}, set(), {}, {}
     if payload.get("schema_version") != _DISCOVERY_SCHEMA_VERSION:
         logger.warning("Ignoring discovery checkpoint with unsupported schema: %s", path)
-        return {}, set()
+        return {}, set(), {}, {}
     if payload.get("from_date") != from_date or payload.get("to_date") != to_date:
         logger.warning("Ignoring discovery checkpoint for a different date range: %s", path)
-        return {}, set()
+        return {}, set(), {}, {}
 
     reports: dict[str, list[dict]] = {}
     raw_reports = payload.get("reports") or {}
@@ -147,7 +191,16 @@ def _load_discovery_checkpoint(
         for value in payload.get("completed_dates", [])
         if isinstance(value, str)
     }
-    return reports, completed_dates
+    failed_dates = {
+        str(key): str(value)
+        for key, value in (payload.get("failed_dates") or {}).items()
+    }
+    processing_statuses = {
+        str(key): value
+        for key, value in (payload.get("processing", {}).get("statuses") or {}).items()
+        if isinstance(value, dict)
+    }
+    return reports, completed_dates, failed_dates, processing_statuses
 
 
 def _resolve_numeric_tickers(conn: sqlite3.Connection, ticker: str | None) -> set[str]:
@@ -201,6 +254,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Disable discovery checkpoint JSON output",
     )
     parser.add_argument(
+        "--commit-interval",
+        type=int,
+        default=int(defaults.get("commit_interval", 100)),
+        help="Commit DB writes and checkpoint processing progress after this many document status updates",
+    )
+    parser.add_argument(
         "--skip-existing",
         action="store_true",
         default=defaults.get("skip_existing", True),
@@ -241,8 +300,15 @@ def main(argv: Sequence[str] | None = None) -> int:
 
         initial_reports: dict[str, list[dict]] = {}
         completed_dates: set[str] = set()
+        failed_dates: dict[str, str] = {}
+        processing_statuses: dict[str, dict] = {}
         if discovery_json is not None and not args.no_resume_discovery:
-            initial_reports, completed_dates = _load_discovery_checkpoint(
+            (
+                initial_reports,
+                completed_dates,
+                failed_dates,
+                processing_statuses,
+            ) = _load_discovery_checkpoint(
                 discovery_json,
                 from_date=from_date,
                 to_date=args.to_date,
@@ -254,6 +320,16 @@ def main(argv: Sequence[str] | None = None) -> int:
                     discovery_json,
                     len(completed_dates),
                     sum(len(docs) for docs in initial_reports.values()),
+                )
+            if failed_dates:
+                logger.info(
+                    "Loaded %d discovery error dates from checkpoint",
+                    len(failed_dates),
+                )
+            if processing_statuses:
+                logger.info(
+                    "Loaded %d processing statuses from checkpoint",
+                    len(processing_statuses),
                 )
 
         def on_progress(current: int, total: int) -> None:
@@ -267,6 +343,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
         def on_day_scanned(date_str: str, matches: list[tuple[str, dict]], total_annual: int) -> None:
             completed_dates.add(date_str)
+            failed_dates.pop(date_str, None)
             for ticker, doc_info in matches:
                 discovery_reports.setdefault(ticker, []).append(doc_info)
             if discovery_json is not None:
@@ -277,6 +354,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                     target_tickers=target_tickers,
                     completed_dates=completed_dates,
                     reports=discovery_reports,
+                    failed_dates=failed_dates,
+                    processing_statuses=processing_statuses,
                 )
             if total_annual and matches:
                 logger.info(
@@ -284,6 +363,20 @@ def main(argv: Sequence[str] | None = None) -> int:
                     date_str,
                     len(matches),
                     total_annual,
+                )
+
+        def on_day_error(date_str: str, error: str) -> None:
+            failed_dates[date_str] = error
+            if discovery_json is not None:
+                _write_discovery_checkpoint(
+                    discovery_json,
+                    from_date=from_date,
+                    to_date=args.to_date,
+                    target_tickers=target_tickers,
+                    completed_dates=completed_dates,
+                    reports=discovery_reports,
+                    failed_dates=failed_dates,
+                    processing_statuses=processing_statuses,
                 )
 
         reports = discover_historical_reports(
@@ -296,6 +389,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             initial_reports=initial_reports,
             skip_dates=completed_dates,
             on_day_scanned=on_day_scanned,
+            on_day_error=on_day_error,
         )
 
         if not reports:
@@ -312,13 +406,59 @@ def main(argv: Sequence[str] | None = None) -> int:
         skipped = 0
         synced_existing = 0
         processed = 0
+        pending_db_writes = 0
+        checkpoint_updates = 0
         throttle = _RequestThrottle(interval)
+
+        def flush_processing_progress() -> None:
+            nonlocal pending_db_writes, checkpoint_updates
+            if pending_db_writes > 0:
+                conn.commit()
+                pending_db_writes = 0
+            if discovery_json is not None:
+                _write_discovery_checkpoint(
+                    discovery_json,
+                    from_date=from_date,
+                    to_date=args.to_date,
+                    target_tickers=target_tickers,
+                    completed_dates=completed_dates,
+                    reports=discovery_reports,
+                    failed_dates=failed_dates,
+                    processing_statuses=processing_statuses,
+                    total_docs=total_docs,
+                )
+            checkpoint_updates = 0
+
+        def mark_processing_status(status: dict, *, db_write: bool = False) -> None:
+            nonlocal pending_db_writes, checkpoint_updates
+            key = _processing_key(str(status["ticker"]), str(status["doc_id"]))
+            processing_statuses[key] = _updated_status(status)
+            checkpoint_updates += 1
+            if db_write:
+                pending_db_writes += 1
+            commit_interval = max(args.commit_interval, 1)
+            if pending_db_writes >= commit_interval or checkpoint_updates >= commit_interval:
+                flush_processing_progress()
+
         for ticker in sorted(reports):
             for doc_info in reports[ticker]:
                 processed += 1
                 doc_id = doc_info["doc_id"]
+                status_key = _processing_key(ticker, doc_id)
+                existing_status = processing_statuses.get(status_key, {}).get("status")
+                if existing_status in _FINAL_PROCESSING_STATUSES:
+                    continue
 
                 if skip_existing and doc_id in existing_doc_ids:
+                    mark_processing_status(
+                        {
+                            "ticker": ticker,
+                            "doc_id": doc_id,
+                            "fiscal_year": doc_info["fiscal_year"],
+                            "status": "skipped",
+                            "reason": "existing_db_doc_id",
+                        },
+                    )
                     skipped += 1
                     continue
 
@@ -330,6 +470,16 @@ def main(argv: Sequence[str] | None = None) -> int:
                         fiscal_year=doc_info["fiscal_year"],
                         doc_id=doc_id,
                         xbrl_path=str(existing_xbrl),
+                    )
+                    mark_processing_status(
+                        {
+                            "ticker": ticker,
+                            "doc_id": doc_id,
+                            "fiscal_year": doc_info["fiscal_year"],
+                            "status": "synced_existing",
+                            "xbrl_path": str(existing_xbrl),
+                        },
+                        db_write=True,
                     )
                     synced_existing += 1
                     continue
@@ -353,6 +503,15 @@ def main(argv: Sequence[str] | None = None) -> int:
                     xbrl_path = str(xbrl_dest)
                 except EdinetApiError as exc:
                     logger.warning("  XBRL download failed for %s (%s): %s", ticker, doc_id, exc)
+                    mark_processing_status(
+                        {
+                            "ticker": ticker,
+                            "doc_id": doc_id,
+                            "fiscal_year": doc_info["fiscal_year"],
+                            "status": "error",
+                            "error": str(exc),
+                        },
+                    )
                     errors += 1
                     continue
 
@@ -363,15 +522,25 @@ def main(argv: Sequence[str] | None = None) -> int:
                     doc_id=doc_id,
                     xbrl_path=xbrl_path,
                 )
+                mark_processing_status(
+                    {
+                        "ticker": ticker,
+                        "doc_id": doc_id,
+                        "fiscal_year": doc_info["fiscal_year"],
+                        "status": "downloaded",
+                        "xbrl_path": xbrl_path,
+                    },
+                    db_write=True,
+                )
                 ok += 1
 
-        if ok > 0 or synced_existing > 0:
-            conn.commit()
-            logger.info(
-                "Committed %d downloaded and %d existing sec_reports",
-                ok,
-                synced_existing,
-            )
+        if pending_db_writes > 0 or checkpoint_updates > 0:
+            flush_processing_progress()
+        logger.info(
+            "Committed progress: %d downloaded and %d existing sec_reports",
+            ok,
+            synced_existing,
+        )
 
         print(
             f"Done: {ok} downloaded, {synced_existing} synced existing, "

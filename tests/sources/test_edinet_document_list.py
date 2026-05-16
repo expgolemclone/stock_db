@@ -64,3 +64,30 @@ def test_discover_historical_reports_skips_completed_dates_and_calls_checkpoint(
             },
         ]
     }
+
+
+def test_discover_historical_reports_reports_error_dates(monkeypatch) -> None:
+    errors: list[tuple[str, str]] = []
+
+    def fail_fetch_document_list(target_date: str, api_key: str) -> list[dict]:
+        del target_date, api_key
+        raise document_list.requests.RequestException(
+            "documents.json?Subscription-Key=secret-key"
+        )
+
+    monkeypatch.setattr(document_list, "fetch_document_list", fail_fetch_document_list)
+    monkeypatch.setattr(document_list.time, "sleep", lambda interval: None)
+
+    reports = document_list.discover_historical_reports(
+        from_date="2024-06-24",
+        to_date="2024-06-24",
+        api_key="dummy",
+        target_tickers={"7203"},
+        interval=0,
+        on_day_error=lambda date_str, error: errors.append((date_str, error)),
+    )
+
+    assert reports == {}
+    assert errors == [
+        ("2024-06-24", "documents.json?Subscription-Key=<redacted>")
+    ]

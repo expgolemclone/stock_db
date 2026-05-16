@@ -24,3 +24,4 @@ disable_xvfb = true
 [scrape_edinet_historical]
 skip_existing = true
 years = 10
+commit_interval = 100

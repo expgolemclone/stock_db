@@ -84,6 +84,7 @@ def discover_historical_reports(
     initial_reports: dict[str, list[dict]] | None = None,
     skip_dates: set[str] | None = None,
     on_day_scanned: Callable[[str, list[tuple[str, dict]], int], None] | None = None,
+    on_day_error: Callable[[str, str], None] | None = None,
 ) -> dict[str, list[dict]]:
     """Iterate over date range and collect annual report docIDs for target tickers.
 
@@ -118,7 +119,10 @@ def discover_historical_reports(
         try:
             results = fetch_document_list(date_str, api_key)
         except requests.RequestException as exc:
-            logger.warning("API error for %s: %s", date_str, _redact_subscription_key(exc))
+            error = _redact_subscription_key(exc)
+            logger.warning("API error for %s: %s", date_str, error)
+            if on_day_error:
+                on_day_error(date_str, error)
             time.sleep(interval)
             continue
 
