@@ -2,193 +2,104 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from stock_db.cli import scrape_stooq_prices as cli_module
-
-
-class FakeBrowserServiceClient:
-    def __init__(self, *, config: dict[str, object], browser_service_dir: str | Path | None = None) -> None:
-        self.config = config
-        self.browser_service_dir = browser_service_dir
-
-    def __enter__(self) -> "FakeBrowserServiceClient":
-        return self
-
-    def __exit__(
-        self,
-        exc_type: type[BaseException] | None,
-        exc_val: BaseException | None,
-        exc_tb: object,
-    ) -> None:
-        return None
+from stock_db.sources.stooq import StooqDailyPriceUpdateResult
 
 
 def test_main_uses_default_headless_setting_when_flag_is_absent(
     tmp_path: Path,
-    monkeypatch: object,
-    capsys: object,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     db_path = tmp_path / "stocks.db"
-    captured_config: dict[str, object] = {}
+    captured: dict[str, object] = {}
 
-    class CapturingBrowserServiceClient(FakeBrowserServiceClient):
-        def __init__(self, *, config: dict[str, object], browser_service_dir: str | Path | None = None) -> None:
-            super().__init__(config=config, browser_service_dir=browser_service_dir)
-            captured_config.update(config)
-
-    def fake_download_latest_daily_file(
-        client: object,
-        output_dir: Path,
-        *,
-        timeout: int | None = None,
-    ) -> object:
-        del client, timeout
-        output_dir.mkdir(parents=True, exist_ok=True)
-        file_path = output_dir / "0429_d.csv"
-        file_path.write_text(
-            "\n".join([
-                "<TICKER>,<PER>,<DATE>,<TIME>,<OPEN>,<HIGH>,<LOW>,<CLOSE>,<VOL>,<OPENINT>",
-                "7203.JP,D,20260429,000000,3065,3101,3057,3067,19390900,0",
-            ]),
-            encoding="utf-8",
-        )
-        return cli_module.DownloadedStooqDailyFile(
+    def fake_update_stooq_daily_prices(**kwargs: object) -> StooqDailyPriceUpdateResult:
+        captured.update(kwargs)
+        return StooqDailyPriceUpdateResult(
+            imported=1,
             date="20260429",
             label="0429_d",
-            file_path=file_path,
+            file_path=tmp_path / "raw" / "0429_d.csv",
         )
 
-    monkeypatch.setattr(cli_module, "BrowserServiceClient", CapturingBrowserServiceClient)
-    monkeypatch.setattr(cli_module, "download_latest_daily_file", fake_download_latest_daily_file)
+    monkeypatch.setattr(cli_module, "update_stooq_daily_prices", fake_update_stooq_daily_prices)
 
     rc = cli_module.main(["--db", str(db_path)])
-    captured = capsys.readouterr()
+    output = capsys.readouterr()
 
     assert rc == 0
-    assert "Imported 1 JP prices for 20260429" in captured.err
-    assert captured_config["headless"] is False
+    assert captured["db_path"] == db_path
+    assert captured["headless"] is None
+    assert "Imported 1 JP prices for 20260429" in output.err
 
 
 def test_main_overrides_headless_setting_when_flag_is_present(
     tmp_path: Path,
-    monkeypatch: object,
-    capsys: object,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     db_path = tmp_path / "stocks.db"
-    captured_config: dict[str, object] = {}
+    captured: dict[str, object] = {}
 
-    class CapturingBrowserServiceClient(FakeBrowserServiceClient):
-        def __init__(self, *, config: dict[str, object], browser_service_dir: str | Path | None = None) -> None:
-            super().__init__(config=config, browser_service_dir=browser_service_dir)
-            captured_config.update(config)
-
-    def fake_download_latest_daily_file(
-        client: object,
-        output_dir: Path,
-        *,
-        timeout: int | None = None,
-    ) -> object:
-        del client, timeout
-        output_dir.mkdir(parents=True, exist_ok=True)
-        file_path = output_dir / "0429_d.csv"
-        file_path.write_text(
-            "\n".join([
-                "<TICKER>,<PER>,<DATE>,<TIME>,<OPEN>,<HIGH>,<LOW>,<CLOSE>,<VOL>,<OPENINT>",
-                "7203.JP,D,20260429,000000,3065,3101,3057,3067,19390900,0",
-            ]),
-            encoding="utf-8",
-        )
-        return cli_module.DownloadedStooqDailyFile(
+    def fake_update_stooq_daily_prices(**kwargs: object) -> StooqDailyPriceUpdateResult:
+        captured.update(kwargs)
+        return StooqDailyPriceUpdateResult(
+            imported=1,
             date="20260429",
             label="0429_d",
-            file_path=file_path,
+            file_path=tmp_path / "raw" / "0429_d.csv",
         )
 
-    monkeypatch.setattr(cli_module, "BrowserServiceClient", CapturingBrowserServiceClient)
-    monkeypatch.setattr(cli_module, "download_latest_daily_file", fake_download_latest_daily_file)
+    monkeypatch.setattr(cli_module, "update_stooq_daily_prices", fake_update_stooq_daily_prices)
 
     rc = cli_module.main(["--db", str(db_path), "--headless"])
-    captured = capsys.readouterr()
 
     assert rc == 0
-    assert "Imported 1 JP prices for 20260429" in captured.err
-    assert captured_config["headless"] is True
+    assert captured["headless"] is True
 
 
-def test_main_imports_prices_into_db(
+def test_main_passes_output_dir(
     tmp_path: Path,
-    monkeypatch: object,
-    capsys: object,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     db_path = tmp_path / "stocks.db"
     raw_dir = tmp_path / "raw"
+    captured: dict[str, object] = {}
 
-    def fake_download_latest_daily_file(
-        client: object,
-        output_dir: Path,
-        *,
-        timeout: int | None = None,
-    ) -> object:
-        output_dir.mkdir(parents=True, exist_ok=True)
-        file_path = output_dir / "0429_d.csv"
-        file_path.write_text(
-            "\n".join([
-                "<TICKER>,<PER>,<DATE>,<TIME>,<OPEN>,<HIGH>,<LOW>,<CLOSE>,<VOL>,<OPENINT>",
-                "7203.JP,D,20260429,000000,3065,3101,3057,3067,19390900,0",
-            ]),
-            encoding="utf-8",
-        )
-        return cli_module.DownloadedStooqDailyFile(
+    def fake_update_stooq_daily_prices(**kwargs: object) -> StooqDailyPriceUpdateResult:
+        captured.update(kwargs)
+        return StooqDailyPriceUpdateResult(
+            imported=1,
             date="20260429",
             label="0429_d",
-            file_path=file_path,
+            file_path=raw_dir / "0429_d.csv",
         )
 
-    monkeypatch.setattr(cli_module, "BrowserServiceClient", FakeBrowserServiceClient)
-    monkeypatch.setattr(cli_module, "download_latest_daily_file", fake_download_latest_daily_file)
+    monkeypatch.setattr(cli_module, "update_stooq_daily_prices", fake_update_stooq_daily_prices)
 
     rc = cli_module.main(["--db", str(db_path), "--output-dir", str(raw_dir)])
-    captured = capsys.readouterr()
 
     assert rc == 0
-    assert "Imported 1 JP prices for 20260429" in captured.err
-
-    conn = cli_module.get_connection(db_path)
-    try:
-        row = conn.execute(
-            "SELECT ticker, date, close, volume FROM prices WHERE ticker = ?",
-            ("7203",),
-        ).fetchone()
-    finally:
-        conn.close()
-
-    assert dict(row) == {
-        "ticker": "7203",
-        "date": "2026-04-29",
-        "close": 3067.0,
-        "volume": None,
-    }
+    assert captured["output_dir"] == raw_dir
 
 
-def test_main_returns_1_on_download_failure(
+def test_main_returns_1_on_update_failure(
     tmp_path: Path,
-    monkeypatch: object,
-    capsys: object,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     db_path = tmp_path / "stocks.db"
 
-    def fake_download_latest_daily_file(
-        client: object,
-        output_dir: Path,
-        *,
-        timeout: int | None = None,
-    ) -> object:
-        raise cli_module.StooqDownloadError("Unauthorized")
+    def fake_update_stooq_daily_prices(**kwargs: object) -> StooqDailyPriceUpdateResult:
+        del kwargs
+        raise cli_module.StooqDailyPriceUpdateError("Unauthorized")
 
-    monkeypatch.setattr(cli_module, "BrowserServiceClient", FakeBrowserServiceClient)
-    monkeypatch.setattr(cli_module, "download_latest_daily_file", fake_download_latest_daily_file)
+    monkeypatch.setattr(cli_module, "update_stooq_daily_prices", fake_update_stooq_daily_prices)
 
     rc = cli_module.main(["--db", str(db_path)])
-    captured = capsys.readouterr()
+    output = capsys.readouterr()
 
     assert rc == 1
-    assert captured.err.strip() == "Unauthorized"
+    assert output.err.strip() == "Unauthorized"

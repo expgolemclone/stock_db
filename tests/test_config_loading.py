@@ -13,6 +13,7 @@ class TestMagicNumbers:
         cfg = magic_numbers()
 
         assert cfg["browser"]["startup_poll_interval"] == 0.25
+        assert cfg["browser"]["page_timeout"] == 120000
 
 
 class TestCliDefaults:

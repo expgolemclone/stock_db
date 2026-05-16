@@ -35,3 +35,8 @@ def cli_defaults(section: str) -> dict:
 @lru_cache(maxsize=1)
 def edinet_phase1_config() -> dict:
     return _load_toml("edinet_phase1.toml")
+
+
+@lru_cache(maxsize=1)
+def jpx_market_holidays() -> dict:
+    return _load_toml("jpx_market_holidays.toml")

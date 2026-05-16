@@ -3,6 +3,7 @@ max_failures = 2
 
 [browser]
 startup_poll_interval = 0.25
+page_timeout = 120000
 
 [edinet]
 interval_seconds = 1.0

@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import sqlite3
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import TypedDict
+from zoneinfo import ZoneInfo
 
+from stock_db.market_calendar import is_jpx_business_day
 from stock_db.storage._util import utc_now_iso
 
 
@@ -64,6 +66,13 @@ def get_latest_price(
     return row["close"] if row else None
 
 
+def get_latest_price_date(conn: sqlite3.Connection) -> date | None:
+    row = conn.execute("SELECT MAX(date) AS latest_date FROM prices").fetchone()
+    if row is None or row["latest_date"] is None:
+        return None
+    return date.fromisoformat(row["latest_date"])
+
+
 class PriceWithShares(TypedDict):
     price: float | None
     shares_outstanding: int | None
@@ -118,3 +127,25 @@ def get_fresh_price_tickers(conn: sqlite3.Connection, stale_days: int) -> set[st
         (threshold,),
     ).fetchall()
     return {r[0] for r in rows}
+
+
+def is_stooq_price_update_required(
+    conn: sqlite3.Connection,
+    *,
+    today: date | None = None,
+) -> bool:
+    latest_date = get_latest_price_date(conn)
+    if latest_date is None:
+        return True
+
+    if today is None:
+        today = datetime.now(ZoneInfo("Asia/Tokyo")).date()
+
+    if latest_date >= today:
+        return False
+
+    days_since_latest = (today - latest_date).days
+    for offset in range(1, days_since_latest + 1):
+        if is_jpx_business_day(latest_date + timedelta(days=offset)):
+            return True
+    return False
