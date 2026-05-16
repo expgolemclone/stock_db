@@ -80,6 +80,38 @@ def test_download_latest_daily_file_returns_downloaded_path(tmp_path: Path) -> N
     assert client.closed_sessions == []
 
 
+def test_download_latest_daily_file_reuses_existing_latest_file(tmp_path: Path) -> None:
+    existing_path = tmp_path / "0429_d.csv"
+    existing_path.write_text("already downloaded\n", encoding="utf-8")
+    client = FakeBrowserClient(content=b"unused")
+
+    downloaded = download_latest_daily_file(
+        client,
+        tmp_path,
+        captcha_solver=lambda _image: "D1TY",
+    )
+
+    assert downloaded.file_path == existing_path
+    assert client.completed_calls == []
+    assert client.closed_sessions == ["session-1"]
+
+
+def test_download_latest_daily_file_reuses_existing_date_named_file(tmp_path: Path) -> None:
+    existing_path = tmp_path / "20260429_d.txt"
+    existing_path.write_text("already downloaded\n", encoding="utf-8")
+    client = FakeBrowserClient(content=b"unused")
+
+    downloaded = download_latest_daily_file(
+        client,
+        tmp_path,
+        captcha_solver=lambda _image: "D1TY",
+    )
+
+    assert downloaded.file_path == existing_path
+    assert client.completed_calls == []
+    assert client.closed_sessions == ["session-1"]
+
+
 def test_download_latest_daily_file_retries_after_captcha_rejection(tmp_path: Path) -> None:
     client = FakeBrowserClient(
         content=(

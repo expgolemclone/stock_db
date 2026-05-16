@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import sqlite3
+import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
 from stock_db.browser_client.client import BrowserServiceClient, BrowserServiceError
-from stock_db.paths import STOCKS_DB_PATH, STOOQ_DIR, cli_defaults, magic_numbers
+from stock_db.paths import PROJECT_ROOT, STOCKS_DB_PATH, STOOQ_DIR, cli_defaults, magic_numbers
 from stock_db.sources.stooq.downloader import DownloadedStooqDailyFile, download_latest_daily_file
 from stock_db.sources.stooq.exceptions import (
     StooqCaptchaError,
@@ -29,6 +30,12 @@ class StooqDailyPriceUpdateResult:
     file_path: Path
 
 
+@dataclass(frozen=True, slots=True)
+class StooqPriceUpdateCommandResult:
+    stdout: str
+    stderr: str
+
+
 def build_stooq_browser_config(*, headless: bool | None = None) -> dict[str, object]:
     defaults = cli_defaults("scrape_stooq_prices")
     browser_cfg = magic_numbers().get("browser", {})
@@ -39,8 +46,8 @@ def build_stooq_browser_config(*, headless: bool | None = None) -> dict[str, obj
         "startup_timeout": browser_cfg.get("startup_timeout", 30),
         "headless": defaults.get("headless", False) if headless is None else headless,
         "disable_xvfb": defaults.get("disable_xvfb", True),
-        "challenge_poll_interval_ms": browser_cfg.get("challenge_poll_interval_ms", 500),
-        "challenge_clear_stable_ms": browser_cfg.get("challenge_clear_stable_ms", 2000),
+        "challenge_poll_interval_ms": browser_cfg.get("challenge_poll_interval_ms", 250),
+        "challenge_clear_stable_ms": browser_cfg.get("challenge_clear_stable_ms", 1000),
     }
 
 
@@ -85,3 +92,33 @@ def update_stooq_daily_prices(
         raise StooqDailyPriceUpdateError(str(exc)) from exc
     finally:
         conn.close()
+
+
+def run_stooq_price_update_command(
+    *,
+    cwd: Path = PROJECT_ROOT,
+    timeout: int = 300,
+) -> StooqPriceUpdateCommandResult:
+    try:
+        proc = subprocess.run(
+            ["uv", "run", "scrape-stooq-prices"],
+            cwd=str(cwd),
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as exc:
+        raise StooqDailyPriceUpdateError(
+            f"stooq price update command failed: {type(exc).__name__}: {exc}"
+        ) from exc
+
+    if proc.returncode != 0:
+        message = (proc.stderr or proc.stdout or "").strip()
+        raise StooqDailyPriceUpdateError(
+            f"stooq price update command failed (exit={proc.returncode}): {message}"
+        )
+
+    return StooqPriceUpdateCommandResult(
+        stdout=proc.stdout or "",
+        stderr=proc.stderr or "",
+    )

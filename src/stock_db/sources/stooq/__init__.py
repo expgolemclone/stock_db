@@ -12,6 +12,8 @@ from stock_db.sources.stooq.parser import ingest_daily_prices
 from stock_db.sources.stooq.updater import (
     StooqDailyPriceUpdateError,
     StooqDailyPriceUpdateResult,
+    StooqPriceUpdateCommandResult,
+    run_stooq_price_update_command,
     update_stooq_daily_prices,
 )
 
@@ -20,10 +22,12 @@ __all__ = [
     "StooqCaptchaError",
     "StooqDailyPriceUpdateError",
     "StooqDailyPriceUpdateResult",
+    "StooqPriceUpdateCommandResult",
     "StooqDownloadError",
     "StooqError",
     "StooqParseError",
     "download_latest_daily_file",
     "ingest_daily_prices",
+    "run_stooq_price_update_command",
     "update_stooq_daily_prices",
 ]

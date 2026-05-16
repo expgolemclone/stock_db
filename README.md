@@ -108,7 +108,7 @@ uv run scrape-stooq-prices
 uv run scrape-yahoo-finance-prices
 ```
 
-- Stooq 更新は `stock_db.sources.stooq.update_stooq_daily_prices()` として API 化されており、CLI 以外のアプリケーションからも同じ処理を呼び出す
+- Stooq 更新は `stock_db.sources.stooq.update_stooq_daily_prices()` として API 化されている。別プロジェクトから CLI と同じ経路で実行する場合は `run_stooq_price_update_command()` を使い、`stock_db` cwd で `uv run scrape-stooq-prices` を起動する
 - `is_stooq_price_update_required` は JPX 営業日ベースで最新価格日付を判定する。JPX 休日は `config/jpx_market_holidays.toml` に公式 Market Holidays を年別で定義し、未定義年では fallback せずエラーにする
 - `scrape-yahoo-finance-prices` は fresh でない銘柄を走査し、解決できた Yahoo Finance JP の quote page から前日終値を補完する
 

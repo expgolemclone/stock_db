@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 
 import pytest
 
+from stock_db.paths import PROJECT_ROOT
 from stock_db.sources.stooq import updater as updater_module
 from stock_db.sources.stooq.downloader import DownloadedStooqDailyFile
 from stock_db.sources.stooq.exceptions import StooqDownloadError
@@ -107,3 +109,79 @@ def test_update_stooq_daily_prices_wraps_expected_failures(
 
     with pytest.raises(updater_module.StooqDailyPriceUpdateError, match="Unauthorized"):
         updater_module.update_stooq_daily_prices(db_path=tmp_path / "stocks.db")
+
+
+def test_run_stooq_price_update_command_uses_stock_db_cwd(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_run(
+        args: list[str],
+        *,
+        cwd: str,
+        capture_output: bool,
+        text: bool,
+        timeout: int,
+    ) -> subprocess.CompletedProcess[str]:
+        captured.update(
+            {
+                "args": args,
+                "cwd": cwd,
+                "capture_output": capture_output,
+                "text": text,
+                "timeout": timeout,
+            }
+        )
+        return subprocess.CompletedProcess(
+            args=args,
+            returncode=0,
+            stdout="",
+            stderr="Imported 1 JP prices for 20260429",
+        )
+
+    monkeypatch.setattr(updater_module.subprocess, "run", fake_run)
+
+    result = updater_module.run_stooq_price_update_command()
+
+    assert captured == {
+        "args": ["uv", "run", "scrape-stooq-prices"],
+        "cwd": str(PROJECT_ROOT),
+        "capture_output": True,
+        "text": True,
+        "timeout": 300,
+    }
+    assert result.stderr == "Imported 1 JP prices for 20260429"
+
+
+def test_run_stooq_price_update_command_raises_on_nonzero_exit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fake_run(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
+        del args, kwargs
+        return subprocess.CompletedProcess(
+            args=["uv", "run", "scrape-stooq-prices"],
+            returncode=1,
+            stdout="",
+            stderr="Captcha error",
+        )
+
+    monkeypatch.setattr(updater_module.subprocess, "run", fake_run)
+
+    with pytest.raises(updater_module.StooqDailyPriceUpdateError, match="exit=1.*Captcha error"):
+        updater_module.run_stooq_price_update_command(cwd=tmp_path)
+
+
+def test_run_stooq_price_update_command_raises_on_timeout(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fake_run(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
+        del args, kwargs
+        raise subprocess.TimeoutExpired(cmd="uv", timeout=300)
+
+    monkeypatch.setattr(updater_module.subprocess, "run", fake_run)
+
+    with pytest.raises(updater_module.StooqDailyPriceUpdateError, match="TimeoutExpired"):
+        updater_module.run_stooq_price_update_command(cwd=tmp_path)

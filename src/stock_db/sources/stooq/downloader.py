@@ -32,6 +32,17 @@ def _is_captcha_rejected_error(exc: BrowserServiceError) -> bool:
     return "Stooq CAPTCHA rejected" in str(exc)
 
 
+def _find_existing_download(output_dir: Path, label: str, date: str) -> Path | None:
+    patterns = (f"{label}.*", f"{date}_d.*")
+    for pattern in patterns:
+        for path in sorted(output_dir.glob(pattern)):
+            if not path.is_file() or path.name.endswith(".crdownload"):
+                continue
+            _validate_download(path)
+            return path
+    return None
+
+
 def download_latest_daily_file(
     client: BrowserServiceClient,
     output_dir: Path,
@@ -49,6 +60,16 @@ def download_latest_daily_file(
         prepared = client.prepare_stooq_daily_download(timeout=timeout)
         completed = False
         try:
+            existing_path = _find_existing_download(output_dir, prepared.label, prepared.date)
+            if existing_path is not None:
+                client.close_stooq_session(prepared.session_id)
+                completed = True
+                return DownloadedStooqDailyFile(
+                    date=prepared.date,
+                    label=prepared.label,
+                    file_path=existing_path,
+                )
+
             try:
                 captcha_png = base64.b64decode(prepared.captcha_png_base64, validate=True)
             except ValueError as exc:
