@@ -8,9 +8,11 @@ from stock_db.storage.prices import (
     get_latest_price_date,
     get_latest_price,
     get_latest_price_with_shares,
+    get_stooq_price_update_checked_at,
     get_tickers_with_shares,
     is_price_stale,
     is_stooq_price_update_required,
+    record_stooq_price_update_check,
     upsert_price,
     upsert_shares_outstanding,
 )
@@ -107,6 +109,40 @@ class TestIsStooqPriceUpdateRequired:
 
         assert is_stooq_price_update_required(db_conn, today=date(2026, 5, 11)) is True
 
+    def test_recent_stooq_check_suppresses_repeated_update(self, db_conn: sqlite3.Connection) -> None:
+        upsert_price(db_conn, "1234", "2026-05-08", 100.0, 1000)
+        record_stooq_price_update_check(
+            db_conn,
+            checked_at=datetime(2026, 5, 11, 0, 0, tzinfo=timezone.utc),
+        )
+        db_conn.commit()
+
+        assert (
+            is_stooq_price_update_required(
+                db_conn,
+                today=date(2026, 5, 11),
+                now=datetime(2026, 5, 11, 1, 0, tzinfo=timezone.utc),
+            )
+            is False
+        )
+
+    def test_old_stooq_check_allows_update(self, db_conn: sqlite3.Connection) -> None:
+        upsert_price(db_conn, "1234", "2026-05-08", 100.0, 1000)
+        record_stooq_price_update_check(
+            db_conn,
+            checked_at=datetime(2026, 5, 10, 0, 0, tzinfo=timezone.utc),
+        )
+        db_conn.commit()
+
+        assert (
+            is_stooq_price_update_required(
+                db_conn,
+                today=date(2026, 5, 11),
+                now=datetime(2026, 5, 11, 1, 0, tzinfo=timezone.utc),
+            )
+            is True
+        )
+
     def test_jpx_holidays_after_latest_price_are_fresh(self, db_conn: sqlite3.Connection) -> None:
         upsert_price(db_conn, "1234", "2026-05-01", 100.0, 1000)
         db_conn.commit()
@@ -123,3 +159,13 @@ class TestIsStooqPriceUpdateRequired:
             assert "2028" in str(exc)
         else:
             raise AssertionError("expected missing JPX holiday config to raise")
+
+
+class TestStooqPriceUpdateCheck:
+    def test_records_latest_check_time(self, db_conn: sqlite3.Connection) -> None:
+        checked_at = datetime(2026, 5, 11, 0, 0, tzinfo=timezone.utc)
+
+        record_stooq_price_update_check(db_conn, checked_at=checked_at)
+        db_conn.commit()
+
+        assert get_stooq_price_update_checked_at(db_conn) == checked_at

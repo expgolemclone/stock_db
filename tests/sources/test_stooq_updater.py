@@ -10,7 +10,7 @@ from stock_db.sources.stooq import updater as updater_module
 from stock_db.sources.stooq.downloader import DownloadedStooqDailyFile
 from stock_db.sources.stooq.exceptions import StooqDownloadError
 from stock_db.storage.connection import get_connection
-from stock_db.storage.prices import upsert_price
+from stock_db.storage.prices import get_stooq_price_update_checked_at, upsert_price
 
 
 class FakeBrowserServiceClient:
@@ -80,6 +80,7 @@ def test_update_stooq_daily_prices_imports_and_commits(
             "SELECT ticker, date, close, volume FROM prices WHERE ticker = ?",
             ("7203",),
         ).fetchone()
+        checked_at = get_stooq_price_update_checked_at(conn)
     finally:
         conn.close()
 
@@ -89,6 +90,7 @@ def test_update_stooq_daily_prices_imports_and_commits(
         "close": 3067.0,
         "volume": None,
     }
+    assert checked_at is not None
 
 
 def test_update_stooq_daily_prices_wraps_expected_failures(
@@ -152,6 +154,44 @@ def test_run_stooq_price_update_command_uses_stock_db_cwd(
         "timeout": 300,
     }
     assert result.stderr == "Imported 1 JP prices for 20260429"
+
+
+def test_run_stooq_price_update_command_passes_paths(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+    db_path = tmp_path / "custom-stocks.db"
+    output_dir = tmp_path / "raw" / "stooq"
+
+    def fake_run(
+        args: list[str],
+        *,
+        cwd: str,
+        capture_output: bool,
+        text: bool,
+        timeout: int,
+    ) -> subprocess.CompletedProcess[str]:
+        del cwd, capture_output, text, timeout
+        captured["args"] = args
+        return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(updater_module.subprocess, "run", fake_run)
+
+    updater_module.run_stooq_price_update_command(
+        db_path=db_path,
+        output_dir=output_dir,
+    )
+
+    assert captured["args"] == [
+        "uv",
+        "run",
+        "scrape-stooq-prices",
+        "--db",
+        str(db_path),
+        "--output-dir",
+        str(output_dir),
+    ]
 
 
 def test_run_stooq_price_update_command_raises_on_nonzero_exit(

@@ -64,6 +64,11 @@ CREATE TABLE IF NOT EXISTS prices (
     PRIMARY KEY (ticker, date)
 );
 
+CREATE TABLE IF NOT EXISTS source_refresh_log (
+    source     TEXT PRIMARY KEY,
+    checked_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS sec_reports (
     ticker       TEXT    NOT NULL,
     fiscal_year  TEXT    NOT NULL,

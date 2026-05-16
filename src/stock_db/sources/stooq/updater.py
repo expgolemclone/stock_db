@@ -15,6 +15,7 @@ from stock_db.sources.stooq.exceptions import (
 )
 from stock_db.sources.stooq.parser import ingest_daily_prices
 from stock_db.storage.connection import get_connection
+from stock_db.storage.prices import record_stooq_price_update_check
 from stock_db.storage.schema import init_db
 
 
@@ -77,6 +78,7 @@ def update_stooq_daily_prices(
                 timeout=client_cfg["page_timeout"],
             )
             imported = ingest_daily_prices(conn, downloaded.file_path)
+            record_stooq_price_update_check(conn)
 
         conn.commit()
         return _to_result(downloaded, imported)
@@ -97,11 +99,19 @@ def update_stooq_daily_prices(
 def run_stooq_price_update_command(
     *,
     cwd: Path = PROJECT_ROOT,
+    db_path: Path | None = None,
+    output_dir: Path | None = None,
     timeout: int = 300,
 ) -> StooqPriceUpdateCommandResult:
+    command = ["uv", "run", "scrape-stooq-prices"]
+    if db_path is not None:
+        command.extend(["--db", str(db_path)])
+    if output_dir is not None:
+        command.extend(["--output-dir", str(output_dir)])
+
     try:
         proc = subprocess.run(
-            ["uv", "run", "scrape-stooq-prices"],
+            command,
             cwd=str(cwd),
             capture_output=True,
             text=True,
