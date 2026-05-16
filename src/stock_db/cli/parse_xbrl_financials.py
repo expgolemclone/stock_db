@@ -146,10 +146,6 @@ def main(argv: Sequence[str] | None = None) -> int:
                         logger.error("[%d/%d] %s: %s", i, len(tickers), ticker, exc)
                         errors += 1
                         continue
-                    except Exception as exc:
-                        logger.error("[%d/%d] %s: unexpected error: %s", i, len(tickers), ticker, exc)
-                        errors += 1
-                        continue
 
                     if merged is None:
                         logger.info("[%d/%d] %s: no parseable financial facts", i, len(tickers), ticker)
