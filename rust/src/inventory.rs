@@ -684,14 +684,13 @@ fn calculation_candidates(
     facts: &HashMap<ConceptKey, Option<f64>>,
     graphs: &CalculationGraphs,
 ) -> Vec<f64> {
-    let total_tags = xml_util::inventory_total_set();
     let mut candidates = Vec::new();
 
     for graph in graphs.values() {
         let all_concepts = all_graph_concepts_calculation(graph);
         let roots: Vec<&ConceptKey> = all_concepts
             .iter()
-            .filter(|c| total_tags.contains(c.1.as_str()))
+            .filter(|c| xml_util::is_inventory_total(&c.1))
             .collect();
 
         let mut memo: HashMap<ConceptKey, Option<f64>> = HashMap::new();
@@ -764,14 +763,13 @@ fn presentation_candidates(
     facts: &HashMap<ConceptKey, Option<f64>>,
     graphs: &PresentationGraphs,
 ) -> Vec<f64> {
-    let total_tags = xml_util::inventory_total_set();
     let mut candidates = Vec::new();
 
     for graph in graphs.values() {
         let all_concepts = all_graph_concepts_presentation(graph);
         let roots: Vec<&ConceptKey> = all_concepts
             .iter()
-            .filter(|c| total_tags.contains(c.1.as_str()))
+            .filter(|c| xml_util::is_inventory_total(&c.1))
             .collect();
 
         for root in roots {
@@ -880,28 +878,24 @@ fn unique_candidate(
 }
 
 fn component_sum(facts: &HashMap<ConceptKey, Option<f64>>) -> f64 {
-    let component_set = xml_util::inventory_component_set();
     facts
         .iter()
         .filter(|(concept, value)| {
-            component_set.contains(concept.1.as_str()) && value.is_some()
+            xml_util::is_inventory_component(&concept.1) && value.is_some()
         })
         .map(|(_, v)| v.unwrap())
         .sum()
 }
 
 fn unknown_inventory_like_tags(facts: &HashMap<ConceptKey, Option<f64>>) -> std::collections::HashSet<String> {
-    let total_tags = xml_util::inventory_total_set();
-    let component_tags = xml_util::inventory_component_set();
-
     facts
         .iter()
         .filter(|(concept, value)| {
             value.is_some()
                 && xml_util::is_inventory_like(&concept.1)
                 && !xml_util::is_ignored_inventory_candidate(&concept.1)
-                && !total_tags.contains(concept.1.as_str())
-                && !component_tags.contains(concept.1.as_str())
+                && !xml_util::is_inventory_total(&concept.1)
+                && !xml_util::is_inventory_component(&concept.1)
         })
         .map(|(concept, _)| concept.1.clone())
         .collect()

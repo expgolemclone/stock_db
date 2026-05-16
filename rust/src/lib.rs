@@ -45,25 +45,27 @@ fn _edinet_xbrl(m: &Bound<'_, PyModule>) -> PyResult<()> {
 ///
 /// Returns: dict[str, dict[str, float | None]]  (period → {"inventories": value})
 #[pyfunction]
-fn parse_inventories(path: &str) -> PyResult<PyObject> {
-    let artifact = artifact::load_xbrl_artifact(path)
-        .map_err(|e| PyRuntimeError::new_err(e))?;
-    let result = inventory::parse_inventories_from_artifact(&artifact)?;
+fn parse_inventories(py: Python<'_>, path: &str) -> PyResult<PyObject> {
+    let artifact = py.allow_threads(|| {
+        artifact::load_xbrl_artifact(path).map_err(|e| PyRuntimeError::new_err(e))
+    })?;
+    let result = py.allow_threads(|| {
+        inventory::parse_inventories_from_artifact(&artifact)
+            .map_err(|e: InventoriesTagMismatchError| PyRuntimeError::new_err(e.message))
+    })?;
 
-    Python::with_gil(|py| {
-        let outer = pyo3::types::PyDict::new(py);
-        for (period, items) in &result {
-            let inner = pyo3::types::PyDict::new(py);
-            for (key, value) in items {
-                match value {
-                    Some(v) => inner.set_item(key, *v)?,
-                    None => inner.set_item(key, py.None())?,
-                }
+    let outer = pyo3::types::PyDict::new(py);
+    for (period, items) in &result {
+        let inner = pyo3::types::PyDict::new(py);
+        for (key, value) in items {
+            match value {
+                Some(v) => inner.set_item(key, *v)?,
+                None => inner.set_item(key, py.None())?,
             }
-            outer.set_item(period, inner)?;
         }
-        Ok(outer.into())
-    })
+        outer.set_item(period, inner)?;
+    }
+    Ok(outer.into())
 }
 
 /// Parse an EDINET XBRL artifact and return canonical financial_items.
@@ -71,27 +73,29 @@ fn parse_inventories(path: &str) -> PyResult<PyObject> {
 /// Returns: dict[str, dict[str, dict[str, float | None]]]
 ///          (period → statement → item_name → value)
 #[pyfunction]
-fn parse_financials(path: &str) -> PyResult<PyObject> {
-    let artifact = artifact::load_xbrl_artifact(path)
-        .map_err(|e| PyRuntimeError::new_err(e))?;
-    let result = financials::parse_financials_from_artifact(&artifact)?;
+fn parse_financials(py: Python<'_>, path: &str) -> PyResult<PyObject> {
+    let artifact = py.allow_threads(|| {
+        artifact::load_xbrl_artifact(path).map_err(|e| PyRuntimeError::new_err(e))
+    })?;
+    let result = py.allow_threads(|| {
+        financials::parse_financials_from_artifact(&artifact)
+            .map_err(|e: InventoriesTagMismatchError| PyRuntimeError::new_err(e.message))
+    })?;
 
-    Python::with_gil(|py| {
-        let outer = pyo3::types::PyDict::new(py);
-        for (period, statements) in &result {
-            let mid = pyo3::types::PyDict::new(py);
-            for (statement, items) in statements {
-                let inner = pyo3::types::PyDict::new(py);
-                for (key, value) in items {
-                    match value {
-                        Some(v) => inner.set_item(key, *v)?,
-                        None => inner.set_item(key, py.None())?,
-                    }
+    let outer = pyo3::types::PyDict::new(py);
+    for (period, statements) in &result {
+        let mid = pyo3::types::PyDict::new(py);
+        for (statement, items) in statements {
+            let inner = pyo3::types::PyDict::new(py);
+            for (key, value) in items {
+                match value {
+                    Some(v) => inner.set_item(key, *v)?,
+                    None => inner.set_item(key, py.None())?,
                 }
-                mid.set_item(statement, inner)?;
             }
-            outer.set_item(period, mid)?;
+            mid.set_item(statement, inner)?;
         }
-        Ok(outer.into())
-    })
+        outer.set_item(period, mid)?;
+    }
+    Ok(outer.into())
 }

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sqlite3
 from pathlib import Path
 
 import pytest
@@ -15,7 +16,24 @@ from stock_db.sources.edinet.xbrl_bs_parser import (
 
 def _xbrl_path(ticker: str) -> str:
     ticker_dir = Path(f"/home/exp/projects/stock_db/var/raw/edinet/xbrl/{ticker}")
-    return str(next(path for path in sorted(ticker_dir.iterdir()) if path.is_dir()))
+    db_path = Path("/home/exp/projects/stock_db/var/db/stocks.db")
+    if db_path.exists():
+        conn = sqlite3.connect(db_path)
+        try:
+            row = conn.execute(
+                """
+                SELECT xbrl_path FROM sec_reports
+                WHERE ticker = ? AND fiscal_year = 'latest' AND xbrl_path IS NOT NULL
+                ORDER BY updated_at DESC, doc_id DESC
+                LIMIT 1
+                """,
+                (ticker,),
+            ).fetchone()
+        finally:
+            conn.close()
+        if row and Path(row[0]).is_dir():
+            return str(Path(row[0]))
+    return str(next(path for path in sorted(ticker_dir.iterdir(), reverse=True) if path.is_dir()))
 
 
 def _write_api_artifact(root: Path) -> Path:
@@ -205,6 +223,24 @@ class TestSyntheticCases:
         parsed = parse_xbrl_bs(str(xbrl))
         assert parsed["2025-03"]["inventories"] == pytest.approx(-500_000)
 
+    @pytest.mark.parametrize(
+        "fact_name",
+        [
+            "InventoriesCAIFRSIFRS",
+            "ProgramRightsAndWorkInProcess",
+        ],
+    )
+    def test_parses_inventory_tags_seen_in_real_filings(self, tmp_path: Path, fact_name: str) -> None:
+        xbrl = _write_single_xbrl(
+            tmp_path / "sample.xbrl",
+            fact_name=fact_name,
+            fact_value="500",
+            fact_attrs=' decimals="-3" scale="3"',
+        )
+
+        parsed = parse_xbrl_bs(str(xbrl))
+        assert parsed["2025-03"]["inventories"] == pytest.approx(500_000)
+
     def test_raises_for_unknown_inventory_like_tag(self, tmp_path: Path) -> None:
         xbrl = _write_single_xbrl(
             tmp_path / "sample.xbrl",
@@ -215,6 +251,17 @@ class TestSyntheticCases:
 
         with pytest.raises(InventoriesTagMismatchError, match="MysteryInventoriesCA"):
             parse_xbrl_bs(str(xbrl))
+
+    def test_parses_investment_in_real_estate_for_sale_component(self, tmp_path: Path) -> None:
+        xbrl = _write_single_xbrl(
+            tmp_path / "sample.xbrl",
+            fact_name="InvestmentInRealEstateForSaleCA",
+            fact_value="500",
+            fact_attrs=' decimals="-3" scale="3"',
+        )
+
+        parsed = parse_xbrl_bs(str(xbrl))
+        assert parsed["2025-03"]["inventories"] == pytest.approx(500_000)
 
     @pytest.mark.parametrize(
         "fact_name",
@@ -233,6 +280,34 @@ class TestSyntheticCases:
 
         assert parse_xbrl_bs(str(xbrl)) == {}
 
+    def test_ignores_unrelated_shares_facts_with_same_month_values(self, tmp_path: Path) -> None:
+        xbrl = tmp_path / "sample.xbrl"
+        xbrl.write_text(
+            """
+            <xbrli:xbrl
+                xmlns:xbrli="http://www.xbrl.org/2003/instance"
+                xmlns:xbrldi="http://xbrl.org/2006/xbrldi"
+                xmlns:jpcrp_cor="http://disclosure.edinet-fsa.go.jp/taxonomy/jpcrp/2024-11-01/jpcrp_cor">
+              <xbrli:context id="FilingDateInstant">
+                <xbrli:entity><xbrli:identifier scheme="test">E1</xbrli:identifier></xbrli:entity>
+                <xbrli:period><xbrli:instant>2026-03-24</xbrli:instant></xbrli:period>
+              </xbrli:context>
+              <xbrli:context id="RecordDateInstant">
+                <xbrli:entity><xbrli:identifier scheme="test">E1</xbrli:identifier></xbrli:entity>
+                <xbrli:period><xbrli:instant>2026-03-31</xbrli:instant></xbrli:period>
+              </xbrli:context>
+              <xbrli:unit id="shares"><xbrli:measure>xbrli:shares</xbrli:measure></xbrli:unit>
+              <jpcrp_cor:NumberOfSharesHeldOrdinarySharesInformationAboutDirectorsAndCorporateAuditors
+                  contextRef="FilingDateInstant" unitRef="shares" decimals="0">2541051</jpcrp_cor:NumberOfSharesHeldOrdinarySharesInformationAboutDirectorsAndCorporateAuditors>
+              <jpcrp_cor:NumberOfSharesHeldOrdinarySharesInformationAboutDirectorsAndCorporateAuditors
+                  contextRef="RecordDateInstant" unitRef="shares" decimals="0">2484500</jpcrp_cor:NumberOfSharesHeldOrdinarySharesInformationAboutDirectorsAndCorporateAuditors>
+            </xbrli:xbrl>
+            """,
+            encoding="utf-8",
+        )
+
+        assert parse_xbrl_bs(str(xbrl)) == {}
+
     def test_parses_artifact_dir_via_presentation_fallback(self, tmp_path: Path) -> None:
         artifact = _write_api_artifact(tmp_path)
 
@@ -240,3 +315,66 @@ class TestSyntheticCases:
 
         assert parsed["2025-03"]["inventories"] == pytest.approx(600)
         assert parsed["2024-03"]["inventories"] == pytest.approx(400)
+
+    def test_prefers_publicdoc_xbrl_over_html(self, tmp_path: Path) -> None:
+        """When PublicDoc/*.xbrl exists, it should be used instead of iXBRL HTML."""
+        artifact = tmp_path / "S100PKG"
+        public_doc = artifact / "XBRL" / "PublicDoc"
+        public_doc.mkdir(parents=True)
+        (tmp_path / "S100PKG.zip").write_bytes(b"zip")
+
+        # iXBRL HTML with different (wrong) value
+        (public_doc / "report.xhtml").write_text(
+            """
+            <html xmlns="http://www.w3.org/1999/xhtml"
+                  xmlns:ix="http://www.xbrl.org/2008/inlineXBRL"
+                  xmlns:xbrli="http://www.xbrl.org/2003/instance"
+                  xmlns:link="http://www.xbrl.org/2003/linkbase"
+                  xmlns:xlink="http://www.w3.org/1999/xlink"
+                  xmlns:iso4217="http://www.xbrl.org/2003/iso4217"
+                  xmlns:jpdei_cor="http://disclosure.edinet-fsa.go.jp/taxonomy/jpdei/2013-08-31/jpdei_cor"
+                  xmlns:jppfs_cor="http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor">
+              <head></head>
+              <body>
+                <xbrli:context id="CurrentYearInstant">
+                  <xbrli:entity><xbrli:identifier scheme="test">E1</xbrli:identifier></xbrli:entity>
+                  <xbrli:period><xbrli:instant>2025-03-31</xbrli:instant></xbrli:period>
+                </xbrli:context>
+                <xbrli:unit id="JPY"><xbrli:measure>iso4217:JPY</xbrli:measure></xbrli:unit>
+                <ix:hidden>
+                  <ix:nonnumeric contextRef="CurrentYearInstant" name="jpdei_cor:CurrentFiscalYearEndDateDEI">2025年3月31日</ix:nonnumeric>
+                </ix:hidden>
+                <ix:nonfraction contextRef="CurrentYearInstant" unitRef="JPY" name="jppfs_cor:Inventories">999</ix:nonfraction>
+              </body>
+            </html>
+            """,
+            encoding="utf-8",
+        )
+
+        # Canonical .xbrl with correct value
+        (public_doc / "report.xbrl").write_text(
+            """
+            <xbrli:xbrl
+                xmlns:xbrli="http://www.xbrl.org/2003/instance"
+                xmlns:iso4217="http://www.xbrl.org/2003/iso4217"
+                xmlns:jppfs_cor="http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor">
+              <xbrli:context id="CurrentYearInstant">
+                <xbrli:entity><xbrli:identifier scheme="test">E1</xbrli:identifier></xbrli:entity>
+                <xbrli:period><xbrli:instant>2025-03-31</xbrli:instant></xbrli:period>
+              </xbrli:context>
+              <xbrli:unit id="JPY"><xbrli:measure>iso4217:JPY</xbrli:measure></xbrli:unit>
+              <jppfs_cor:Inventories contextRef="CurrentYearInstant" unitRef="JPY">1234</jppfs_cor:Inventories>
+            </xbrli:xbrl>
+            """,
+            encoding="utf-8",
+        )
+
+        parsed = parse_xbrl_bs(str(artifact))
+        assert parsed["2025-03"]["inventories"] == pytest.approx(1234)
+
+    def test_falls_back_to_html_when_no_publicdoc_xbrl(self, tmp_path: Path) -> None:
+        """When no PublicDoc/*.xbrl exists, iXBRL HTML should still work."""
+        artifact = _write_api_artifact(tmp_path)
+
+        parsed = parse_xbrl_bs(str(artifact))
+        assert parsed["2025-03"]["inventories"] == pytest.approx(600)

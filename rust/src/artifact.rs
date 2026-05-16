@@ -63,21 +63,41 @@ pub fn load_xbrl_artifact(path: &str) -> Result<LoadedXbrlArtifact, String> {
                 shares_facts: HashMap::new(),
             });
         }
-        let fact_paths = xml_util::iter_fact_document_paths(artifact_path);
-        let mut contents = Vec::new();
-        for fp in &fact_paths {
-            let ext = fp.extension().and_then(|e| e.to_str()).unwrap_or("");
-            if ext == "xbrl" {
-                if let Some(c) = xml_util::read_file_content(fp) {
-                    contents.push(c);
-                }
-            } else if let Some(c) = xml_util::read_file_content(fp) {
-                if xml_util::is_valid_xbrl_text(&c) {
-                    contents.push(c);
+        // Prefer PublicDoc/*.xbrl as canonical fact document
+        let public_doc = xbrl_dir.join("PublicDoc");
+        let mut public_xbrl: Vec<String> = Vec::new();
+        if public_doc.is_dir() {
+            if let Ok(entries) = std::fs::read_dir(&public_doc) {
+                for entry in entries.flatten() {
+                    let fp = entry.path();
+                    if fp.extension().is_some_and(|e| e == "xbrl") {
+                        if let Some(c) = xml_util::read_file_content(&fp) {
+                            public_xbrl.push(c);
+                        }
+                    }
                 }
             }
         }
-        contents
+        if !public_xbrl.is_empty() {
+            public_xbrl
+        } else {
+            // Fallback: scan all fact documents with iXBRL validation
+            let fact_paths = xml_util::iter_fact_document_paths(artifact_path);
+            let mut contents = Vec::new();
+            for fp in &fact_paths {
+                let ext = fp.extension().and_then(|e| e.to_str()).unwrap_or("");
+                if ext == "xbrl" {
+                    if let Some(c) = xml_util::read_file_content(fp) {
+                        contents.push(c);
+                    }
+                } else if let Some(c) = xml_util::read_file_content(fp)
+                    && xml_util::is_valid_xbrl_text(&c)
+                {
+                    contents.push(c);
+                }
+            }
+            contents
+        }
     } else {
         return Err(format!("Path does not exist: {}", path));
     };
@@ -235,7 +255,7 @@ fn store_concept_value(
                 if let Some(v) = value {
                     if (*e - v).abs() > f64::EPSILON {
                         return Err(format!(
-                            "Conflicting values for inventory concept {} in {}: {} vs {}",
+                            "Conflicting values for XBRL concept {} in {}: {} vs {}",
                             concept.1, period, e, v
                         ));
                     }
@@ -266,7 +286,9 @@ fn store_fact_buckets(
     };
 
     if unit_kind == UnitKind::Shares {
-        if xml_util::should_use_context(ctx, ContextMode::Instant) {
+        if xml_util::is_relevant_shares_fact(&concept.1)
+            && xml_util::should_use_context(ctx, ContextMode::Instant)
+        {
             store_concept_value(shares_facts, &period, concept, value)?;
         }
         return Ok(());
@@ -565,19 +587,22 @@ fn extract_units(content: &str) -> UnitMap {
                     }
                     continue;
                 }
-                // Determine unit kind from measure text inside the unit element
-                let mut kind = UnitKind::Other;
+                // Determine unit kind from measure text inside the unit element.
+                // JPY-per-share units contain both JPY and shares; those are
+                // financial per-share values, not pure share counts.
                 let mut inner_buf = Vec::new();
                 let mut inner_depth: usize = 0;
+                let mut has_jpy = false;
+                let mut has_shares = false;
                 loop {
                     match reader.read_event_into(&mut inner_buf) {
                         Ok(Event::Text(t)) => {
                             let text = t.unescape().unwrap_or_default();
                             let measure = xml_util::local_name(text.trim());
                             if measure == "JPY" {
-                                kind = UnitKind::JPY;
+                                has_jpy = true;
                             } else if measure == "shares" {
-                                kind = UnitKind::Shares;
+                                has_shares = true;
                             }
                         }
                         Ok(Event::Start(_)) => inner_depth += 1,
@@ -594,6 +619,13 @@ fn extract_units(content: &str) -> UnitMap {
                     }
                     inner_buf.clear();
                 }
+                let kind = if has_jpy {
+                    UnitKind::JPY
+                } else if has_shares {
+                    UnitKind::Shares
+                } else {
+                    UnitKind::Other
+                };
                 units.insert(unit_id.unwrap(), kind);
             }
             Ok(Event::Eof) => break,

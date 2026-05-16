@@ -156,3 +156,108 @@ def test_main_force_reparses_existing_ticker(tmp_path: Path, monkeypatch: object
         },
     ]
     assert "Done: 1 ok, 0 errors" in captured.err
+
+
+def test_main_from_ticker_resumes_sorted_tickers(
+    tmp_path: Path, monkeypatch: object, capsys: object,
+) -> None:
+    db_path = tmp_path / "stocks.db"
+    _build_db(db_path)
+
+    parse_calls: list[str] = []
+    replace_calls: list[str] = []
+
+    def fake_parse(xbrl_path: str) -> dict[str, dict[str, dict[str, float | None]]]:
+        parse_calls.append(xbrl_path)
+        return {"2025-03": {"pl": {"revenue": 200.0}}}
+
+    def fake_replace(
+        conn: object,
+        *,
+        ticker: str,
+        sources: tuple[str, ...],
+        rows: list[dict[str, object]],
+    ) -> None:
+        del conn, sources, rows
+        replace_calls.append(ticker)
+
+    monkeypatch.setattr(cli, "STOCKS_DB_PATH", db_path)
+    monkeypatch.setattr(cli, "parse_xbrl_financials", fake_parse)
+    monkeypatch.setattr(cli, "replace_financial_items_for_ticker_sources", fake_replace)
+
+    rc = cli.main(["--from-ticker", "1302", "--force"])
+    captured = capsys.readouterr()
+
+    assert rc == 0
+    assert parse_calls == ["/tmp/1302/S100TEST2"]
+    assert replace_calls == ["1302"]
+    assert "Done: 1 ok, 0 errors" in captured.err
+
+
+def test_main_jobs_2_parses_all_tickers(
+    tmp_path: Path, monkeypatch: object, capsys: object,
+) -> None:
+    db_path = tmp_path / "stocks.db"
+    _build_db(db_path)
+
+    parse_calls: list[str] = []
+    replace_calls: list[dict[str, object]] = []
+
+    def fake_parse(xbrl_path: str) -> dict[str, dict[str, dict[str, float | None]]]:
+        parse_calls.append(xbrl_path)
+        return {"2025-03": {"pl": {"revenue": 200.0}}}
+
+    def fake_replace(
+        conn: object,
+        *,
+        ticker: str,
+        sources: tuple[str, ...],
+        rows: list[dict[str, object]],
+    ) -> None:
+        del conn
+        replace_calls.append({"ticker": ticker, "sources": sources, "rows": rows})
+
+    monkeypatch.setattr(cli, "STOCKS_DB_PATH", db_path)
+    monkeypatch.setattr(cli, "parse_xbrl_financials", fake_parse)
+    monkeypatch.setattr(cli, "replace_financial_items_for_ticker_sources", fake_replace)
+
+    rc = cli.main(["--force", "--jobs", "2"])
+    captured = capsys.readouterr()
+
+    assert rc == 0
+    assert sorted(parse_calls) == ["/tmp/1301/S100TEST1", "/tmp/1302/S100TEST2"]
+    assert sorted(call["ticker"] for call in replace_calls) == ["1301", "1302"]
+    assert "Done: 2 ok, 0 errors" in captured.err
+
+
+def test_main_jobs_1_is_serial_equivalent(
+    tmp_path: Path, monkeypatch: object, capsys: object,
+) -> None:
+    db_path = tmp_path / "stocks.db"
+    _build_db(db_path)
+
+    parse_calls: list[str] = []
+
+    def fake_parse(xbrl_path: str) -> dict[str, dict[str, dict[str, float | None]]]:
+        parse_calls.append(xbrl_path)
+        return {"2025-03": {"pl": {"revenue": 200.0}}}
+
+    def fake_replace(
+        conn: object,
+        *,
+        ticker: str,
+        sources: tuple[str, ...],
+        rows: list[dict[str, object]],
+    ) -> None:
+        del conn, sources, rows
+
+    monkeypatch.setattr(cli, "STOCKS_DB_PATH", db_path)
+    monkeypatch.setattr(cli, "parse_xbrl_financials", fake_parse)
+    monkeypatch.setattr(cli, "replace_financial_items_for_ticker_sources", fake_replace)
+
+    rc = cli.main(["--force", "--jobs", "1"])
+    captured = capsys.readouterr()
+
+    assert rc == 0
+    assert parse_calls == ["/tmp/1301/S100TEST1", "/tmp/1302/S100TEST2"]
+    assert "Done: 2 ok, 0 errors" in captured.err

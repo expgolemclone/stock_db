@@ -25,6 +25,11 @@ pub const IGNORED_FACT_NAMESPACES: &[&str] = &[
     XML_NS,
 ];
 
+/// Shares-denominated tag names used by the normalized financial parser.
+pub const SHARES_OUTSTANDING_TAGS: &[&str] = &[
+    "NumberOfIssuedSharesAsOfFiscalYearEndIssuedSharesTotalNumberOfSharesEtc",
+];
+
 /// Patterns for fact document files.
 pub const FACT_FILE_EXTENSIONS: &[&str] = &["xhtml", "html", "htm", "xbrl"];
 
@@ -33,6 +38,7 @@ pub const INVENTORY_TOTAL_TAGS: &[&str] = &[
     "Inventories",
     "InventoriesCA",
     "InventoriesCAIFRS",
+    "InventoriesCAIFRSIFRS",
     "InventoriesIFRS",
     "InventoriesAssetsIFRS",
 ];
@@ -66,6 +72,7 @@ pub const INVENTORY_COMPONENT_TAGS: &[&str] = &[
     "PartlyFinishedGoodsCA",
     "PFIProjectsAndOtherInventoriesCA",
     "ProgramInventories",
+    "ProgramRightsAndWorkInProcess",
     "PurchasedGoodsMaterialsAndSuppliesCA",
     "RawMaterials",
     "RawMaterialsAndSupplies",
@@ -103,6 +110,7 @@ pub const INVENTORY_COMPONENT_TAGS: &[&str] = &[
     "CostsOnUncompletedServices",
     "DevelopmentProjectsInProgress",
     "GoodsInTransit",
+    "InvestmentInRealEstateForSaleCA",
     "LandAndBuildingsForSaleInLots",
     "LandForSaleInLots",
     "MerchandizeAndFinishedGoods",
@@ -235,6 +243,11 @@ pub fn is_ignored_inventory_candidate(short_name: &str) -> bool {
     IGNORED_INVENTORY_SUBSTRINGS
         .iter()
         .any(|frag| short_name.contains(frag))
+}
+
+/// Check if a shares-denominated fact should be retained.
+pub fn is_relevant_shares_fact(short_name: &str) -> bool {
+    SHARES_OUTSTANDING_TAGS.contains(&short_name)
 }
 
 /// Extract the local name from a namespaced tag like `{uri}local` or `prefix:local`.
@@ -425,14 +438,14 @@ pub fn should_use_context(ctx: &ContextInfo, mode: crate::types::ContextMode) ->
     }
 }
 
-/// Build a quick lookup set from a slice of tag names.
-pub fn inventory_total_set() -> std::collections::HashSet<&'static str> {
-    INVENTORY_TOTAL_TAGS.iter().copied().collect()
+/// Check if a tag name is an inventory total tag (allocation-free).
+pub fn is_inventory_total(name: &str) -> bool {
+    INVENTORY_TOTAL_TAGS.contains(&name)
 }
 
-/// Build a quick lookup set from the component tag names.
-pub fn inventory_component_set() -> std::collections::HashSet<&'static str> {
-    INVENTORY_COMPONENT_TAGS.iter().copied().collect()
+/// Check if a tag name is an inventory component tag (allocation-free).
+pub fn is_inventory_component(name: &str) -> bool {
+    INVENTORY_COMPONENT_TAGS.contains(&name)
 }
 
 #[cfg(test)]

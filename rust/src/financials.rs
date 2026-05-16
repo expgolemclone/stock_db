@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use crate::types::{ConceptKey, LoadedXbrlArtifact};
 use crate::inventory;
+use crate::xml_util;
 use crate::InventoriesTagMismatchError;
 
 type ItemCandidates = &'static [(&'static str, &'static [&'static str])];
@@ -154,9 +155,7 @@ const DIVIDEND_ITEM_CANDIDATES: ItemCandidates = &[
 const SHARES_ITEM_CANDIDATES: ItemCandidates = &[
     (
         "shares_outstanding",
-        &[
-            "NumberOfIssuedSharesAsOfFiscalYearEndIssuedSharesTotalNumberOfSharesEtc",
-        ],
+        xml_util::SHARES_OUTSTANDING_TAGS,
     ),
 ];
 

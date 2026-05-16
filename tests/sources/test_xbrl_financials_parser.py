@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sqlite3
 from pathlib import Path
 
 import pytest
@@ -10,7 +11,24 @@ from stock_db.sources.edinet import xbrl_financials_parser
 
 def _xbrl_path(ticker: str) -> str:
     ticker_dir = Path(f"/home/exp/projects/stock_db/var/raw/edinet/xbrl/{ticker}")
-    return str(next(path for path in sorted(ticker_dir.iterdir()) if path.is_dir()))
+    db_path = Path("/home/exp/projects/stock_db/var/db/stocks.db")
+    if db_path.exists():
+        conn = sqlite3.connect(db_path)
+        try:
+            row = conn.execute(
+                """
+                SELECT xbrl_path FROM sec_reports
+                WHERE ticker = ? AND fiscal_year = 'latest' AND xbrl_path IS NOT NULL
+                ORDER BY updated_at DESC, doc_id DESC
+                LIMIT 1
+                """,
+                (ticker,),
+            ).fetchone()
+        finally:
+            conn.close()
+        if row and Path(row[0]).is_dir():
+            return str(Path(row[0]))
+    return str(next(path for path in sorted(ticker_dir.iterdir(), reverse=True) if path.is_dir()))
 
 
 def test_extracts_current_financials_from_real_fixture() -> None:
@@ -79,6 +97,12 @@ def test_parses_synthetic_forecast_tags(tmp_path: Path) -> None:
             </xbrli:period>
           </xbrli:context>
           <xbrli:unit id="JPY"><xbrli:measure>iso4217:JPY</xbrli:measure></xbrli:unit>
+          <xbrli:unit id="JPYPerShares">
+            <xbrli:divide>
+              <xbrli:unitNumerator><xbrli:measure>iso4217:JPY</xbrli:measure></xbrli:unitNumerator>
+              <xbrli:unitDenominator><xbrli:measure>xbrli:shares</xbrli:measure></xbrli:unitDenominator>
+            </xbrli:divide>
+          </xbrli:unit>
           <jppfs_cor:CurrentAssets contextRef="CurrentYearInstant" unitRef="JPY">1000</jppfs_cor:CurrentAssets>
           <jppfs_cor:CurrentLiabilities contextRef="CurrentYearInstant" unitRef="JPY">400</jppfs_cor:CurrentLiabilities>
           <jppfs_cor:NoncurrentLiabilities contextRef="CurrentYearInstant" unitRef="JPY">100</jppfs_cor:NoncurrentLiabilities>
@@ -94,7 +118,7 @@ def test_parses_synthetic_forecast_tags(tmp_path: Path) -> None:
           <jppfs_cor:NetCashProvidedByUsedInOperatingActivities contextRef="CurrentYearDuration" unitRef="JPY">300</jppfs_cor:NetCashProvidedByUsedInOperatingActivities>
           <jppfs_cor:NetCashProvidedByUsedInInvestmentActivities contextRef="CurrentYearDuration" unitRef="JPY">-100</jppfs_cor:NetCashProvidedByUsedInInvestmentActivities>
           <jppfs_cor:NetCashProvidedByUsedInFinancingActivities contextRef="CurrentYearDuration" unitRef="JPY">50</jppfs_cor:NetCashProvidedByUsedInFinancingActivities>
-          <jpcrp_cor:DividendPaidPerShareSummaryOfBusinessResults contextRef="CurrentYearDuration" unitRef="JPY">12</jpcrp_cor:DividendPaidPerShareSummaryOfBusinessResults>
+          <jpcrp_cor:DividendPaidPerShareSummaryOfBusinessResults contextRef="CurrentYearDuration" unitRef="JPYPerShares">12</jpcrp_cor:DividendPaidPerShareSummaryOfBusinessResults>
           <jpcrp_cor:ForecastNetSalesSummaryOfBusinessResults contextRef="CurrentYearDuration" unitRef="JPY">5500</jpcrp_cor:ForecastNetSalesSummaryOfBusinessResults>
           <jpcrp_cor:ForecastOperatingIncomeSummaryOfBusinessResults contextRef="CurrentYearDuration" unitRef="JPY">750</jpcrp_cor:ForecastOperatingIncomeSummaryOfBusinessResults>
           <jpcrp_cor:ForecastOrdinaryIncomeSummaryOfBusinessResults contextRef="CurrentYearDuration" unitRef="JPY">700</jpcrp_cor:ForecastOrdinaryIncomeSummaryOfBusinessResults>
@@ -115,6 +139,47 @@ def test_parses_synthetic_forecast_tags(tmp_path: Path) -> None:
     assert current["forecast"]["operating_income"] == pytest.approx(750)
     assert current["forecast"]["ordinary_income"] == pytest.approx(700)
     assert current["forecast"]["net_income"] == pytest.approx(540)
+
+
+def test_parses_shares_outstanding_without_other_shares_facts(tmp_path: Path) -> None:
+    xbrl = tmp_path / "sample.xbrl"
+    xbrl.write_text(
+        """
+        <xbrli:xbrl
+            xmlns:xbrli="http://www.xbrl.org/2003/instance"
+            xmlns:iso4217="http://www.xbrl.org/2003/iso4217"
+            xmlns:jppfs_cor="http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor"
+            xmlns:jpcrp_cor="http://disclosure.edinet-fsa.go.jp/taxonomy/jpcrp/2024-11-01/jpcrp_cor">
+          <xbrli:context id="CurrentYearInstant">
+            <xbrli:entity><xbrli:identifier scheme="test">E1</xbrli:identifier></xbrli:entity>
+            <xbrli:period><xbrli:instant>2025-03-31</xbrli:instant></xbrli:period>
+          </xbrli:context>
+          <xbrli:context id="FilingDateInstant">
+            <xbrli:entity><xbrli:identifier scheme="test">E1</xbrli:identifier></xbrli:entity>
+            <xbrli:period><xbrli:instant>2025-06-27</xbrli:instant></xbrli:period>
+          </xbrli:context>
+          <xbrli:context id="RecordDateInstant">
+            <xbrli:entity><xbrli:identifier scheme="test">E1</xbrli:identifier></xbrli:entity>
+            <xbrli:period><xbrli:instant>2025-06-30</xbrli:instant></xbrli:period>
+          </xbrli:context>
+          <xbrli:unit id="JPY"><xbrli:measure>iso4217:JPY</xbrli:measure></xbrli:unit>
+          <xbrli:unit id="shares"><xbrli:measure>xbrli:shares</xbrli:measure></xbrli:unit>
+          <jppfs_cor:Assets contextRef="CurrentYearInstant" unitRef="JPY">1600</jppfs_cor:Assets>
+          <jpcrp_cor:NumberOfIssuedSharesAsOfFiscalYearEndIssuedSharesTotalNumberOfSharesEtc
+              contextRef="FilingDateInstant" unitRef="shares" decimals="0">1000000</jpcrp_cor:NumberOfIssuedSharesAsOfFiscalYearEndIssuedSharesTotalNumberOfSharesEtc>
+          <jpcrp_cor:NumberOfSharesHeldOrdinarySharesInformationAboutDirectorsAndCorporateAuditors
+              contextRef="FilingDateInstant" unitRef="shares" decimals="0">123</jpcrp_cor:NumberOfSharesHeldOrdinarySharesInformationAboutDirectorsAndCorporateAuditors>
+          <jpcrp_cor:NumberOfSharesHeldOrdinarySharesInformationAboutDirectorsAndCorporateAuditors
+              contextRef="RecordDateInstant" unitRef="shares" decimals="0">456</jpcrp_cor:NumberOfSharesHeldOrdinarySharesInformationAboutDirectorsAndCorporateAuditors>
+        </xbrli:xbrl>
+        """,
+        encoding="utf-8",
+    )
+
+    current = xbrl_financials_parser.parse_xbrl_financials(str(xbrl))["2025-03"]
+
+    assert current["bs"]["total_assets"] == pytest.approx(1600)
+    assert current["bs"]["shares_outstanding"] == pytest.approx(1_000_000)
 
 
 def test_primary_context_wins_over_non_consolidated_fallback(tmp_path: Path) -> None:
