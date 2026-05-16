@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import time
 from collections.abc import Callable
 from datetime import date, timedelta
@@ -16,6 +17,11 @@ _DOCUMENTS_API_BASE_URL = "https://api.edinet-fsa.go.jp/api/v2/documents.json"
 # 有価証券報告書: 金融商品取引法(010), 有価証券報告書(030000)
 _ORDINANCE_CODE_ANNUAL = "010"
 _FORM_CODE_ANNUAL = "030000"
+_SUBSCRIPTION_KEY_RE = re.compile(r"(Subscription-Key=)[^&\s)]+")
+
+
+def _redact_subscription_key(value: object) -> str:
+    return _SUBSCRIPTION_KEY_RE.sub(r"\1<redacted>", str(value))
 
 
 def fetch_document_list(
@@ -75,6 +81,9 @@ def discover_historical_reports(
     target_tickers: set[str],
     interval: float = 0.5,
     on_progress: Callable[[int, int], None] | None = None,
+    initial_reports: dict[str, list[dict]] | None = None,
+    skip_dates: set[str] | None = None,
+    on_day_scanned: Callable[[str, list[tuple[str, dict]], int], None] | None = None,
 ) -> dict[str, list[dict]]:
     """Iterate over date range and collect annual report docIDs for target tickers.
 
@@ -84,7 +93,16 @@ def discover_historical_reports(
     end = date.fromisoformat(to_date)
     total_days = (end - start).days + 1
 
-    reports: dict[str, list[dict]] = {t: [] for t in target_tickers}
+    reports: dict[str, list[dict]] = {
+        t: list((initial_reports or {}).get(t, [])) for t in target_tickers
+    }
+    seen_doc_ids = {
+        (ticker, str(report["doc_id"]))
+        for ticker, ticker_reports in reports.items()
+        for report in ticker_reports
+        if report.get("doc_id")
+    }
+    skip_dates = skip_dates or set()
     total_annual = 0
 
     for i in range(total_days):
@@ -94,32 +112,45 @@ def discover_historical_reports(
         if on_progress:
             on_progress(i + 1, total_days)
 
+        if date_str in skip_dates:
+            continue
+
         try:
             results = fetch_document_list(date_str, api_key)
         except requests.RequestException as exc:
-            logger.warning("API error for %s: %s", date_str, exc)
+            logger.warning("API error for %s: %s", date_str, _redact_subscription_key(exc))
             time.sleep(interval)
             continue
 
         annual = filter_annual_reports(results)
         if not annual:
+            if on_day_scanned:
+                on_day_scanned(date_str, [], 0)
             time.sleep(interval)
             continue
 
         total_annual += len(annual)
+        matched_for_day: list[tuple[str, dict]] = []
         for r in annual:
             ticker = sec_code_to_ticker(r.get("secCode"))
             if ticker is None or ticker not in target_tickers:
                 continue
-            reports[ticker].append(
-                {
-                    "doc_id": r["docID"],
-                    "fiscal_year": _fiscal_year_from_period_end(r.get("periodEnd")),
-                    "period_end": r.get("periodEnd"),
-                    "submit_date": r.get("submitDateTime"),
-                    "filer_name": r.get("filerName"),
-                }
-            )
+            doc_id = r["docID"]
+            if (ticker, doc_id) in seen_doc_ids:
+                continue
+            doc_info = {
+                "doc_id": doc_id,
+                "fiscal_year": _fiscal_year_from_period_end(r.get("periodEnd")),
+                "period_end": r.get("periodEnd"),
+                "submit_date": r.get("submitDateTime"),
+                "filer_name": r.get("filerName"),
+            }
+            reports[ticker].append(doc_info)
+            seen_doc_ids.add((ticker, doc_id))
+            matched_for_day.append((ticker, doc_info))
+
+        if on_day_scanned:
+            on_day_scanned(date_str, matched_for_day, len(annual))
 
         time.sleep(interval)
 

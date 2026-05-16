@@ -14,6 +14,8 @@ from typing import TYPE_CHECKING
 
 import requests
 
+from stock_db.paths import PROJECT_ROOT
+
 if TYPE_CHECKING:
     from stock_db.browser_client.client import BrowserServiceClient
 
@@ -25,6 +27,7 @@ _XBRL_BASE_URL = "https://disclosure2.edinet-fsa.go.jp/WZEK0040.aspx"
 _DOCUMENTS_API_BASE_URL = "https://api.edinet-fsa.go.jp/api/v2/documents"
 _API_KEY_ENV = "EDINET_API_KEY"
 _DEFAULT_XBRL_TIMEOUT_SECONDS = 300
+_SUBSCRIPTION_KEY_RE = re.compile(r"(Subscription-Key=)[^&\s)]+")
 _ZIP_CONTENT_TYPES: tuple[str, ...] = (
     "application/octet-stream",
     "application/zip",
@@ -34,6 +37,10 @@ _ZIP_CONTENT_TYPES: tuple[str, ...] = (
 
 class EdinetApiError(RuntimeError):
     """Raised when the EDINET API download cannot be completed."""
+
+
+def _redact_subscription_key(value: object) -> str:
+    return _SUBSCRIPTION_KEY_RE.sub(r"\1<redacted>", str(value))
 
 
 def doc_id_from_url(url: str) -> str | None:
@@ -61,9 +68,30 @@ def get_edinet_api_key() -> str | None:
     """Return the configured EDINET API key, if any."""
     value = os.environ.get(_API_KEY_ENV)
     if value is None:
+        value = _read_dotenv_value(PROJECT_ROOT / ".env", _API_KEY_ENV)
+    if value is None:
         return None
     stripped = value.strip()
     return stripped or None
+
+
+def _read_dotenv_value(path: Path, key: str) -> str | None:
+    if not path.is_file():
+        return None
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("export "):
+            line = line[len("export ") :].lstrip()
+        name, sep, value = line.partition("=")
+        if sep != "=" or name.strip() != key:
+            continue
+        value = value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
+            value = value[1:-1]
+        return value
+    return None
 
 
 def require_edinet_api_key() -> str:
@@ -147,7 +175,9 @@ def download_xbrl_package(
         logger.info("Saved EDINET API XBRL package %s -> %s", doc_id, extract_dest)
         return extract_dest
     except requests.RequestException as exc:
-        raise EdinetApiError(f"EDINET API request failed for {doc_id}: {exc}") from exc
+        raise EdinetApiError(
+            f"EDINET API request failed for {doc_id}: {_redact_subscription_key(exc)}"
+        ) from exc
     except zipfile.BadZipFile as exc:
         raise EdinetApiError(f"EDINET API ZIP was invalid for {doc_id}: {exc}") from exc
     finally:

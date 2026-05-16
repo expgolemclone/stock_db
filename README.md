@@ -28,7 +28,8 @@ uv sync --frozen
 # ブラウザサービスの依存関係（EDINET step1 / Yahoo / Stooq に使用）
 npm ci --prefix services/browser
 
-# EDINET API キー（step2 / combined run の raw 取得に使用）
+# EDINET API キー（step2 / combined run / historical の raw 取得に使用）
+# .env の EDINET_API_KEY も自動的に参照される
 export EDINET_API_KEY=...
 ```
 
@@ -74,6 +75,9 @@ uv run scrape-edinet-reports-step2
 # 既存書類の API 再取得
 uv run scrape-edinet-reports-step2 --force
 
+# 過去10年分の有報XBRL取得（既存 raw ZIP+展開済み artifact は再利用）
+uv run scrape-edinet-historical
+
 # XBRL から財務データを抽出
 uv run parse-xbrl-financials
 
@@ -87,8 +91,9 @@ uv run parse-xbrl-bs
 uv run report-edinet-progress
 ```
 
-- `scrape-edinet-reports-step2` と `scrape-edinet-reports` は `EDINET_API_KEY` が必要
+- `scrape-edinet-reports-step2` / `scrape-edinet-reports` / `scrape-edinet-historical` は `EDINET_API_KEY` が必要（環境変数または `.env`）
 - raw EDINET 書類は `var/raw/edinet/xbrl/{ticker}/{doc_id}.zip` と `var/raw/edinet/xbrl/{ticker}/{doc_id}/` に保存される
+- `scrape-edinet-historical` は discovery の途中結果を `var/raw/edinet/discovery/*.json` に保存し、同じ日付範囲の再実行では完了済み日付を再走査しない
 - `purge-irbank-financials` は `financial_items` から `source LIKE 'irbank%'` を完全削除する
 - `parse-xbrl-financials` は既定で既存 `edinet_xbrl` を持つ ticker を skip し、`--force` 指定時だけ再パースする
 - `parse-xbrl-financials` は `financial_items` を `source=edinet_xbrl` で再構築し、同一 ticker の `irbank` / `irbank_bs` / `irbank_forecast` / `xbrl_bs` を置き換える

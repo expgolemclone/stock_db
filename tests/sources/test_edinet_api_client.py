@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from stock_db.sources.edinet import api_client as api_client_module
 from stock_db.sources.edinet.api_client import (
     EdinetApiError,
     build_documents_api_url,
@@ -75,11 +76,30 @@ class TestApiKeyHelpers:
 
         assert get_edinet_api_key() == "secret"
 
+    def test_reads_api_key_from_dotenv(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.delenv("EDINET_API_KEY", raising=False)
+        monkeypatch.setattr(api_client_module, "PROJECT_ROOT", tmp_path)
+        (tmp_path / ".env").write_text('EDINET_API_KEY="dotenv-secret"\n', encoding="utf-8")
+
+        assert get_edinet_api_key() == "dotenv-secret"
+
     def test_require_api_key_raises_when_missing(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("EDINET_API_KEY", raising=False)
+        monkeypatch.setattr(api_client_module, "PROJECT_ROOT", Path("/missing"))
 
         with pytest.raises(EdinetApiError, match="EDINET_API_KEY"):
             require_edinet_api_key()
+
+
+def test_redacts_subscription_key_from_error_text() -> None:
+    assert (
+        api_client_module._redact_subscription_key(
+            "url?date=2024-01-01&Subscription-Key=secret-key&type=2"
+        )
+        == "url?date=2024-01-01&Subscription-Key=<redacted>&type=2"
+    )
 
 
 class TestDownloadXbrlPackage:
