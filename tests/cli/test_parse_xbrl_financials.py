@@ -2,12 +2,24 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from stock_db.cli import parse_xbrl_financials as cli
 from stock_db.storage.connection import get_connection
 from stock_db.storage.financials import upsert_financial_item
 from stock_db.storage.schema import init_db
 from stock_db.storage.sec_reports import upsert_sec_report
 from stock_db.storage.stocks import upsert_stock
+
+
+@pytest.fixture(autouse=True)
+def _stub_share_classes(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(cli, "parse_xbrl_share_classes", lambda _path: [])
+    monkeypatch.setattr(
+        cli,
+        "replace_share_classes_for_ticker_source",
+        lambda _conn, *, ticker, source, rows: None,
+    )
 
 
 def _build_db(db_path: Path) -> None:
@@ -154,6 +166,93 @@ def test_main_force_reparses_existing_ticker(tmp_path: Path, monkeypatch: object
             "value": 200.0,
             "source": "edinet_xbrl",
         },
+    ]
+    assert "Done: 1 ok, 0 errors" in captured.err
+
+
+def test_main_writes_share_classes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: object,
+) -> None:
+    db_path = tmp_path / "stocks.db"
+    _build_db(db_path)
+
+    financial_replace_calls: list[dict[str, object]] = []
+    share_class_replace_calls: list[dict[str, object]] = []
+
+    def fake_parse(_xbrl_path: str) -> dict[str, dict[str, dict[str, float | None]]]:
+        return {"2025-03": {"bs": {"has_preferred_shares": 1.0}}}
+
+    def fake_parse_share_classes(_xbrl_path: str) -> list[cli.ShareClassRow]:
+        return [
+            {
+                "period": "2025-03",
+                "class_key": "http://example.test#ClassAPreferredSharesMember",
+                "class_name": "Ａ種優先株式",
+                "shares": 3800.0,
+                "is_preferred": True,
+                "source_kind": "classes_of_shares_axis",
+            }
+        ]
+
+    def fake_replace_financial(
+        conn: object,
+        *,
+        ticker: str,
+        sources: tuple[str, ...],
+        rows: list[dict[str, object]],
+    ) -> None:
+        del conn
+        financial_replace_calls.append({"ticker": ticker, "sources": sources, "rows": rows})
+
+    def fake_replace_share_classes(
+        conn: object,
+        *,
+        ticker: str,
+        source: str,
+        rows: list[dict[str, object]],
+    ) -> None:
+        del conn
+        share_class_replace_calls.append({"ticker": ticker, "source": source, "rows": rows})
+
+    monkeypatch.setattr(cli, "STOCKS_DB_PATH", db_path)
+    monkeypatch.setattr(cli, "parse_xbrl_financials", fake_parse)
+    monkeypatch.setattr(cli, "parse_xbrl_share_classes", fake_parse_share_classes)
+    monkeypatch.setattr(cli, "replace_financial_items_for_ticker_sources", fake_replace_financial)
+    monkeypatch.setattr(cli, "replace_share_classes_for_ticker_source", fake_replace_share_classes)
+
+    rc = cli.main(["--ticker", "1301", "--force"])
+    captured = capsys.readouterr()
+
+    assert rc == 0
+    assert financial_replace_calls[0]["rows"] == [
+        {
+            "ticker": "1301",
+            "period": "2025-03",
+            "statement": "bs",
+            "item_name": "has_preferred_shares",
+            "value": 1.0,
+            "source": "edinet_xbrl",
+        }
+    ]
+    assert share_class_replace_calls == [
+        {
+            "ticker": "1301",
+            "source": "edinet_xbrl",
+            "rows": [
+                {
+                    "ticker": "1301",
+                    "period": "2025-03",
+                    "source": "edinet_xbrl",
+                    "class_key": "http://example.test#ClassAPreferredSharesMember",
+                    "class_name": "Ａ種優先株式",
+                    "shares": 3800.0,
+                    "is_preferred": 1,
+                    "source_kind": "classes_of_shares_axis",
+                }
+            ],
+        }
     ]
     assert "Done: 1 ok, 0 errors" in captured.err
 

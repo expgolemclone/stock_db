@@ -36,6 +36,25 @@ CREATE INDEX IF NOT EXISTS idx_fi_statement_item
 CREATE INDEX IF NOT EXISTS idx_fi_ticker
     ON financial_items (ticker);
 
+CREATE TABLE IF NOT EXISTS share_classes (
+    ticker       TEXT    NOT NULL,
+    period       TEXT    NOT NULL,
+    source       TEXT    NOT NULL,
+    class_key    TEXT    NOT NULL,
+    class_name   TEXT    NOT NULL,
+    shares       REAL,
+    is_preferred INTEGER NOT NULL,
+    source_kind  TEXT    NOT NULL,
+    updated_at   TEXT    NOT NULL,
+    PRIMARY KEY (ticker, period, source, class_key)
+);
+
+CREATE INDEX IF NOT EXISTS idx_share_classes_ticker_period
+    ON share_classes (ticker, period);
+
+CREATE INDEX IF NOT EXISTS idx_share_classes_preferred
+    ON share_classes (is_preferred);
+
 CREATE TABLE IF NOT EXISTS prices (
     ticker     TEXT    NOT NULL,
     date       TEXT    NOT NULL,

@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use quick_xml::events::Event;
 use quick_xml::Reader;
+use quick_xml::events::Event;
 
 use crate::types::{CalculationEdge, ConceptKey, LoadedXbrlArtifact};
 use crate::xml_util;
@@ -27,11 +27,8 @@ pub fn parse_inventories_from_artifact(
         (HashMap::new(), HashMap::new())
     };
 
-    let mut result = parse_inventories_from_facts(
-        &artifact.inventory_facts,
-        &calc_graphs,
-        &pres_graphs,
-    )?;
+    let mut result =
+        parse_inventories_from_facts(&artifact.inventory_facts, &calc_graphs, &pres_graphs)?;
     let non_consolidated_result = parse_inventories_from_facts(
         &artifact.non_consolidated_inventory_facts,
         &calc_graphs,
@@ -62,30 +59,47 @@ fn parse_inventories_from_facts(
         };
 
         // 1. Direct total
-        let direct = matching_concepts_unique(period_facts, xml_util::INVENTORY_TOTAL_TAGS, "direct inventory", period)?;
+        let direct = matching_concepts_unique(
+            period_facts,
+            xml_util::INVENTORY_TOTAL_TAGS,
+            "direct inventory",
+            period,
+        )?;
         if let Some(v) = direct {
-            result.insert(period.clone(), HashMap::from([("inventories".to_string(), Some(v))]));
+            result.insert(
+                period.clone(),
+                HashMap::from([("inventories".to_string(), Some(v))]),
+            );
             continue;
         }
 
         // 2. Calculation linkbase
         let calc = calculation_candidates_unique(period_facts, &calc_graphs, period)?;
         if let Some(v) = calc {
-            result.insert(period.clone(), HashMap::from([("inventories".to_string(), Some(v))]));
+            result.insert(
+                period.clone(),
+                HashMap::from([("inventories".to_string(), Some(v))]),
+            );
             continue;
         }
 
         // 3. Presentation linkbase
         let pres = presentation_candidates_unique(period_facts, &pres_graphs, period)?;
         if let Some(v) = pres {
-            result.insert(period.clone(), HashMap::from([("inventories".to_string(), Some(v))]));
+            result.insert(
+                period.clone(),
+                HashMap::from([("inventories".to_string(), Some(v))]),
+            );
             continue;
         }
 
         // 4. Component sum
         let comp = component_sum(period_facts);
         if comp != 0.0 {
-            result.insert(period.clone(), HashMap::from([("inventories".to_string(), Some(comp))]));
+            result.insert(
+                period.clone(),
+                HashMap::from([("inventories".to_string(), Some(comp))]),
+            );
             continue;
         }
 
@@ -126,7 +140,13 @@ fn build_concept_lookup(artifact_root: &Path) -> (LookupByPath, LookupByBasename
         if target_ns.is_empty() {
             continue;
         }
-        extract_xsd_elements(&content, xsd_path, &target_ns, &mut by_path, &mut by_basename);
+        extract_xsd_elements(
+            &content,
+            xsd_path,
+            &target_ns,
+            &mut by_path,
+            &mut by_basename,
+        );
     }
 
     (by_path, by_basename)
@@ -193,9 +213,25 @@ fn extract_xsd_elements(
                 }
                 let concept = (target_ns.to_string(), name);
                 if !element_id.is_empty() {
-                    let key = (xsd_path.to_path_buf().canonicalize().unwrap_or_else(|_| xsd_path.to_path_buf()), element_id.clone());
+                    let key = (
+                        xsd_path
+                            .to_path_buf()
+                            .canonicalize()
+                            .unwrap_or_else(|_| xsd_path.to_path_buf()),
+                        element_id.clone(),
+                    );
                     by_path.insert(key, concept.clone());
-                    by_basename.insert((xsd_path.file_name().unwrap_or_default().to_string_lossy().to_string(), element_id), concept);
+                    by_basename.insert(
+                        (
+                            xsd_path
+                                .file_name()
+                                .unwrap_or_default()
+                                .to_string_lossy()
+                                .to_string(),
+                            element_id,
+                        ),
+                        concept,
+                    );
                 }
             }
             Ok(Event::Eof) => break,
@@ -244,9 +280,7 @@ fn resolve_locator_concept(
                 .to_string_lossy();
             // URL-decode
             let decoded = urldecode(&basename);
-            return by_basename
-                .get(&(decoded, fragment.to_string()))
-                .cloned();
+            return by_basename.get(&(decoded, fragment.to_string())).cloned();
         }
         let resolved = base_path
             .parent()
@@ -256,13 +290,17 @@ fn resolve_locator_concept(
         if let Some(concept) = by_path.get(&(canonical.clone(), fragment.to_string())) {
             return Some(concept.clone());
         }
-        let basename = canonical.file_name().unwrap_or_default().to_string_lossy().to_string();
-        return by_basename
-            .get(&(basename, fragment.to_string()))
-            .cloned();
+        let basename = canonical
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string();
+        return by_basename.get(&(basename, fragment.to_string())).cloned();
     }
 
-    let canonical = base_path.canonicalize().unwrap_or_else(|_| base_path.to_path_buf());
+    let canonical = base_path
+        .canonicalize()
+        .unwrap_or_else(|_| base_path.to_path_buf());
     by_path.get(&(canonical, fragment.to_string())).cloned()
 }
 
@@ -297,7 +335,8 @@ fn hex_digit(b: u8) -> Option<u8> {
 }
 
 pub type CalculationGraphs = HashMap<String, HashMap<ConceptKey, Vec<CalculationEdge>>>;
-pub type PresentationGraphs = HashMap<String, HashMap<ConceptKey, std::collections::HashSet<ConceptKey>>>;
+pub type PresentationGraphs =
+    HashMap<String, HashMap<ConceptKey, std::collections::HashSet<ConceptKey>>>;
 
 fn build_calculation_graphs(
     artifact_root: &Path,
@@ -307,7 +346,10 @@ fn build_calculation_graphs(
     let mut graphs: CalculationGraphs = HashMap::new();
     let mut cal_paths: Vec<PathBuf> = Vec::new();
     collect_files_recursive(artifact_root, "xml", &mut cal_paths);
-    cal_paths.retain(|p| p.file_name().is_some_and(|n| n.to_string_lossy().ends_with("_cal.xml")));
+    cal_paths.retain(|p| {
+        p.file_name()
+            .is_some_and(|n| n.to_string_lossy().ends_with("_cal.xml"))
+    });
     cal_paths.sort();
 
     for cal_path in &cal_paths {
@@ -484,7 +526,10 @@ fn build_presentation_graphs(
     let mut graphs: PresentationGraphs = HashMap::new();
     let mut pre_paths: Vec<PathBuf> = Vec::new();
     collect_files_recursive(artifact_root, "xml", &mut pre_paths);
-    pre_paths.retain(|p| p.file_name().is_some_and(|n| n.to_string_lossy().ends_with("_pre.xml")));
+    pre_paths.retain(|p| {
+        p.file_name()
+            .is_some_and(|n| n.to_string_lossy().ends_with("_pre.xml"))
+    });
     pre_paths.sort();
 
     for pre_path in &pre_paths {
@@ -695,7 +740,13 @@ fn calculation_candidates(
 
         let mut memo: HashMap<ConceptKey, Option<f64>> = HashMap::new();
         for root in roots {
-            if let Some(v) = evaluate_calculation(graph, root, facts, &mut memo, &mut std::collections::HashSet::new()) {
+            if let Some(v) = evaluate_calculation(
+                graph,
+                root,
+                facts,
+                &mut memo,
+                &mut std::collections::HashSet::new(),
+            ) {
                 candidates.push(v);
             }
         }
@@ -733,9 +784,7 @@ fn evaluate_calculation(
 
     let mut child_values: Vec<f64> = Vec::new();
     for edge in graph.get(concept).into_iter().flatten() {
-        if let Some(child_val) =
-            evaluate_calculation(graph, &edge.child, facts, memo, visiting)
-        {
+        if let Some(child_val) = evaluate_calculation(graph, &edge.child, facts, memo, visiting) {
             child_values.push(edge.weight * child_val);
         }
     }
@@ -880,14 +929,14 @@ fn unique_candidate(
 fn component_sum(facts: &HashMap<ConceptKey, Option<f64>>) -> f64 {
     facts
         .iter()
-        .filter(|(concept, value)| {
-            xml_util::is_inventory_component(&concept.1) && value.is_some()
-        })
+        .filter(|(concept, value)| xml_util::is_inventory_component(&concept.1) && value.is_some())
         .map(|(_, v)| v.unwrap())
         .sum()
 }
 
-fn unknown_inventory_like_tags(facts: &HashMap<ConceptKey, Option<f64>>) -> std::collections::HashSet<String> {
+fn unknown_inventory_like_tags(
+    facts: &HashMap<ConceptKey, Option<f64>>,
+) -> std::collections::HashSet<String> {
     facts
         .iter()
         .filter(|(concept, value)| {

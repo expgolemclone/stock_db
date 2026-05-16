@@ -4,6 +4,7 @@ use pyo3::prelude::*;
 mod artifact;
 mod financials;
 mod inventory;
+mod share_classes;
 mod types;
 mod xml_util;
 
@@ -38,6 +39,7 @@ impl From<InventoriesTagMismatchError> for PyErr {
 fn _edinet_xbrl(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(parse_inventories, m)?)?;
     m.add_function(wrap_pyfunction!(parse_financials, m)?)?;
+    m.add_function(wrap_pyfunction!(parse_share_classes, m)?)?;
     Ok(())
 }
 
@@ -98,4 +100,28 @@ fn parse_financials(py: Python<'_>, path: &str) -> PyResult<PyObject> {
         outer.set_item(period, mid)?;
     }
     Ok(outer.into())
+}
+
+/// Parse an EDINET XBRL artifact and return share class issued-share details.
+///
+/// Returns: list[dict[str, str | float | bool]]
+#[pyfunction]
+fn parse_share_classes(py: Python<'_>, path: &str) -> PyResult<PyObject> {
+    let artifact = py.allow_threads(|| {
+        artifact::load_xbrl_artifact(path).map_err(|e| PyRuntimeError::new_err(e))
+    })?;
+    let result = py.allow_threads(|| share_classes::parse_share_classes_from_artifact(&artifact));
+
+    let rows = pyo3::types::PyList::empty(py);
+    for row in &result {
+        let item = pyo3::types::PyDict::new(py);
+        item.set_item("period", &row.period)?;
+        item.set_item("class_key", &row.class_key)?;
+        item.set_item("class_name", &row.class_name)?;
+        item.set_item("shares", row.shares)?;
+        item.set_item("is_preferred", row.is_preferred)?;
+        item.set_item("source_kind", &row.source_kind)?;
+        rows.append(item)?;
+    }
+    Ok(rows.into())
 }

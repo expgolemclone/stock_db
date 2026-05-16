@@ -11,8 +11,13 @@ from typing import Sequence
 from stock_db.paths import STOCKS_DB_PATH, cli_defaults
 from stock_db.sources.edinet.xbrl_bs_parser import InventoriesTagMismatchError
 from stock_db.sources.edinet.xbrl_financials_parser import parse_xbrl_financials
+from stock_db.sources.edinet.xbrl_share_classes_parser import (
+    ShareClassRow,
+    parse_xbrl_share_classes,
+)
 from stock_db.storage.connection import get_connection
 from stock_db.storage.financials import replace_financial_items_for_ticker_sources
+from stock_db.storage.share_classes import replace_share_classes_for_ticker_source
 
 _SOURCE = "edinet_xbrl"
 _REPLACED_SOURCES = (
@@ -27,9 +32,10 @@ _REPLACED_SOURCES = (
 def _parse_ticker(
     ticker: str,
     rows: list[sqlite3.Row],
-) -> tuple[str, dict[str, dict[str, dict[str, float | None]]] | None]:
-    """Parse all XBRL artifacts for one ticker. Returns (ticker, merged) or (ticker, None) on error."""
+) -> tuple[str, dict[str, dict[str, dict[str, float | None]]] | None, list[ShareClassRow]]:
+    """Parse all XBRL artifacts for one ticker."""
     merged: dict[str, dict[str, dict[str, float | None]]] = {}
+    share_classes_by_key: dict[tuple[str, str], ShareClassRow] = {}
     for row in rows:
         parsed = parse_xbrl_financials(str(row["xbrl_path"]))
         for period, statements in parsed.items():
@@ -37,7 +43,24 @@ def _parse_ticker(
             for statement, items in statements.items():
                 statement_bucket = period_bucket.setdefault(statement, {})
                 statement_bucket.update(items)
-    return ticker, merged if merged else None
+        for share_class in parse_xbrl_share_classes(str(row["xbrl_path"])):
+            key = (share_class["period"], share_class["class_name"])
+            existing = share_classes_by_key.get(key)
+            if existing is None or _should_replace_share_class(existing, share_class):
+                share_classes_by_key[key] = share_class
+    return ticker, merged if merged else None, list(share_classes_by_key.values())
+
+
+def _should_replace_share_class(existing: ShareClassRow, candidate: ShareClassRow) -> bool:
+    existing_priority = _share_class_source_priority(existing["source_kind"])
+    candidate_priority = _share_class_source_priority(candidate["source_kind"])
+    return candidate_priority <= existing_priority
+
+
+def _share_class_source_priority(source_kind: str) -> int:
+    if source_kind == "classes_of_shares_axis":
+        return 0
+    return 1
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -116,19 +139,26 @@ def main(argv: Sequence[str] | None = None) -> int:
             for i, ticker in enumerate(tickers, 1):
                 logger.info("[%d/%d] Parsing %s", i, len(tickers), ticker)
                 try:
-                    ticker_, merged = _parse_ticker(ticker, grouped[ticker])
+                    ticker_, merged, share_classes = _parse_ticker(ticker, grouped[ticker])
                 except InventoriesTagMismatchError as exc:
                     logger.error("  %s: %s", ticker, exc)
                     errors += 1
                     continue
 
-                if merged is None:
-                    logger.info("  %s: no parseable financial facts", ticker)
+                if merged is None and not share_classes:
+                    logger.info("  %s: no parseable financial or share-class facts", ticker)
                     continue
 
-                db_rows = _build_db_rows(ticker, merged)
-                _write_to_db(conn, ticker, db_rows)
-                logger.info("  %s: %d items across %d periods", ticker, len(db_rows), len(merged))
+                db_rows = _build_db_rows(ticker, merged or {})
+                share_class_rows = _build_share_class_db_rows(ticker, share_classes)
+                _write_to_db(conn, ticker, db_rows, share_class_rows)
+                logger.info(
+                    "  %s: %d items across %d periods, %d share classes",
+                    ticker,
+                    len(db_rows),
+                    len(merged or {}),
+                    len(share_class_rows),
+                )
                 ok += 1
         else:
             # Parallel path: workers parse, main thread writes
@@ -141,21 +171,28 @@ def main(argv: Sequence[str] | None = None) -> int:
                 for i, future in enumerate(as_completed(futures), 1):
                     ticker = futures[future]
                     try:
-                        _, merged = future.result()
+                        _, merged, share_classes = future.result()
                     except InventoriesTagMismatchError as exc:
                         logger.error("[%d/%d] %s: %s", i, len(tickers), ticker, exc)
                         errors += 1
                         continue
 
-                    if merged is None:
-                        logger.info("[%d/%d] %s: no parseable financial facts", i, len(tickers), ticker)
+                    if merged is None and not share_classes:
+                        logger.info(
+                            "[%d/%d] %s: no parseable financial or share-class facts",
+                            i,
+                            len(tickers),
+                            ticker,
+                        )
                         continue
 
-                    db_rows = _build_db_rows(ticker, merged)
-                    _write_to_db(conn, ticker, db_rows)
+                    db_rows = _build_db_rows(ticker, merged or {})
+                    share_class_rows = _build_share_class_db_rows(ticker, share_classes)
+                    _write_to_db(conn, ticker, db_rows, share_class_rows)
                     logger.info(
-                        "[%d/%d] %s: %d items across %d periods",
-                        i, len(tickers), ticker, len(db_rows), len(merged),
+                        "[%d/%d] %s: %d items across %d periods, %d share classes",
+                        i, len(tickers), ticker, len(db_rows), len(merged or {}),
+                        len(share_class_rows),
                     )
                     ok += 1
 
@@ -186,16 +223,48 @@ def _build_db_rows(
     return db_rows
 
 
+def _build_share_class_db_rows(
+    ticker: str,
+    share_classes: list[ShareClassRow],
+) -> list[dict[str, str | float | int]]:
+    db_rows: list[dict[str, str | float | int]] = []
+    for row in sorted(
+        share_classes,
+        key=lambda item: (item["period"], item["class_name"]),
+        reverse=True,
+    ):
+        db_rows.append(
+            {
+                "ticker": ticker,
+                "period": row["period"],
+                "source": _SOURCE,
+                "class_key": row["class_key"],
+                "class_name": row["class_name"],
+                "shares": row["shares"],
+                "is_preferred": 1 if row["is_preferred"] else 0,
+                "source_kind": row["source_kind"],
+            }
+        )
+    return db_rows
+
+
 def _write_to_db(
     conn: sqlite3.Connection,
     ticker: str,
     db_rows: list[dict[str, str | float | None]],
+    share_class_rows: list[dict[str, str | float | int]],
 ) -> None:
     replace_financial_items_for_ticker_sources(
         conn,
         ticker=ticker,
         sources=_REPLACED_SOURCES,
         rows=db_rows,
+    )
+    replace_share_classes_for_ticker_source(
+        conn,
+        ticker=ticker,
+        source=_SOURCE,
+        rows=share_class_rows,
     )
     conn.commit()
 

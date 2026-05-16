@@ -15,19 +15,26 @@ pub const XS_NS: &str = "http://www.w3.org/2001/XMLSchema";
 
 /// Namespaces whose facts should be skipped in instance document extraction.
 pub const IGNORED_FACT_NAMESPACES: &[&str] = &[
-    XHTML_NS,
-    IX_NS,
-    XBRLI_NS,
-    XBRLDI_NS,
-    XLINK_NS,
-    LINK_NS,
-    XS_NS,
-    XML_NS,
+    XHTML_NS, IX_NS, XBRLI_NS, XBRLDI_NS, XLINK_NS, LINK_NS, XS_NS, XML_NS,
 ];
 
 /// Shares-denominated tag names used by the normalized financial parser.
 pub const SHARES_OUTSTANDING_TAGS: &[&str] = &[
     "NumberOfIssuedSharesAsOfFiscalYearEndIssuedSharesTotalNumberOfSharesEtc",
+    "NumberOfIssuedSharesAsOfFilingDateIssuedSharesTotalNumberOfSharesEtc",
+    "NumberOfIssuedSharesIssuedSharesTotalNumberOfSharesEtc",
+];
+
+const ISSUED_SHARES_FACT_PRIORITIES: &[(&str, u8)] = &[
+    (
+        "NumberOfIssuedSharesAsOfFiscalYearEndIssuedSharesTotalNumberOfSharesEtc",
+        0,
+    ),
+    (
+        "NumberOfIssuedSharesAsOfFilingDateIssuedSharesTotalNumberOfSharesEtc",
+        1,
+    ),
+    ("NumberOfIssuedSharesIssuedSharesTotalNumberOfSharesEtc", 2),
 ];
 
 /// Patterns for fact document files.
@@ -250,6 +257,101 @@ pub fn is_relevant_shares_fact(short_name: &str) -> bool {
     SHARES_OUTSTANDING_TAGS.contains(&short_name)
 }
 
+pub fn issued_shares_fact_priority(short_name: &str) -> Option<u8> {
+    ISSUED_SHARES_FACT_PRIORITIES
+        .iter()
+        .find_map(|(name, priority)| (*name == short_name).then_some(*priority))
+}
+
+pub fn concept_key_string(concept: &ConceptKey) -> String {
+    if concept.0.is_empty() {
+        concept.1.clone()
+    } else {
+        format!("{}#{}", concept.0, concept.1)
+    }
+}
+
+pub fn is_total_share_class_member(local_name: &str) -> bool {
+    local_name == "TotalClassesOfSharesMember"
+}
+
+pub fn share_class_name_from_member(local_name: &str, label: Option<&str>) -> String {
+    if let Some(cleaned) = clean_share_class_label(label) {
+        return cleaned;
+    }
+    match local_name {
+        "OrdinaryShareMember" => "普通株式".to_string(),
+        "ClassAPreferredSharesMember" => "Ａ種優先株式".to_string(),
+        "ClassBPreferredSharesMember" => "Ｂ種優先株式".to_string(),
+        "ClassOnePreferredSharesMember" => "第一種優先株式".to_string(),
+        "ClassTwoPreferredSharesMember" => "第二種優先株式".to_string(),
+        "ClassASharesMember" => "Ａ種種類株式".to_string(),
+        _ => local_name.trim_end_matches("Member").to_string(),
+    }
+}
+
+pub fn share_class_name_from_concept(local_name: &str, label: Option<&str>) -> String {
+    if let Some(cleaned) = clean_share_class_label(label) {
+        return cleaned;
+    }
+    local_name
+        .replace("TotalNumberOfIssuedShares", "")
+        .replace("NumberOfIssuedShares", "")
+        .replace("SummaryOfBusinessResults", "")
+        .replace("KeyFinancialData", "")
+        .trim_matches('_')
+        .to_string()
+}
+
+pub fn is_preferred_share_class(local_name: &str, class_name: &str) -> bool {
+    local_name.contains("PreferredShares")
+        || local_name.contains("PreferredShare")
+        || class_name.contains("優先株式")
+        || class_name.to_ascii_lowercase().contains("preferred shares")
+}
+
+pub fn is_class_specific_issued_shares_concept(local_name: &str, label: Option<&str>) -> bool {
+    let has_issued_shares = local_name.contains("TotalNumberOfIssuedShares")
+        || local_name.contains("NumberOfIssuedShares");
+    if !has_issued_shares || SHARES_OUTSTANDING_TAGS.contains(&local_name) {
+        return false;
+    }
+    let label_text = label.unwrap_or("");
+    let haystack = format!("{local_name} {label_text}");
+    haystack.contains("PreferredShares")
+        || haystack.contains("OrdinaryShares")
+        || haystack.contains("ClassA")
+        || haystack.contains("ClassB")
+        || haystack.contains("ClassC")
+        || haystack.contains("ClassD")
+        || haystack.contains("ClassE")
+        || haystack.contains("優先株式")
+        || haystack.contains("普通株式")
+        || haystack.contains("種類株式")
+}
+
+fn clean_share_class_label(label: Option<&str>) -> Option<String> {
+    let label = label?;
+    for raw_part in label.split(['、', ',']) {
+        let part = raw_part
+            .trim()
+            .trim_end_matches(" [メンバー]")
+            .trim_end_matches(" [member]")
+            .trim();
+        if part.is_empty()
+            || part.contains("発行済株式総数")
+            || part.contains("経営指標等")
+            || part.eq_ignore_ascii_case("key financial data")
+        {
+            continue;
+        }
+        if part.contains("株式") || part.to_ascii_lowercase().contains("shares") {
+            return Some(part.to_string());
+        }
+    }
+    None
+}
+
 /// Extract the local name from a namespaced tag like `{uri}local` or `prefix:local`.
 pub fn local_name(tag: &str) -> String {
     if let Some(idx) = tag.rfind('}') {
@@ -415,9 +517,7 @@ pub fn should_use_context(ctx: &ContextInfo, mode: crate::types::ContextMode) ->
                 && !ctx.has_dimensions
         }
         crate::types::ContextMode::Financial => {
-            ctx.period.is_some()
-                && !ctx.is_non_consolidated
-                && !ctx.has_dimensions
+            ctx.period.is_some() && !ctx.is_non_consolidated && !ctx.has_dimensions
         }
         crate::types::ContextMode::NonConsolidatedInstant => {
             ctx.is_instant
@@ -426,14 +526,10 @@ pub fn should_use_context(ctx: &ContextInfo, mode: crate::types::ContextMode) ->
                 && ctx.dimension_count == 1
         }
         crate::types::ContextMode::NonConsolidatedFinancial => {
-            ctx.period.is_some()
-                && ctx.is_non_consolidated
-                && ctx.dimension_count == 1
+            ctx.period.is_some() && ctx.is_non_consolidated && ctx.dimension_count == 1
         }
         crate::types::ContextMode::NonConsolidatedDividend => {
-            ctx.period.is_some()
-                && ctx.is_non_consolidated
-                && ctx.dimension_count == 1
+            ctx.period.is_some() && ctx.is_non_consolidated && ctx.dimension_count == 1
         }
     }
 }

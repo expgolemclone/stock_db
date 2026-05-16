@@ -1,12 +1,15 @@
 use std::collections::HashMap;
 use std::path::Path;
 
+use quick_xml::Reader;
 use quick_xml::events::Event;
 use quick_xml::name::QName;
-use quick_xml::Reader;
 use rayon::prelude::*;
 
-use crate::types::{ConceptKey, ContextInfo, ContextMode, LoadedXbrlArtifact, UnitKind, UnitMap};
+use crate::types::{
+    ConceptKey, ContextInfo, ContextMode, ExplicitMember, LoadedXbrlArtifact, ShareClassFact,
+    UnitKind, UnitMap,
+};
 use crate::xml_util;
 
 /// Result of parsing a single XBRL document.
@@ -20,7 +23,7 @@ struct ParsedDocument {
 
 fn parse_document_parts(content: &str) -> ParsedDocument {
     let nsmap = extract_nsmap(content);
-    let contexts = extract_contexts(content);
+    let contexts = extract_contexts(content, &nsmap);
     let units = extract_units(content);
     let inline_facts = extract_inline_facts(content);
     let instance_facts = extract_instance_facts(content, &nsmap);
@@ -46,8 +49,10 @@ pub fn load_xbrl_artifact(path: &str) -> Result<LoadedXbrlArtifact, String> {
         if ext.to_lowercase() != "xbrl" {
             return Err(format!("Not an XBRL file: {}", path));
         }
-        vec![xml_util::read_file_content(artifact_path)
-            .ok_or_else(|| format!("Cannot read file: {}", path))?]
+        vec![
+            xml_util::read_file_content(artifact_path)
+                .ok_or_else(|| format!("Cannot read file: {}", path))?,
+        ]
     } else if artifact_path.is_dir() {
         let xbrl_dir = artifact_path.join("XBRL");
         if !xbrl_dir.is_dir() {
@@ -61,6 +66,7 @@ pub fn load_xbrl_artifact(path: &str) -> Result<LoadedXbrlArtifact, String> {
                 non_consolidated_inventory_facts: HashMap::new(),
                 non_consolidated_facts: HashMap::new(),
                 shares_facts: HashMap::new(),
+                share_class_facts: Vec::new(),
             });
         }
         // Prefer PublicDoc/*.xbrl as canonical fact document
@@ -130,14 +136,25 @@ pub fn load_xbrl_artifact(path: &str) -> Result<LoadedXbrlArtifact, String> {
     let mut non_consolidated_facts: HashMap<String, HashMap<ConceptKey, Option<f64>>> =
         HashMap::new();
     let mut shares_facts: HashMap<String, HashMap<ConceptKey, Option<f64>>> = HashMap::new();
+    let mut share_class_facts: Vec<ShareClassFact> = Vec::new();
+    let label_map = load_label_map(artifact_path);
 
     for doc in &parsed_docs {
         for fact in &doc.inline_facts {
-            let ctx = match fact.context_ref.as_ref().and_then(|id| all_contexts.get(id)) {
+            let ctx = match fact
+                .context_ref
+                .as_ref()
+                .and_then(|id| all_contexts.get(id))
+            {
                 Some(c) => c,
                 None => continue,
             };
-            if all_units.get(&fact.unit_ref).copied().unwrap_or(UnitKind::Other) == UnitKind::Other {
+            if all_units
+                .get(&fact.unit_ref)
+                .copied()
+                .unwrap_or(UnitKind::Other)
+                == UnitKind::Other
+            {
                 continue;
             }
             let concept = match xml_util::resolve_qname(&fact.name, &doc.nsmap, "") {
@@ -149,7 +166,10 @@ pub fn load_xbrl_artifact(path: &str) -> Result<LoadedXbrlArtifact, String> {
             } else {
                 xml_util::parse_xbrl_value(&fact.text_value, "", &fact.scale, &fact.sign)
             };
-            let unit_kind = all_units.get(&fact.unit_ref).copied().unwrap_or(UnitKind::Other);
+            let unit_kind = all_units
+                .get(&fact.unit_ref)
+                .copied()
+                .unwrap_or(UnitKind::Other);
             store_fact_buckets(
                 ctx,
                 concept,
@@ -161,15 +181,26 @@ pub fn load_xbrl_artifact(path: &str) -> Result<LoadedXbrlArtifact, String> {
                 &mut non_consolidated_inventory_facts,
                 &mut non_consolidated_facts,
                 &mut shares_facts,
+                &mut share_class_facts,
+                &label_map,
             )?;
         }
 
         for fact in &doc.instance_facts {
-            let ctx = match fact.context_ref.as_ref().and_then(|id| all_contexts.get(id)) {
+            let ctx = match fact
+                .context_ref
+                .as_ref()
+                .and_then(|id| all_contexts.get(id))
+            {
                 Some(c) => c,
                 None => continue,
             };
-            if all_units.get(&fact.unit_ref).copied().unwrap_or(UnitKind::Other) == UnitKind::Other {
+            if all_units
+                .get(&fact.unit_ref)
+                .copied()
+                .unwrap_or(UnitKind::Other)
+                == UnitKind::Other
+            {
                 continue;
             }
             let concept = match xml_util::resolve_qname(&fact.tag, &doc.nsmap, "") {
@@ -186,7 +217,10 @@ pub fn load_xbrl_artifact(path: &str) -> Result<LoadedXbrlArtifact, String> {
                     &fact.sign,
                 )
             };
-            let unit_kind = all_units.get(&fact.unit_ref).copied().unwrap_or(UnitKind::Other);
+            let unit_kind = all_units
+                .get(&fact.unit_ref)
+                .copied()
+                .unwrap_or(UnitKind::Other);
             store_fact_buckets(
                 ctx,
                 concept,
@@ -198,6 +232,8 @@ pub fn load_xbrl_artifact(path: &str) -> Result<LoadedXbrlArtifact, String> {
                 &mut non_consolidated_inventory_facts,
                 &mut non_consolidated_facts,
                 &mut shares_facts,
+                &mut share_class_facts,
+                &label_map,
             )?;
         }
     }
@@ -211,6 +247,7 @@ pub fn load_xbrl_artifact(path: &str) -> Result<LoadedXbrlArtifact, String> {
         non_consolidated_inventory_facts,
         non_consolidated_facts,
         shares_facts,
+        share_class_facts,
     })
 }
 
@@ -279,6 +316,8 @@ fn store_fact_buckets(
     non_consolidated_inventory_facts: &mut HashMap<String, HashMap<ConceptKey, Option<f64>>>,
     non_consolidated_facts: &mut HashMap<String, HashMap<ConceptKey, Option<f64>>>,
     shares_facts: &mut HashMap<String, HashMap<ConceptKey, Option<f64>>>,
+    share_class_facts: &mut Vec<ShareClassFact>,
+    label_map: &HashMap<String, String>,
 ) -> Result<(), String> {
     let period = match &ctx.period {
         Some(p) => p.clone(),
@@ -286,6 +325,9 @@ fn store_fact_buckets(
     };
 
     if unit_kind == UnitKind::Shares {
+        if let Some(row) = build_share_class_fact(ctx, &concept, value, label_map) {
+            share_class_facts.push(row);
+        }
         if xml_util::is_relevant_shares_fact(&concept.1)
             && xml_util::should_use_context(ctx, ContextMode::Instant)
         {
@@ -322,13 +364,69 @@ fn store_fact_buckets(
     Ok(())
 }
 
+fn build_share_class_fact(
+    ctx: &ContextInfo,
+    concept: &ConceptKey,
+    value: Option<f64>,
+    label_map: &HashMap<String, String>,
+) -> Option<ShareClassFact> {
+    let shares = value?;
+    let period = ctx.period.clone()?;
+
+    if let Some(priority) = xml_util::issued_shares_fact_priority(&concept.1) {
+        if let Some(member) = share_class_member(ctx) {
+            if xml_util::is_total_share_class_member(&member.member.1) {
+                return None;
+            }
+            let label = label_map.get(&member.member.1).map(String::as_str);
+            let class_name = xml_util::share_class_name_from_member(&member.member.1, label);
+            let is_preferred = xml_util::is_preferred_share_class(&member.member.1, &class_name);
+            return Some(ShareClassFact {
+                period,
+                class_key: xml_util::concept_key_string(&member.member),
+                class_name,
+                shares,
+                is_preferred,
+                source_kind: "classes_of_shares_axis".to_string(),
+                fact_priority: priority,
+            });
+        }
+    }
+
+    let label = label_map.get(&concept.1).map(String::as_str);
+    if xml_util::is_class_specific_issued_shares_concept(&concept.1, label) {
+        let class_name = xml_util::share_class_name_from_concept(&concept.1, label);
+        let is_preferred = xml_util::is_preferred_share_class(&concept.1, &class_name);
+        return Some(ShareClassFact {
+            period,
+            class_key: xml_util::concept_key_string(concept),
+            class_name,
+            shares,
+            is_preferred,
+            source_kind: "class_specific_concept".to_string(),
+            fact_priority: 0,
+        });
+    }
+
+    None
+}
+
+fn share_class_member(ctx: &ContextInfo) -> Option<&ExplicitMember> {
+    ctx.explicit_members
+        .iter()
+        .find(|member| member.dimension.1 == "ClassesOfSharesAxis")
+}
+
 // ── XML extraction passes ──
 
 fn qname_str(q: QName<'_>) -> String {
     String::from_utf8_lossy(q.as_ref()).to_string()
 }
 
-fn attr_str(attrs: &mut quick_xml::events::attributes::Attributes, target_local: &str) -> Option<String> {
+fn attr_str(
+    attrs: &mut quick_xml::events::attributes::Attributes,
+    target_local: &str,
+) -> Option<String> {
     for attr in attrs {
         if let Ok(attr) = attr {
             let key = qname_str(attr.key);
@@ -369,8 +467,155 @@ fn extract_nsmap(content: &str) -> HashMap<String, String> {
     nsmap
 }
 
+#[derive(Clone)]
+struct LabelResource {
+    text: String,
+    role: String,
+    lang: String,
+}
+
+fn load_label_map(artifact_path: &Path) -> HashMap<String, String> {
+    let mut paths = Vec::new();
+    if artifact_path.is_file() {
+        if let Some(parent) = artifact_path.parent() {
+            collect_label_paths(parent, &mut paths);
+        }
+    } else {
+        let public_doc = artifact_path.join("XBRL").join("PublicDoc");
+        if public_doc.is_dir() {
+            collect_label_paths(&public_doc, &mut paths);
+        }
+    }
+
+    let mut labels: HashMap<String, String> = HashMap::new();
+    for path in paths {
+        if let Some(content) = xml_util::read_file_content(&path) {
+            for (key, value) in extract_label_map(&content) {
+                let replace = labels.get(&key).is_none_or(|existing| {
+                    !contains_japanese(existing) && contains_japanese(&value)
+                });
+                if replace {
+                    labels.insert(key, value);
+                }
+            }
+        }
+    }
+    labels
+}
+
+fn collect_label_paths(dir: &Path, result: &mut Vec<std::path::PathBuf>) {
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                collect_label_paths(&path, result);
+            } else if path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| name.contains("_lab") && name.ends_with(".xml"))
+            {
+                result.push(path);
+            }
+        }
+    }
+}
+
+fn extract_label_map(content: &str) -> HashMap<String, String> {
+    let mut locs: HashMap<String, String> = HashMap::new();
+    let mut resources: HashMap<String, LabelResource> = HashMap::new();
+    let mut arcs: Vec<(String, String)> = Vec::new();
+    let mut reader = Reader::from_str(content);
+    reader.config_mut().trim_text(true);
+    let mut buf = Vec::new();
+
+    loop {
+        match reader.read_event_into(&mut buf) {
+            Ok(Event::Start(e)) => {
+                let local = xml_util::local_name(&qname_str(e.name()));
+                if local == "label" {
+                    let attrs = collect_attrs(&mut e.attributes());
+                    let text = read_text_until_end(&mut reader, "label");
+                    if let Some(label_id) = attrs.get("label") {
+                        resources.insert(
+                            label_id.clone(),
+                            LabelResource {
+                                text,
+                                role: attrs.get("role").cloned().unwrap_or_default(),
+                                lang: attrs.get("lang").cloned().unwrap_or_default(),
+                            },
+                        );
+                    }
+                }
+            }
+            Ok(Event::Empty(e)) => {
+                let local = xml_util::local_name(&qname_str(e.name()));
+                let attrs = collect_attrs(&mut e.attributes());
+                if local == "loc" {
+                    if let (Some(label_id), Some(href)) = (attrs.get("label"), attrs.get("href")) {
+                        if let Some((_, fragment)) = href.rsplit_once('#') {
+                            locs.insert(label_id.clone(), fragment.to_string());
+                        }
+                    }
+                } else if local == "labelArc" {
+                    if let (Some(from), Some(to)) = (attrs.get("from"), attrs.get("to")) {
+                        arcs.push((from.clone(), to.clone()));
+                    }
+                }
+            }
+            Ok(Event::Eof) => break,
+            _ => {}
+        }
+        buf.clear();
+    }
+
+    let mut scored: HashMap<String, (u8, String)> = HashMap::new();
+    for (from, to) in arcs {
+        let Some(concept) = locs.get(&from) else {
+            continue;
+        };
+        let Some(resource) = resources.get(&to) else {
+            continue;
+        };
+        let score = label_score(resource);
+        let replace = scored
+            .get(concept)
+            .is_none_or(|(existing_score, _)| score < *existing_score);
+        if replace {
+            scored.insert(concept.clone(), (score, resource.text.clone()));
+        }
+    }
+
+    let mut labels = HashMap::new();
+    for (concept, (_, text)) in scored {
+        if let Some((_, local)) = concept.rsplit_once('_') {
+            labels.insert(local.to_string(), text.clone());
+        }
+        labels.insert(concept, text);
+    }
+    labels
+}
+
+fn label_score(resource: &LabelResource) -> u8 {
+    let is_standard = resource.role.ends_with("/label");
+    let is_ja = resource.lang == "ja";
+    match (is_ja, is_standard) {
+        (true, true) => 0,
+        (true, false) => 1,
+        (false, true) => 2,
+        (false, false) => 3,
+    }
+}
+
+fn contains_japanese(text: &str) -> bool {
+    text.chars()
+        .any(|c| ('\u{3040}'..='\u{30ff}').contains(&c) || ('\u{4e00}'..='\u{9fff}').contains(&c))
+}
+
 /// Extract all context definitions using event-based parsing.
-fn extract_contexts(content: &str) -> HashMap<String, ContextInfo> {
+fn extract_contexts(
+    content: &str,
+    nsmap: &HashMap<String, String>,
+) -> HashMap<String, ContextInfo> {
     let mut contexts: HashMap<String, ContextInfo> = HashMap::new();
     let mut reader = Reader::from_str(content);
     reader.config_mut().trim_text(true);
@@ -385,6 +630,7 @@ fn extract_contexts(content: &str) -> HashMap<String, ContextInfo> {
     let mut has_dimensions = false;
     let mut is_non_consolidated = false;
     let mut dimension_count: usize = 0;
+    let mut explicit_members: Vec<ExplicitMember> = Vec::new();
     let mut text_buf = String::new();
     let mut collect_text_for: Option<String> = None; // local name we're collecting text for
 
@@ -403,6 +649,7 @@ fn extract_contexts(content: &str) -> HashMap<String, ContextInfo> {
                     has_dimensions = false;
                     is_non_consolidated = false;
                     dimension_count = 0;
+                    explicit_members.clear();
                     text_buf.clear();
                     collect_text_for = None;
                     for attr in e.attributes() {
@@ -428,29 +675,31 @@ fn extract_contexts(content: &str) -> HashMap<String, ContextInfo> {
                         "explicitMember" => {
                             has_dimensions = true;
                             dimension_count += 1;
-                            let mut dimension_name = String::new();
+                            let mut dimension_qname = String::new();
                             for attr in e.attributes() {
                                 if let Ok(attr) = attr {
                                     let k = xml_util::local_name(
                                         &String::from_utf8_lossy(attr.key.as_ref()).to_string(),
                                     );
                                     if k == "dimension" {
-                                        dimension_name = xml_util::local_name(
-                                            &String::from_utf8_lossy(&attr.value).to_string(),
-                                        );
+                                        dimension_qname =
+                                            String::from_utf8_lossy(&attr.value).to_string();
                                     }
                                 }
                             }
                             // Read the text content for member name
+                            let mut member_qname = String::new();
                             let mut member_buf = Vec::new();
                             loop {
                                 match reader.read_event_into(&mut member_buf) {
                                     Ok(Event::Text(t)) => {
-                                        let member_name = xml_util::local_name(
-                                            &t.unescape().unwrap_or_default().trim().to_string(),
-                                        );
+                                        member_qname =
+                                            t.unescape().unwrap_or_default().trim().to_string();
+                                        let dimension_name = xml_util::local_name(&dimension_qname);
+                                        let member_name = xml_util::local_name(&member_qname);
                                         if member_name == "NonConsolidatedMember"
-                                            || (dimension_name == "ConsolidatedOrNonConsolidatedAxis"
+                                            || (dimension_name
+                                                == "ConsolidatedOrNonConsolidatedAxis"
                                                 && member_name == "NonConsolidatedMember")
                                         {
                                             is_non_consolidated = true;
@@ -461,6 +710,12 @@ fn extract_contexts(content: &str) -> HashMap<String, ContextInfo> {
                                     _ => {}
                                 }
                                 member_buf.clear();
+                            }
+                            if let (Some(dimension), Some(member)) = (
+                                xml_util::resolve_qname(&dimension_qname, nsmap, ""),
+                                xml_util::resolve_qname(&member_qname, nsmap, ""),
+                            ) {
+                                explicit_members.push(ExplicitMember { dimension, member });
                             }
                         }
                         "typedMember" => {
@@ -529,6 +784,7 @@ fn extract_contexts(content: &str) -> HashMap<String, ContextInfo> {
                                 has_dimensions,
                                 is_non_consolidated,
                                 dimension_count,
+                                explicit_members: explicit_members.clone(),
                             },
                         );
                     }
@@ -709,9 +965,7 @@ fn parse_inline_fact_start(
     }
 }
 
-fn parse_inline_fact_empty(
-    attrs: &mut quick_xml::events::attributes::Attributes,
-) -> InlineFact {
+fn parse_inline_fact_empty(attrs: &mut quick_xml::events::attributes::Attributes) -> InlineFact {
     let a = collect_attrs(attrs);
     let name = a.get("name").cloned().unwrap_or_default();
     let context_ref = a.get("contextref").cloned();

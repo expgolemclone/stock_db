@@ -23,7 +23,7 @@ class TestInitDb:
     def test_creates_all_tables(self, db_conn: sqlite3.Connection) -> None:
         tables = _table_names(db_conn)
 
-        assert tables == {"stocks", "financial_items", "prices", "sec_reports"}
+        assert tables == {"stocks", "financial_items", "share_classes", "prices", "sec_reports"}
 
     def test_stocks_columns(self, db_conn: sqlite3.Connection) -> None:
         cols = _column_names(db_conn, "stocks")
@@ -47,6 +47,21 @@ class TestInitDb:
         cols = _column_names(db_conn, "prices")
 
         assert "updated_at" in cols
+
+    def test_share_classes_columns(self, db_conn: sqlite3.Connection) -> None:
+        cols = _column_names(db_conn, "share_classes")
+
+        assert {
+            "ticker",
+            "period",
+            "source",
+            "class_key",
+            "class_name",
+            "shares",
+            "is_preferred",
+            "source_kind",
+            "updated_at",
+        } <= cols
 
     def test_drops_legacy_prices_shares_outstanding_column(self, tmp_path: Path) -> None:
         db_path = tmp_path / "legacy_prices.db"
