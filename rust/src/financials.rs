@@ -114,6 +114,8 @@ const CF_ITEM_CANDIDATES: ItemCandidates = &[
         &[
             "CashAndCashEquivalents",
             "CashAndCashEquivalentsSummaryOfBusinessResults",
+            "CashAndCashEquivalentsIFRS",
+            "CashAndCashEquivalentsIFRSSummaryOfBusinessResults",
         ],
     ),
     (
@@ -121,6 +123,8 @@ const CF_ITEM_CANDIDATES: ItemCandidates = &[
         &[
             "NetCashProvidedByUsedInOperatingActivities",
             "NetCashProvidedByUsedInOperatingActivitiesSummaryOfBusinessResults",
+            "NetCashProvidedByUsedInOperatingActivitiesIFRS",
+            "CashFlowsFromUsedInOperatingActivitiesIFRSSummaryOfBusinessResults",
         ],
     ),
     (
@@ -128,6 +132,8 @@ const CF_ITEM_CANDIDATES: ItemCandidates = &[
         &[
             "NetCashProvidedByUsedInInvestmentActivities",
             "NetCashProvidedByUsedInInvestmentActivitiesSummaryOfBusinessResults",
+            "NetCashProvidedByUsedInInvestingActivitiesIFRS",
+            "CashFlowsFromUsedInInvestingActivitiesIFRSSummaryOfBusinessResults",
         ],
     ),
     (
@@ -135,6 +141,8 @@ const CF_ITEM_CANDIDATES: ItemCandidates = &[
         &[
             "NetCashProvidedByUsedInFinancingActivities",
             "NetCashProvidedByUsedInFinancingActivitiesSummaryOfBusinessResults",
+            "NetCashProvidedByUsedInFinancingActivitiesIFRS",
+            "CashFlowsFromUsedInFinancingActivitiesIFRSSummaryOfBusinessResults",
         ],
     ),
 ];

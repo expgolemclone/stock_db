@@ -75,6 +75,16 @@ def test_extracts_non_consolidated_current_financials_from_real_fixture() -> Non
     assert current["cf"]["investing_cf"] == pytest.approx(840_371_000)
 
 
+def test_extracts_ifrs_cash_flow_tags_from_real_fixture() -> None:
+    parsed = xbrl_financials_parser.parse_xbrl_financials(_xbrl_path("6555"))
+
+    current = parsed["2025-02"]
+    assert current["cf"]["cash_equivalents"] == pytest.approx(578_930_000)
+    assert current["cf"]["operating_cf"] == pytest.approx(406_812_000)
+    assert current["cf"]["investing_cf"] == pytest.approx(-130_134_000)
+    assert current["cf"]["financing_cf"] == pytest.approx(-30_382_000)
+
+
 def test_parses_synthetic_forecast_tags(tmp_path: Path) -> None:
     xbrl = tmp_path / "sample.xbrl"
     xbrl.write_text(
