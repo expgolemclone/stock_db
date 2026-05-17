@@ -79,6 +79,15 @@ def test_extracts_ifrs_cash_flow_tags_from_real_fixture() -> None:
     parsed = xbrl_financials_parser.parse_xbrl_financials(_xbrl_path("6555"))
 
     current = parsed["2025-02"]
+    assert current["bs"]["current_assets"] == pytest.approx(1_088_503_000)
+    assert current["bs"]["total_assets"] == pytest.approx(3_378_277_000)
+    assert current["bs"]["stockholders_equity"] == pytest.approx(2_587_265_000)
+    assert current["bs"]["total_equity"] == pytest.approx(2_551_880_000)
+
+    assert current["pl"]["revenue"] == pytest.approx(2_552_146_000)
+    assert current["pl"]["ordinary_income"] == pytest.approx(-239_502_000)
+    assert current["pl"]["net_income"] == pytest.approx(-276_099_000)
+
     assert current["cf"]["cash_equivalents"] == pytest.approx(578_930_000)
     assert current["cf"]["operating_cf"] == pytest.approx(406_812_000)
     assert current["cf"]["investing_cf"] == pytest.approx(-130_134_000)

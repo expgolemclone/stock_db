@@ -9,9 +9,20 @@ use crate::xml_util;
 type ItemCandidates = &'static [(&'static str, &'static [&'static str])];
 
 const BS_ITEM_CANDIDATES: ItemCandidates = &[
-    ("cash_and_deposits", &["CashAndDeposits"]),
-    ("current_assets", &["CurrentAssets"]),
-    ("fixed_assets", &["NoncurrentAssets", "FixedAssets"]),
+    (
+        "cash_and_deposits",
+        &["CashAndDeposits", "CashAndCashEquivalentsIFRS"],
+    ),
+    ("current_assets", &["CurrentAssets", "CurrentAssetsIFRS"]),
+    (
+        "fixed_assets",
+        &[
+            "NoncurrentAssets",
+            "FixedAssets",
+            "NoncurrentAssetsIFRS",
+            "NonCurrentAssetsIFRS",
+        ],
+    ),
     (
         "tangible_fixed_assets",
         &[
@@ -22,7 +33,11 @@ const BS_ITEM_CANDIDATES: ItemCandidates = &[
     ),
     (
         "intangible_fixed_assets",
-        &["IntangibleAssets", "IntangibleFixedAssets"],
+        &[
+            "IntangibleAssets",
+            "IntangibleFixedAssets",
+            "IntangibleAssetsIFRS",
+        ],
     ),
     ("investment_securities", &["InvestmentSecurities"]),
     (
@@ -32,18 +47,30 @@ const BS_ITEM_CANDIDATES: ItemCandidates = &[
             "AccountsReceivableTrade",
             "NotesAndAccountsReceivableTradeAndContractAssets",
             "TradeAndOtherReceivables",
+            "TradeAndOtherReceivablesIFRS",
         ],
     ),
-    ("current_liabilities", &["CurrentLiabilities"]),
+    (
+        "current_liabilities",
+        &["CurrentLiabilities", "CurrentLiabilitiesIFRS"],
+    ),
     (
         "trade_payables",
         &[
             "NotesAndAccountsPayableTrade",
             "AccountsPayableTrade",
             "TradeAndOtherPayables",
+            "TradeAndOtherPayablesIFRS",
         ],
     ),
-    ("non_current_liabilities", &["NoncurrentLiabilities"]),
+    (
+        "non_current_liabilities",
+        &[
+            "NoncurrentLiabilities",
+            "NoncurrentLiabilitiesIFRS",
+            "NonCurrentLiabilitiesIFRS",
+        ],
+    ),
     (
         "provision_for_directors_retirement_benefits",
         &["ProvisionForDirectorsRetirementBenefits"],
@@ -68,17 +95,26 @@ const BS_ITEM_CANDIDATES: ItemCandidates = &[
             "BondsAndBorrowingsNCLIFRS",
         ],
     ),
-    ("net_assets", &["NetAssets", "Equity"]),
+    ("net_assets", &["NetAssets", "Equity", "EquityIFRS"]),
     (
         "stockholders_equity",
         &[
             "ShareholdersEquity",
             "EquityAttributableToOwnersOfParent",
+            "EquityAttributableToOwnersOfParentIFRS",
+            "EquityAttributableToOwnersOfParentIFRSSummaryOfBusinessResults",
             "OwnersEquity",
         ],
     ),
-    ("total_assets", &["Assets"]),
-    ("total_equity", &["NetAssets", "Equity"]),
+    (
+        "total_assets",
+        &[
+            "Assets",
+            "AssetsIFRS",
+            "TotalAssetsIFRSSummaryOfBusinessResults",
+        ],
+    ),
+    ("total_equity", &["NetAssets", "Equity", "EquityIFRS"]),
 ];
 
 const PL_ITEM_CANDIDATES: ItemCandidates = &[
@@ -87,11 +123,16 @@ const PL_ITEM_CANDIDATES: ItemCandidates = &[
         &[
             "NetSales",
             "Revenue",
+            "RevenueIFRS",
             "RevenuesFromExternalCustomers",
             "NetSalesSummaryOfBusinessResults",
+            "RevenueIFRSSummaryOfBusinessResults",
         ],
     ),
-    ("cost_of_revenue", &["CostOfSales", "CostOfRevenue"]),
+    (
+        "cost_of_revenue",
+        &["CostOfSales", "CostOfRevenue", "CostOfSalesIFRS"],
+    ),
     (
         "provision_for_directors_retirement_benefits_sga",
         &["ProvisionForDirectorsRetirementBenefitsSGA"],
@@ -100,13 +141,23 @@ const PL_ITEM_CANDIDATES: ItemCandidates = &[
         "reversal_of_provision_for_directors_retirement_benefits_noi",
         &["ReversalOfProvisionForDirectorsRetirementBenefitsNOI"],
     ),
-    ("operating_income", &["OperatingIncome", "OperatingProfit"]),
+    (
+        "operating_income",
+        &[
+            "OperatingIncome",
+            "OperatingProfit",
+            "OperatingProfitIFRS",
+            "OperatingProfitIFRSSummaryOfBusinessResults",
+        ],
+    ),
     (
         "ordinary_income",
         &[
             "OrdinaryIncome",
             "OrdinaryProfit",
             "OrdinaryIncomeLossSummaryOfBusinessResults",
+            "ProfitLossBeforeTaxIFRS",
+            "ProfitLossBeforeTaxIFRSSummaryOfBusinessResults",
         ],
     ),
     (
@@ -121,9 +172,11 @@ const PL_ITEM_CANDIDATES: ItemCandidates = &[
         "net_income",
         &[
             "ProfitLossAttributableToOwnersOfParent",
+            "ProfitLossAttributableToOwnersOfParentIFRS",
             "ProfitLoss",
             "NetIncome",
             "ProfitLossAttributableToOwnersOfParentSummaryOfBusinessResults",
+            "ProfitLossAttributableToOwnersOfParentIFRSSummaryOfBusinessResults",
         ],
     ),
 ];
