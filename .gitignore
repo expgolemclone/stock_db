@@ -23,7 +23,6 @@ services/**/node_modules/
 !config/**
 
 !rust/
-!rust/Cargo.lock
 !rust/Cargo.toml
 !rust/src/
 !rust/src/**
