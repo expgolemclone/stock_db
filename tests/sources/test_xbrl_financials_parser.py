@@ -151,6 +151,79 @@ def test_parses_synthetic_forecast_tags(tmp_path: Path) -> None:
     assert current["forecast"]["net_income"] == pytest.approx(540)
 
 
+def test_parses_directors_retirement_benefits_tags(tmp_path: Path) -> None:
+    xbrl = tmp_path / "sample.xbrl"
+    xbrl.write_text(
+        """
+        <xbrli:xbrl
+            xmlns:xbrli="http://www.xbrl.org/2003/instance"
+            xmlns:iso4217="http://www.xbrl.org/2003/iso4217"
+            xmlns:jppfs_cor="http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor">
+          <xbrli:context id="CurrentYearInstant">
+            <xbrli:entity><xbrli:identifier scheme="test">E1</xbrli:identifier></xbrli:entity>
+            <xbrli:period><xbrli:instant>2025-03-31</xbrli:instant></xbrli:period>
+          </xbrli:context>
+          <xbrli:context id="CurrentYearDuration">
+            <xbrli:entity><xbrli:identifier scheme="test">E1</xbrli:identifier></xbrli:entity>
+            <xbrli:period>
+              <xbrli:startDate>2024-04-01</xbrli:startDate>
+              <xbrli:endDate>2025-03-31</xbrli:endDate>
+            </xbrli:period>
+          </xbrli:context>
+          <xbrli:unit id="JPY"><xbrli:measure>iso4217:JPY</xbrli:measure></xbrli:unit>
+          <jppfs_cor:ProvisionForDirectorsRetirementBenefits contextRef="CurrentYearInstant" unitRef="JPY">321</jppfs_cor:ProvisionForDirectorsRetirementBenefits>
+          <jppfs_cor:ProvisionForDirectorsRetirementBenefitsSGA contextRef="CurrentYearDuration" unitRef="JPY">11</jppfs_cor:ProvisionForDirectorsRetirementBenefitsSGA>
+          <jppfs_cor:ReversalOfProvisionForDirectorsRetirementBenefitsNOI contextRef="CurrentYearDuration" unitRef="JPY">12</jppfs_cor:ReversalOfProvisionForDirectorsRetirementBenefitsNOI>
+          <jppfs_cor:ReversalOfProvisionForDirectorsRetirementBenefitsEI contextRef="CurrentYearDuration" unitRef="JPY">13</jppfs_cor:ReversalOfProvisionForDirectorsRetirementBenefitsEI>
+          <jppfs_cor:ProvisionForDirectorsRetirementBenefitsEL contextRef="CurrentYearDuration" unitRef="JPY">14</jppfs_cor:ProvisionForDirectorsRetirementBenefitsEL>
+          <jppfs_cor:IncreaseDecreaseInProvisionForDirectorsRetirementBenefitsOpeCF contextRef="CurrentYearDuration" unitRef="JPY">-15</jppfs_cor:IncreaseDecreaseInProvisionForDirectorsRetirementBenefitsOpeCF>
+        </xbrli:xbrl>
+        """,
+        encoding="utf-8",
+    )
+
+    current = xbrl_financials_parser.parse_xbrl_financials(str(xbrl))["2025-03"]
+
+    assert current["bs"]["provision_for_directors_retirement_benefits"] == pytest.approx(321)
+    assert current["pl"]["provision_for_directors_retirement_benefits_sga"] == pytest.approx(11)
+    assert current["pl"]["reversal_of_provision_for_directors_retirement_benefits_noi"] == pytest.approx(12)
+    assert current["pl"]["reversal_of_provision_for_directors_retirement_benefits_ei"] == pytest.approx(13)
+    assert current["pl"]["provision_for_directors_retirement_benefits_el"] == pytest.approx(14)
+    assert current["cf"][
+        "increase_decrease_in_provision_for_directors_retirement_benefits_ope_cf"
+    ] == pytest.approx(-15)
+
+
+def test_mixed_retirement_benefits_cf_tag_is_not_directors_item(tmp_path: Path) -> None:
+    xbrl = tmp_path / "sample.xbrl"
+    xbrl.write_text(
+        """
+        <xbrli:xbrl
+            xmlns:xbrli="http://www.xbrl.org/2003/instance"
+            xmlns:iso4217="http://www.xbrl.org/2003/iso4217"
+            xmlns:jppfs_cor="http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor">
+          <xbrli:context id="CurrentYearDuration">
+            <xbrli:entity><xbrli:identifier scheme="test">E1</xbrli:identifier></xbrli:entity>
+            <xbrli:period>
+              <xbrli:startDate>2024-04-01</xbrli:startDate>
+              <xbrli:endDate>2025-03-31</xbrli:endDate>
+            </xbrli:period>
+          </xbrli:context>
+          <xbrli:unit id="JPY"><xbrli:measure>iso4217:JPY</xbrli:measure></xbrli:unit>
+          <jppfs_cor:IncreaseDecreaseInProvisionForRetirementBenefitsAndDirectorsRetirementBenefitsOpeCF contextRef="CurrentYearDuration" unitRef="JPY">99</jppfs_cor:IncreaseDecreaseInProvisionForRetirementBenefitsAndDirectorsRetirementBenefitsOpeCF>
+        </xbrli:xbrl>
+        """,
+        encoding="utf-8",
+    )
+
+    current = xbrl_financials_parser.parse_xbrl_financials(str(xbrl))["2025-03"]
+
+    assert (
+        "increase_decrease_in_provision_for_directors_retirement_benefits_ope_cf"
+        not in current.get("cf", {})
+    )
+
+
 def test_parses_shares_outstanding_without_other_shares_facts(tmp_path: Path) -> None:
     xbrl = tmp_path / "sample.xbrl"
     xbrl.write_text(

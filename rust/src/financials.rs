@@ -45,6 +45,10 @@ const BS_ITEM_CANDIDATES: ItemCandidates = &[
     ),
     ("non_current_liabilities", &["NoncurrentLiabilities"]),
     (
+        "provision_for_directors_retirement_benefits",
+        &["ProvisionForDirectorsRetirementBenefits"],
+    ),
+    (
         "short_term_debt",
         &[
             "ShortTermLoansPayable",
@@ -88,6 +92,14 @@ const PL_ITEM_CANDIDATES: ItemCandidates = &[
         ],
     ),
     ("cost_of_revenue", &["CostOfSales", "CostOfRevenue"]),
+    (
+        "provision_for_directors_retirement_benefits_sga",
+        &["ProvisionForDirectorsRetirementBenefitsSGA"],
+    ),
+    (
+        "reversal_of_provision_for_directors_retirement_benefits_noi",
+        &["ReversalOfProvisionForDirectorsRetirementBenefitsNOI"],
+    ),
     ("operating_income", &["OperatingIncome", "OperatingProfit"]),
     (
         "ordinary_income",
@@ -96,6 +108,14 @@ const PL_ITEM_CANDIDATES: ItemCandidates = &[
             "OrdinaryProfit",
             "OrdinaryIncomeLossSummaryOfBusinessResults",
         ],
+    ),
+    (
+        "reversal_of_provision_for_directors_retirement_benefits_ei",
+        &["ReversalOfProvisionForDirectorsRetirementBenefitsEI"],
+    ),
+    (
+        "provision_for_directors_retirement_benefits_el",
+        &["ProvisionForDirectorsRetirementBenefitsEL"],
     ),
     (
         "net_income",
@@ -144,6 +164,10 @@ const CF_ITEM_CANDIDATES: ItemCandidates = &[
             "NetCashProvidedByUsedInFinancingActivitiesIFRS",
             "CashFlowsFromUsedInFinancingActivitiesIFRSSummaryOfBusinessResults",
         ],
+    ),
+    (
+        "increase_decrease_in_provision_for_directors_retirement_benefits_ope_cf",
+        &["IncreaseDecreaseInProvisionForDirectorsRetirementBenefitsOpeCF"],
     ),
 ];
 
