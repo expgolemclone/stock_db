@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import logging
 import sys
 from pathlib import Path
 from typing import Sequence
@@ -16,6 +15,7 @@ def parse_xbrl_financials_to_db(
     ticker: str | None,
     from_ticker: str | None,
     skip_existing: bool,
+    emit_progress: bool = False,
 ) -> dict:
     """Parse EDINET XBRL artifacts and replace DB rows via the Rust core."""
     return _rust_parse_xbrl_financials_to_db(
@@ -23,6 +23,7 @@ def parse_xbrl_financials_to_db(
         ticker=ticker,
         from_ticker=from_ticker,
         skip_existing=skip_existing,
+        emit_progress=emit_progress,
     )
 
 
@@ -44,8 +45,6 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--force", action="store_true", help="Disable --skip-existing")
     args = parser.parse_args(argv)
 
-    logging.basicConfig(level=logging.INFO, format="%(message)s")
-    logger = logging.getLogger("parse_xbrl_financials")
     skip_existing = args.skip_existing and not args.force
 
     summary = parse_xbrl_financials_to_db(
@@ -53,42 +52,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         ticker=args.ticker,
         from_ticker=args.from_ticker,
         skip_existing=skip_existing,
+        emit_progress=True,
     )
 
     if summary["no_xbrl_files"]:
         print("No XBRL files to parse", file=sys.stderr)
         return 1
-
-    if summary["skipped"]:
-        logger.info(
-            "Skipping %d tickers with existing edinet_xbrl data",
-            summary["skipped"],
-        )
-
-    results = summary["results"]
-    total = len(results)
-    for i, result in enumerate(results, 1):
-        ticker = result["ticker"]
-        status = result["status"]
-        if status == "ok":
-            logger.info(
-                "[%d/%d] %s: %d items across %d periods, %d share classes",
-                i,
-                total,
-                ticker,
-                result["financial_rows"],
-                result["period_count"],
-                result["share_class_rows"],
-            )
-        elif status == "no_facts":
-            logger.info(
-                "[%d/%d] %s: no parseable financial or share-class facts",
-                i,
-                total,
-                ticker,
-            )
-        else:
-            logger.error("[%d/%d] %s: %s", i, total, ticker, result["message"])
 
     print(f"Done: {summary['ok']} ok, {summary['errors']} errors", file=sys.stderr)
     return 1 if summary["errors"] > 0 else 0

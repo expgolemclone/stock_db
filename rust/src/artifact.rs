@@ -21,19 +21,19 @@ struct ParsedDocument {
     instance_facts: Vec<InstanceFact>,
 }
 
-fn parse_document_parts(content: &str) -> ParsedDocument {
-    let nsmap = extract_nsmap(content);
-    let contexts = extract_contexts(content, &nsmap);
-    let units = extract_units(content);
-    let inline_facts = extract_inline_facts(content);
-    let instance_facts = extract_instance_facts(content, &nsmap);
-    ParsedDocument {
-        nsmap,
-        contexts,
-        units,
-        inline_facts,
-        instance_facts,
-    }
+struct FactDocument {
+    content: String,
+    has_inline_facts: bool,
+}
+
+fn parse_document_parts(content: &str, has_inline_facts: bool) -> ParsedDocument {
+    let mut parsed = scan_document_parts(content);
+    parsed.inline_facts = if has_inline_facts {
+        extract_inline_facts(content)
+    } else {
+        Vec::new()
+    };
+    parsed
 }
 
 /// Load an XBRL artifact from a file path or directory.
@@ -41,7 +41,7 @@ pub fn load_xbrl_artifact(path: &str) -> Result<LoadedXbrlArtifact, String> {
     let artifact_path = Path::new(path);
     let is_dir = artifact_path.is_dir();
 
-    let file_contents: Vec<String> = if artifact_path.is_file() {
+    let fact_documents: Vec<FactDocument> = if artifact_path.is_file() {
         let ext = artifact_path
             .extension()
             .and_then(|e| e.to_str())
@@ -49,10 +49,11 @@ pub fn load_xbrl_artifact(path: &str) -> Result<LoadedXbrlArtifact, String> {
         if ext.to_lowercase() != "xbrl" {
             return Err(format!("Not an XBRL file: {}", path));
         }
-        vec![
-            xml_util::read_file_content(artifact_path)
+        vec![FactDocument {
+            content: xml_util::read_file_content(artifact_path)
                 .ok_or_else(|| format!("Cannot read file: {}", path))?,
-        ]
+            has_inline_facts: false,
+        }]
     } else if artifact_path.is_dir() {
         let xbrl_dir = artifact_path.join("XBRL");
         if !xbrl_dir.is_dir() {
@@ -71,14 +72,17 @@ pub fn load_xbrl_artifact(path: &str) -> Result<LoadedXbrlArtifact, String> {
         }
         // Prefer PublicDoc/*.xbrl as canonical fact document
         let public_doc = xbrl_dir.join("PublicDoc");
-        let mut public_xbrl: Vec<String> = Vec::new();
+        let mut public_xbrl: Vec<FactDocument> = Vec::new();
         if public_doc.is_dir() {
             if let Ok(entries) = std::fs::read_dir(&public_doc) {
                 for entry in entries.flatten() {
                     let fp = entry.path();
                     if fp.extension().is_some_and(|e| e == "xbrl") {
                         if let Some(c) = xml_util::read_file_content(&fp) {
-                            public_xbrl.push(c);
+                            public_xbrl.push(FactDocument {
+                                content: c,
+                                has_inline_facts: false,
+                            });
                         }
                     }
                 }
@@ -94,12 +98,18 @@ pub fn load_xbrl_artifact(path: &str) -> Result<LoadedXbrlArtifact, String> {
                 let ext = fp.extension().and_then(|e| e.to_str()).unwrap_or("");
                 if ext == "xbrl" {
                     if let Some(c) = xml_util::read_file_content(fp) {
-                        contents.push(c);
+                        contents.push(FactDocument {
+                            content: c,
+                            has_inline_facts: false,
+                        });
                     }
                 } else if let Some(c) = xml_util::read_file_content(fp)
                     && xml_util::is_valid_xbrl_text(&c)
                 {
-                    contents.push(c);
+                    contents.push(FactDocument {
+                        content: c,
+                        has_inline_facts: true,
+                    });
                 }
             }
             contents
@@ -108,14 +118,14 @@ pub fn load_xbrl_artifact(path: &str) -> Result<LoadedXbrlArtifact, String> {
         return Err(format!("Path does not exist: {}", path));
     };
 
-    if file_contents.is_empty() {
+    if fact_documents.is_empty() {
         return Err(format!("No parseable XBRL documents found in: {}", path));
     }
 
     // Parse all documents in parallel, then merge sequentially
-    let parsed_docs: Vec<ParsedDocument> = file_contents
+    let parsed_docs: Vec<ParsedDocument> = fact_documents
         .par_iter()
-        .map(|content| parse_document_parts(content))
+        .map(|doc| parse_document_parts(&doc.content, doc.has_inline_facts))
         .collect();
 
     let mut all_contexts: HashMap<String, ContextInfo> = HashMap::new();
@@ -477,33 +487,324 @@ fn attr_str(
     None
 }
 
-/// Extract namespace map from root element.
-fn extract_nsmap(content: &str) -> HashMap<String, String> {
+fn scan_document_parts(content: &str) -> ParsedDocument {
     let mut nsmap: HashMap<String, String> = HashMap::new();
+    let mut contexts: HashMap<String, ContextInfo> = HashMap::new();
+    let mut units: UnitMap = HashMap::new();
+    let mut instance_facts = Vec::new();
     let mut reader = Reader::from_str(content);
+    reader.config_mut().trim_text(true);
     let mut buf = Vec::new();
+    let mut saw_root = false;
+
     loop {
         match reader.read_event_into(&mut buf) {
             Ok(Event::Start(e)) => {
-                for attr in e.attributes() {
-                    if let Ok(attr) = attr {
-                        let key = String::from_utf8_lossy(attr.key.as_ref()).to_string();
-                        let val = String::from_utf8_lossy(&attr.value).to_string();
-                        if let Some(prefix) = key.strip_prefix("xmlns:") {
-                            nsmap.insert(prefix.to_string(), val);
-                        } else if key == "xmlns" {
-                            nsmap.insert(String::new(), val);
-                        }
-                    }
+                if !saw_root {
+                    collect_root_namespaces(&mut e.attributes(), &mut nsmap);
+                    saw_root = true;
                 }
-                break;
+
+                let tag = qname_str(e.name());
+                let local = xml_util::local_name(&tag);
+                if local == "context" {
+                    if let Some((id, ctx)) =
+                        parse_context_start(&mut e.attributes(), &mut reader, &nsmap)
+                    {
+                        contexts.insert(id, ctx);
+                    }
+                    continue;
+                }
+                if local == "unit" {
+                    if let Some((id, kind)) = parse_unit_start(&mut e.attributes(), &mut reader) {
+                        units.insert(id, kind);
+                    }
+                    continue;
+                }
+
+                let ns = xml_util::namespace_uri(&tag);
+                if is_instance_infrastructure(&local, ns) {
+                    if local != "nonfraction" {
+                        read_text_until_end(&mut reader, &local);
+                    }
+                    continue;
+                }
+
+                if let Some(fact) = parse_instance_fact_start(tag, &mut e.attributes(), &mut reader)
+                {
+                    instance_facts.push(fact);
+                }
+            }
+            Ok(Event::Empty(e)) => {
+                if !saw_root {
+                    collect_root_namespaces(&mut e.attributes(), &mut nsmap);
+                    saw_root = true;
+                }
+
+                let tag = qname_str(e.name());
+                let local = xml_util::local_name(&tag);
+                if local == "unit" {
+                    if let Some(id) = attr_str(&mut e.attributes(), "id") {
+                        units.insert(id, UnitKind::Other);
+                    }
+                    continue;
+                }
+
+                let ns = xml_util::namespace_uri(&tag);
+                if is_instance_infrastructure(&local, ns) {
+                    continue;
+                }
+
+                if let Some(fact) = parse_instance_fact_empty(tag, &mut e.attributes()) {
+                    instance_facts.push(fact);
+                }
             }
             Ok(Event::Eof) => break,
             _ => {}
         }
         buf.clear();
     }
-    nsmap
+
+    ParsedDocument {
+        nsmap,
+        contexts,
+        units,
+        inline_facts: Vec::new(),
+        instance_facts,
+    }
+}
+
+fn collect_root_namespaces(
+    attrs: &mut quick_xml::events::attributes::Attributes,
+    nsmap: &mut HashMap<String, String>,
+) {
+    for attr in attrs {
+        if let Ok(attr) = attr {
+            let key = String::from_utf8_lossy(attr.key.as_ref()).to_string();
+            let val = String::from_utf8_lossy(&attr.value).to_string();
+            if let Some(prefix) = key.strip_prefix("xmlns:") {
+                nsmap.insert(prefix.to_string(), val);
+            } else if key == "xmlns" {
+                nsmap.insert(String::new(), val);
+            }
+        }
+    }
+}
+
+fn parse_context_start(
+    attrs: &mut quick_xml::events::attributes::Attributes,
+    reader: &mut Reader<&[u8]>,
+    nsmap: &HashMap<String, String>,
+) -> Option<(String, ContextInfo)> {
+    let context_id = attr_str(attrs, "id").unwrap_or_default();
+    let mut instant_text: Option<String> = None;
+    let mut end_date_text: Option<String> = None;
+    let mut is_instant = false;
+    let mut has_dimensions = false;
+    let mut is_non_consolidated = false;
+    let mut dimension_count: usize = 0;
+    let mut explicit_members: Vec<ExplicitMember> = Vec::new();
+    let mut buf = Vec::new();
+
+    loop {
+        match reader.read_event_into(&mut buf) {
+            Ok(Event::Start(e)) => {
+                let local = xml_util::local_name(&qname_str(e.name()));
+                match local.as_str() {
+                    "instant" => {
+                        let value = read_text_until_end(reader, "instant");
+                        if !value.is_empty() {
+                            instant_text = Some(value);
+                            is_instant = true;
+                        }
+                    }
+                    "endDate" => {
+                        let value = read_text_until_end(reader, "endDate");
+                        if !value.is_empty() {
+                            end_date_text = Some(value);
+                        }
+                    }
+                    "explicitMember" => {
+                        has_dimensions = true;
+                        dimension_count += 1;
+                        let dimension_qname =
+                            attr_str(&mut e.attributes(), "dimension").unwrap_or_default();
+                        let member_qname = read_text_until_end(reader, "explicitMember");
+                        let dimension_name = xml_util::local_name(&dimension_qname);
+                        let member_name = xml_util::local_name(&member_qname);
+                        if member_name == "NonConsolidatedMember"
+                            || (dimension_name == "ConsolidatedOrNonConsolidatedAxis"
+                                && member_name == "NonConsolidatedMember")
+                        {
+                            is_non_consolidated = true;
+                        }
+                        if let (Some(dimension), Some(member)) = (
+                            xml_util::resolve_qname(&dimension_qname, nsmap, ""),
+                            xml_util::resolve_qname(&member_qname, nsmap, ""),
+                        ) {
+                            explicit_members.push(ExplicitMember { dimension, member });
+                        }
+                    }
+                    "typedMember" => {
+                        has_dimensions = true;
+                        dimension_count += 1;
+                    }
+                    _ => {}
+                }
+            }
+            Ok(Event::Empty(e)) => {
+                let local = xml_util::local_name(&qname_str(e.name()));
+                if local == "explicitMember" {
+                    has_dimensions = true;
+                    dimension_count += 1;
+                }
+            }
+            Ok(Event::End(e)) => {
+                if xml_util::local_name(&qname_str(e.name())) == "context" {
+                    break;
+                }
+            }
+            Ok(Event::Eof) => break,
+            _ => {}
+        }
+        buf.clear();
+    }
+
+    if context_id.is_empty() {
+        return None;
+    }
+
+    let period = xml_util::context_period_from_instant(instant_text.as_deref()).or_else(|| {
+        end_date_text.as_ref().and_then(|date| {
+            if date.len() >= 7 {
+                Some(date[..7].to_string())
+            } else {
+                None
+            }
+        })
+    });
+
+    Some((
+        context_id,
+        ContextInfo {
+            period,
+            _instant: instant_text,
+            is_instant,
+            has_dimensions,
+            is_non_consolidated,
+            dimension_count,
+            explicit_members,
+        },
+    ))
+}
+
+fn parse_unit_start(
+    attrs: &mut quick_xml::events::attributes::Attributes,
+    reader: &mut Reader<&[u8]>,
+) -> Option<(String, UnitKind)> {
+    let unit_id = attr_str(attrs, "id");
+    let mut buf = Vec::new();
+    let mut inner_depth: usize = 0;
+    let mut has_jpy = false;
+    let mut has_shares = false;
+
+    loop {
+        match reader.read_event_into(&mut buf) {
+            Ok(Event::Text(t)) => {
+                let text = t.unescape().unwrap_or_default();
+                let measure = xml_util::local_name(text.trim());
+                if measure == "JPY" {
+                    has_jpy = true;
+                } else if measure == "shares" {
+                    has_shares = true;
+                }
+            }
+            Ok(Event::Start(_)) => inner_depth += 1,
+            Ok(Event::End(e)) => {
+                if inner_depth == 0 && xml_util::local_name(&qname_str(e.name())) == "unit" {
+                    break;
+                }
+                inner_depth = inner_depth.saturating_sub(1);
+            }
+            Ok(Event::Eof) => break,
+            _ => {}
+        }
+        buf.clear();
+    }
+
+    let unit_id = unit_id?;
+    let kind = if has_jpy {
+        UnitKind::JPY
+    } else if has_shares {
+        UnitKind::Shares
+    } else {
+        UnitKind::Other
+    };
+    Some((unit_id, kind))
+}
+
+fn is_instance_infrastructure(local: &str, ns: &str) -> bool {
+    local == "nonfraction"
+        || local == "schema"
+        || local == "linkbase"
+        || local == "calculationLink"
+        || local == "presentationLink"
+        || local == "loc"
+        || local == "calculationArc"
+        || local == "presentationArc"
+        || local == "references"
+        || local == "hidden"
+        || xml_util::IGNORED_FACT_NAMESPACES.contains(&ns)
+}
+
+fn parse_instance_fact_start(
+    tag: String,
+    attrs: &mut quick_xml::events::attributes::Attributes,
+    reader: &mut Reader<&[u8]>,
+) -> Option<InstanceFact> {
+    let attrs = collect_attrs(attrs);
+    let context_ref = attrs.get("contextref").cloned()?;
+    let unit_ref = attrs.get("unitref").cloned().unwrap_or_default();
+    let decimals = attrs.get("decimals").cloned().unwrap_or_default();
+    let scale = attrs.get("scale").cloned().unwrap_or_default();
+    let sign = attrs.get("sign").cloned().unwrap_or_default();
+    let is_nil = attrs.get("nil").is_some_and(|v| v.to_lowercase() == "true");
+    let local = xml_util::local_name(&tag);
+    let text_value = if is_nil {
+        read_text_until_end(reader, &local);
+        String::new()
+    } else {
+        read_text_until_end(reader, &local)
+    };
+
+    Some(InstanceFact {
+        tag,
+        context_ref: Some(context_ref),
+        unit_ref,
+        decimals,
+        scale,
+        sign,
+        is_nil,
+        text_value,
+    })
+}
+
+fn parse_instance_fact_empty(
+    tag: String,
+    attrs: &mut quick_xml::events::attributes::Attributes,
+) -> Option<InstanceFact> {
+    let attrs = collect_attrs(attrs);
+    let context_ref = attrs.get("contextref").cloned()?;
+    Some(InstanceFact {
+        tag,
+        context_ref: Some(context_ref),
+        unit_ref: attrs.get("unitref").cloned().unwrap_or_default(),
+        decimals: attrs.get("decimals").cloned().unwrap_or_default(),
+        scale: attrs.get("scale").cloned().unwrap_or_default(),
+        sign: attrs.get("sign").cloned().unwrap_or_default(),
+        is_nil: attrs.get("nil").is_some_and(|v| v.to_lowercase() == "true"),
+        text_value: String::new(),
+    })
 }
 
 #[derive(Clone)]
@@ -650,287 +951,6 @@ fn contains_japanese(text: &str) -> bool {
         .any(|c| ('\u{3040}'..='\u{30ff}').contains(&c) || ('\u{4e00}'..='\u{9fff}').contains(&c))
 }
 
-/// Extract all context definitions using event-based parsing.
-fn extract_contexts(
-    content: &str,
-    nsmap: &HashMap<String, String>,
-) -> HashMap<String, ContextInfo> {
-    let mut contexts: HashMap<String, ContextInfo> = HashMap::new();
-    let mut reader = Reader::from_str(content);
-    reader.config_mut().trim_text(true);
-    let mut buf = Vec::new();
-
-    // State for context parsing
-    let mut in_context = false;
-    let mut context_id = String::new();
-    let mut instant_text: Option<String> = None;
-    let mut end_date_text: Option<String> = None;
-    let mut is_instant = false;
-    let mut has_dimensions = false;
-    let mut is_non_consolidated = false;
-    let mut dimension_count: usize = 0;
-    let mut explicit_members: Vec<ExplicitMember> = Vec::new();
-    let mut text_buf = String::new();
-    let mut collect_text_for: Option<String> = None; // local name we're collecting text for
-
-    loop {
-        match reader.read_event_into(&mut buf) {
-            Ok(Event::Start(e)) => {
-                let tag = qname_str(e.name());
-                let local = xml_util::local_name(&tag);
-
-                if local == "context" && !in_context {
-                    in_context = true;
-                    context_id = String::new();
-                    instant_text = None;
-                    end_date_text = None;
-                    is_instant = false;
-                    has_dimensions = false;
-                    is_non_consolidated = false;
-                    dimension_count = 0;
-                    explicit_members.clear();
-                    text_buf.clear();
-                    collect_text_for = None;
-                    for attr in e.attributes() {
-                        if let Ok(attr) = attr {
-                            let k = xml_util::local_name(
-                                &String::from_utf8_lossy(attr.key.as_ref()).to_string(),
-                            );
-                            if k == "id" {
-                                context_id = String::from_utf8_lossy(&attr.value).to_string();
-                            }
-                        }
-                    }
-                } else if in_context {
-                    match local.as_str() {
-                        "instant" => {
-                            collect_text_for = Some("instant".to_string());
-                            text_buf.clear();
-                        }
-                        "endDate" => {
-                            collect_text_for = Some("endDate".to_string());
-                            text_buf.clear();
-                        }
-                        "explicitMember" => {
-                            has_dimensions = true;
-                            dimension_count += 1;
-                            let mut dimension_qname = String::new();
-                            for attr in e.attributes() {
-                                if let Ok(attr) = attr {
-                                    let k = xml_util::local_name(
-                                        &String::from_utf8_lossy(attr.key.as_ref()).to_string(),
-                                    );
-                                    if k == "dimension" {
-                                        dimension_qname =
-                                            String::from_utf8_lossy(&attr.value).to_string();
-                                    }
-                                }
-                            }
-                            // Read the text content for member name
-                            let mut member_qname = String::new();
-                            let mut member_buf = Vec::new();
-                            loop {
-                                match reader.read_event_into(&mut member_buf) {
-                                    Ok(Event::Text(t)) => {
-                                        member_qname =
-                                            t.unescape().unwrap_or_default().trim().to_string();
-                                        let dimension_name = xml_util::local_name(&dimension_qname);
-                                        let member_name = xml_util::local_name(&member_qname);
-                                        if member_name == "NonConsolidatedMember"
-                                            || (dimension_name
-                                                == "ConsolidatedOrNonConsolidatedAxis"
-                                                && member_name == "NonConsolidatedMember")
-                                        {
-                                            is_non_consolidated = true;
-                                        }
-                                    }
-                                    Ok(Event::End(_)) => break,
-                                    Ok(Event::Eof) => break,
-                                    _ => {}
-                                }
-                                member_buf.clear();
-                            }
-                            if let (Some(dimension), Some(member)) = (
-                                xml_util::resolve_qname(&dimension_qname, nsmap, ""),
-                                xml_util::resolve_qname(&member_qname, nsmap, ""),
-                            ) {
-                                explicit_members.push(ExplicitMember { dimension, member });
-                            }
-                        }
-                        "typedMember" => {
-                            has_dimensions = true;
-                            dimension_count += 1;
-                        }
-                        _ => {}
-                    }
-                }
-            }
-            Ok(Event::Empty(e)) => {
-                let tag = qname_str(e.name());
-                let local = xml_util::local_name(&tag);
-                if local == "explicitMember" && in_context {
-                    has_dimensions = true;
-                    dimension_count += 1;
-                }
-            }
-            Ok(Event::Text(t)) => {
-                if collect_text_for.is_some() {
-                    text_buf.push_str(&t.unescape().unwrap_or_default());
-                }
-            }
-            Ok(Event::End(e)) => {
-                let local = xml_util::local_name(&qname_str(e.name()));
-                if local == "context" && in_context {
-                    // Finalize context
-                    if let Some(ref target) = collect_text_for {
-                        match target.as_str() {
-                            "instant" => {
-                                let val = text_buf.trim().to_string();
-                                if !val.is_empty() {
-                                    instant_text = Some(val);
-                                    is_instant = true;
-                                }
-                            }
-                            "endDate" => {
-                                let val = text_buf.trim().to_string();
-                                if !val.is_empty() {
-                                    end_date_text = Some(val);
-                                }
-                            }
-                            _ => {}
-                        }
-                    }
-                    collect_text_for = None;
-
-                    let period = xml_util::context_period_from_instant(instant_text.as_deref())
-                        .or_else(|| {
-                            end_date_text.as_ref().and_then(|d| {
-                                if d.len() >= 7 {
-                                    Some(d[..7].to_string())
-                                } else {
-                                    None
-                                }
-                            })
-                        });
-
-                    if !context_id.is_empty() {
-                        contexts.insert(
-                            context_id.clone(),
-                            ContextInfo {
-                                period,
-                                _instant: instant_text.clone(),
-                                is_instant,
-                                has_dimensions,
-                                is_non_consolidated,
-                                dimension_count,
-                                explicit_members: explicit_members.clone(),
-                            },
-                        );
-                    }
-                    in_context = false;
-                } else if in_context {
-                    if let Some(ref target) = collect_text_for {
-                        if local == *target {
-                            match target.as_str() {
-                                "instant" => {
-                                    let val = text_buf.trim().to_string();
-                                    if !val.is_empty() {
-                                        instant_text = Some(val);
-                                        is_instant = true;
-                                    }
-                                }
-                                "endDate" => {
-                                    let val = text_buf.trim().to_string();
-                                    if !val.is_empty() {
-                                        end_date_text = Some(val);
-                                    }
-                                }
-                                _ => {}
-                            }
-                            collect_text_for = None;
-                        }
-                    }
-                }
-            }
-            Ok(Event::Eof) => break,
-            _ => {}
-        }
-        buf.clear();
-    }
-    contexts
-}
-
-/// Extract all unit definitions using event-based parsing.
-fn extract_units(content: &str) -> UnitMap {
-    let mut units: UnitMap = HashMap::new();
-    let mut reader = Reader::from_str(content);
-    reader.config_mut().trim_text(true);
-    let mut buf = Vec::new();
-
-    loop {
-        match reader.read_event_into(&mut buf) {
-            Ok(Event::Start(e)) | Ok(Event::Empty(e)) => {
-                let local = xml_util::local_name(&qname_str(e.name()));
-                if local != "unit" {
-                    continue;
-                }
-                let unit_id = attr_str(&mut e.attributes(), "id");
-                if unit_id.is_none() {
-                    // Still need to consume the element
-                    if matches!(reader.read_event_into(&mut buf), Ok(Event::Start(_))) {
-                        read_text_until_end(&mut reader, "unit");
-                    }
-                    continue;
-                }
-                // Determine unit kind from measure text inside the unit element.
-                // JPY-per-share units contain both JPY and shares; those are
-                // financial per-share values, not pure share counts.
-                let mut inner_buf = Vec::new();
-                let mut inner_depth: usize = 0;
-                let mut has_jpy = false;
-                let mut has_shares = false;
-                loop {
-                    match reader.read_event_into(&mut inner_buf) {
-                        Ok(Event::Text(t)) => {
-                            let text = t.unescape().unwrap_or_default();
-                            let measure = xml_util::local_name(text.trim());
-                            if measure == "JPY" {
-                                has_jpy = true;
-                            } else if measure == "shares" {
-                                has_shares = true;
-                            }
-                        }
-                        Ok(Event::Start(_)) => inner_depth += 1,
-                        Ok(Event::End(ee)) => {
-                            if inner_depth == 0
-                                && xml_util::local_name(&qname_str(ee.name())) == "unit"
-                            {
-                                break;
-                            }
-                            inner_depth = inner_depth.saturating_sub(1);
-                        }
-                        Ok(Event::Eof) => break,
-                        _ => {}
-                    }
-                    inner_buf.clear();
-                }
-                let kind = if has_jpy {
-                    UnitKind::JPY
-                } else if has_shares {
-                    UnitKind::Shares
-                } else {
-                    UnitKind::Other
-                };
-                units.insert(unit_id.unwrap(), kind);
-            }
-            Ok(Event::Eof) => break,
-            _ => {}
-        }
-        buf.clear();
-    }
-    units
-}
-
 /// Extract inline XBRL nonfraction facts.
 fn extract_inline_facts(content: &str) -> Vec<InlineFact> {
     let mut facts: Vec<InlineFact> = Vec::new();
@@ -1046,118 +1066,4 @@ fn read_text_until_end(reader: &mut Reader<&[u8]>, end_tag: &str) -> String {
         buf.clear();
     }
     text.trim().to_string()
-}
-
-/// Extract instance document facts.
-fn extract_instance_facts(content: &str, nsmap: &HashMap<String, String>) -> Vec<InstanceFact> {
-    let mut facts: Vec<InstanceFact> = Vec::new();
-    let mut reader = Reader::from_str(content);
-    reader.config_mut().trim_text(true);
-    let mut buf = Vec::new();
-
-    loop {
-        match reader.read_event_into(&mut buf) {
-            Ok(Event::Start(e)) => {
-                let tag = qname_str(e.name());
-                let local = xml_util::local_name(&tag);
-                let ns = xml_util::namespace_uri(&tag);
-
-                // Skip infrastructure elements
-                if local == "context"
-                    || local == "unit"
-                    || local == "nonfraction"
-                    || local == "schema"
-                    || local == "linkbase"
-                    || local == "calculationLink"
-                    || local == "presentationLink"
-                    || local == "loc"
-                    || local == "calculationArc"
-                    || local == "presentationArc"
-                    || local == "references"
-                    || local == "hidden"
-                    || xml_util::IGNORED_FACT_NAMESPACES.contains(&ns)
-                {
-                    // Skip but still consume the element
-                    if local != "context" && local != "unit" && local != "nonfraction" {
-                        read_text_until_end(&mut reader, &local);
-                    }
-                    continue;
-                }
-
-                let context_ref = attr_str(&mut e.attributes(), "contextRef");
-                if context_ref.is_none() {
-                    continue;
-                }
-
-                let unit_ref = attr_str(&mut e.attributes(), "unitRef").unwrap_or_default();
-                let decimals = attr_str(&mut e.attributes(), "decimals").unwrap_or_default();
-                let scale = attr_str(&mut e.attributes(), "scale").unwrap_or_default();
-                let sign = attr_str(&mut e.attributes(), "sign").unwrap_or_default();
-                let nil_val = attr_str(&mut e.attributes(), "nil").unwrap_or_default();
-                let is_nil = nil_val.to_lowercase() == "true";
-
-                let text_value = if is_nil {
-                    read_text_until_end(&mut reader, &local);
-                    String::new()
-                } else {
-                    read_text_until_end(&mut reader, &local)
-                };
-
-                facts.push(InstanceFact {
-                    tag,
-                    context_ref,
-                    unit_ref,
-                    decimals,
-                    scale,
-                    sign,
-                    is_nil,
-                    text_value,
-                });
-            }
-            Ok(Event::Empty(e)) => {
-                let tag = qname_str(e.name());
-                let local = xml_util::local_name(&tag);
-                let ns = xml_util::namespace_uri(&tag);
-
-                if local == "context"
-                    || local == "unit"
-                    || local == "nonfraction"
-                    || local == "loc"
-                    || xml_util::IGNORED_FACT_NAMESPACES.contains(&ns)
-                {
-                    continue;
-                }
-
-                let attrs = collect_attrs(&mut e.attributes());
-                let context_ref = attrs.get("contextref").cloned();
-                if context_ref.is_none() {
-                    continue;
-                }
-
-                let unit_ref = attrs.get("unitref").cloned().unwrap_or_default();
-                let decimals = attrs.get("decimals").cloned().unwrap_or_default();
-                let scale = attrs.get("scale").cloned().unwrap_or_default();
-                let sign = attrs.get("sign").cloned().unwrap_or_default();
-                let is_nil = attrs.get("nil").is_some_and(|v| v.to_lowercase() == "true");
-
-                facts.push(InstanceFact {
-                    tag,
-                    context_ref,
-                    unit_ref,
-                    decimals,
-                    scale,
-                    sign,
-                    is_nil,
-                    text_value: String::new(),
-                });
-            }
-            Ok(Event::Eof) => break,
-            _ => {}
-        }
-        buf.clear();
-    }
-
-    // Suppress unused variable warning
-    let _ = nsmap;
-    facts
 }

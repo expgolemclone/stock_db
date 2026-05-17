@@ -244,3 +244,35 @@ def test_main_returns_1_when_no_xbrl_files(
 
     assert rc == 1
     assert "No XBRL files to parse" in captured.err
+
+
+def test_main_logs_completion_progress(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capfd: pytest.CaptureFixture[str],
+) -> None:
+    db_path = tmp_path / "stocks.db"
+    _build_db(db_path, tmp_path)
+    monkeypatch.setattr(cli, "STOCKS_DB_PATH", db_path)
+
+    rc = cli.main(["--force"])
+    captured = capfd.readouterr()
+
+    assert rc == 0
+    assert captured.err.count("items across 1 periods, 0 share classes") == 2
+    assert "[1/2]" in captured.err
+    assert "[2/2]" in captured.err
+
+
+def test_main_rejects_jobs_option(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    db_path = tmp_path / "stocks.db"
+    _build_db(db_path, tmp_path)
+    monkeypatch.setattr(cli, "STOCKS_DB_PATH", db_path)
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main(["--force", "--jobs", "2"])
+
+    assert exc_info.value.code == 2

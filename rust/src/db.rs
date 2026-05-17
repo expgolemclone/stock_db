@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use chrono::{SecondsFormat, Utc};
 use rayon::prelude::*;
@@ -99,6 +100,7 @@ pub fn parse_xbrl_financials_to_db(
     ticker_filter: Option<&str>,
     from_ticker: Option<&str>,
     skip_existing: bool,
+    emit_progress: bool,
 ) -> Result<ParseDbSummary, String> {
     if let Some(parent) = Path::new(db_path).parent() {
         std::fs::create_dir_all(parent).map_err(|err| err.to_string())?;
@@ -135,20 +137,11 @@ pub fn parse_xbrl_financials_to_db(
         0
     };
 
-    let outcomes: Vec<TickerParseOutcome> = tickers
-        .par_iter()
-        .map(|input| match parse_ticker(input) {
-            Ok(parsed) => TickerParseOutcome::Parsed(parsed),
-            Err(TickerParseError::Inventory(message)) => TickerParseOutcome::InventoryError {
-                ticker: input.ticker.clone(),
-                message,
-            },
-            Err(TickerParseError::Fatal(message)) => TickerParseOutcome::Fatal {
-                ticker: input.ticker.clone(),
-                message,
-            },
-        })
-        .collect();
+    if emit_progress && skipped > 0 {
+        eprintln!("Skipping {skipped} tickers with existing {SOURCE} data");
+    }
+
+    let outcomes = parse_tickers(&tickers, emit_progress);
 
     if let Some((ticker, message)) = outcomes.iter().find_map(|outcome| match outcome {
         TickerParseOutcome::Fatal { ticker, message } => Some((ticker, message)),
@@ -210,6 +203,93 @@ pub fn parse_xbrl_financials_to_db(
         no_xbrl_files: false,
         results,
     })
+}
+
+fn parse_tickers(tickers: &[TickerInput], emit_progress: bool) -> Vec<TickerParseOutcome> {
+    let total = tickers.len();
+    let completed = AtomicUsize::new(0);
+
+    tickers
+        .par_iter()
+        .map(|input| {
+            let outcome = parse_ticker_outcome(input);
+            if emit_progress {
+                let completed = completed.fetch_add(1, Ordering::Relaxed) + 1;
+                if let Some(summary) = summary_from_outcome(&outcome) {
+                    log_parallel_summary(completed, total, &summary);
+                }
+            }
+            outcome
+        })
+        .collect()
+}
+
+fn parse_ticker_outcome(input: &TickerInput) -> TickerParseOutcome {
+    match parse_ticker(input) {
+        Ok(parsed) => TickerParseOutcome::Parsed(parsed),
+        Err(TickerParseError::Inventory(message)) => TickerParseOutcome::InventoryError {
+            ticker: input.ticker.clone(),
+            message,
+        },
+        Err(TickerParseError::Fatal(message)) => TickerParseOutcome::Fatal {
+            ticker: input.ticker.clone(),
+            message,
+        },
+    }
+}
+
+fn log_parallel_summary(completed: usize, total: usize, summary: &TickerSummary) {
+    match summary.status.as_str() {
+        "ok" => eprintln!(
+            "[{completed}/{total}] {}: {} items across {} periods, {} share classes",
+            summary.ticker, summary.financial_rows, summary.period_count, summary.share_class_rows
+        ),
+        "no_facts" => eprintln!(
+            "[{completed}/{total}] {}: no parseable financial or share-class facts",
+            summary.ticker
+        ),
+        "error" => eprintln!(
+            "[{completed}/{total}] {}: {}",
+            summary.ticker,
+            summary.message.as_deref().unwrap_or("")
+        ),
+        _ => unreachable!("unexpected ticker summary status"),
+    }
+}
+
+fn summary_from_outcome(outcome: &TickerParseOutcome) -> Option<TickerSummary> {
+    match outcome {
+        TickerParseOutcome::Parsed(parsed) => {
+            if parsed.financial_rows.is_empty() && parsed.share_class_rows.is_empty() {
+                Some(TickerSummary {
+                    ticker: parsed.ticker.clone(),
+                    status: "no_facts".to_string(),
+                    financial_rows: 0,
+                    period_count: 0,
+                    share_class_rows: 0,
+                    message: None,
+                })
+            } else {
+                Some(TickerSummary {
+                    ticker: parsed.ticker.clone(),
+                    status: "ok".to_string(),
+                    financial_rows: parsed.financial_rows.len(),
+                    period_count: parsed.period_count,
+                    share_class_rows: parsed.share_class_rows.len(),
+                    message: None,
+                })
+            }
+        }
+        TickerParseOutcome::InventoryError { ticker, message } => Some(TickerSummary {
+            ticker: ticker.clone(),
+            status: "error".to_string(),
+            financial_rows: 0,
+            period_count: 0,
+            share_class_rows: 0,
+            message: Some(message.clone()),
+        }),
+        TickerParseOutcome::Fatal { .. } => None,
+    }
 }
 
 fn load_ticker_inputs(conn: &Connection) -> Result<Vec<TickerInput>, String> {

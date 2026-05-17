@@ -5,7 +5,9 @@ mod artifact;
 mod db;
 mod financials;
 mod inventory;
+pub mod screening;
 mod share_classes;
+mod stooq;
 mod types;
 mod xml_util;
 
@@ -48,6 +50,7 @@ fn _edinet_xbrl(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(parse_financials, m)?)?;
     m.add_function(wrap_pyfunction!(parse_share_classes, m)?)?;
     m.add_function(wrap_pyfunction!(parse_xbrl_financials_to_db, m)?)?;
+    m.add_function(wrap_pyfunction!(parse_stooq_daily_file, m)?)?;
     m.add_function(wrap_pyfunction!(is_valid_xbrl_text, m)?)?;
     m.add_function(wrap_pyfunction!(is_valid_xbrl_path, m)?)?;
     Ok(())
@@ -112,13 +115,20 @@ fn parse_share_classes(py: Python<'_>, path: &str) -> PyResult<PyObject> {
 
 /// Parse selected EDINET XBRL artifacts from SQLite and replace DB rows.
 #[pyfunction]
-#[pyo3(signature = (db_path, ticker=None, from_ticker=None, skip_existing=true))]
+#[pyo3(signature = (
+    db_path,
+    ticker=None,
+    from_ticker=None,
+    skip_existing=true,
+    emit_progress=false,
+))]
 fn parse_xbrl_financials_to_db(
     py: Python<'_>,
     db_path: &str,
     ticker: Option<String>,
     from_ticker: Option<String>,
     skip_existing: bool,
+    emit_progress: bool,
 ) -> PyResult<PyObject> {
     let summary = py.allow_threads(|| {
         db::parse_xbrl_financials_to_db(
@@ -126,6 +136,7 @@ fn parse_xbrl_financials_to_db(
             ticker.as_deref(),
             from_ticker.as_deref(),
             skip_existing,
+            emit_progress,
         )
         .map_err(PyRuntimeError::new_err)
     })?;
@@ -140,6 +151,11 @@ fn is_valid_xbrl_text(content: &str) -> bool {
 #[pyfunction]
 fn is_valid_xbrl_path(path: Option<&str>) -> bool {
     artifact::is_valid_xbrl_path(path)
+}
+
+#[pyfunction]
+fn parse_stooq_daily_file(path: &str) -> PyResult<Vec<(String, String, f64)>> {
+    stooq::parse_daily_file(path).map_err(PyRuntimeError::new_err)
 }
 
 fn parse_xbrl_artifact_inner(path: &str) -> PyResult<(PyFinancials, Vec<types::ShareClassFact>)> {

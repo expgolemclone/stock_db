@@ -52,7 +52,11 @@ const BS_ITEM_CANDIDATES: ItemCandidates = &[
     ),
     (
         "current_liabilities",
-        &["CurrentLiabilities", "CurrentLiabilitiesIFRS"],
+        &[
+            "CurrentLiabilities",
+            "CurrentLiabilitiesIFRS",
+            "TotalCurrentLiabilitiesIFRS",
+        ],
     ),
     (
         "trade_payables",
@@ -69,6 +73,7 @@ const BS_ITEM_CANDIDATES: ItemCandidates = &[
             "NoncurrentLiabilities",
             "NoncurrentLiabilitiesIFRS",
             "NonCurrentLiabilitiesIFRS",
+            "NonCurrentLabilitiesIFRS",
         ],
     ),
     (
@@ -459,4 +464,330 @@ pub fn parse_financials_from_artifact(
     }
 
     Ok(result)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Static snapshot of the tag contract from main.
+    // Tests must not read the main branch at runtime; update this list only when
+    // the minimum supported tag contract intentionally changes.
+    const MAIN_REQUIRED_BS_ITEM_CANDIDATES: ItemCandidates = &[
+        (
+            "cash_and_deposits",
+            &["CashAndDeposits", "CashAndCashEquivalentsIFRS"],
+        ),
+        ("current_assets", &["CurrentAssets", "CurrentAssetsIFRS"]),
+        (
+            "fixed_assets",
+            &[
+                "NoncurrentAssets",
+                "FixedAssets",
+                "NoncurrentAssetsIFRS",
+                "NonCurrentAssetsIFRS",
+            ],
+        ),
+        (
+            "tangible_fixed_assets",
+            &[
+                "PropertyPlantAndEquipment",
+                "TangibleAssets",
+                "TangibleFixedAssets",
+            ],
+        ),
+        (
+            "intangible_fixed_assets",
+            &[
+                "IntangibleAssets",
+                "IntangibleFixedAssets",
+                "IntangibleAssetsIFRS",
+            ],
+        ),
+        ("investment_securities", &["InvestmentSecurities"]),
+        (
+            "trade_receivables",
+            &[
+                "NotesAndAccountsReceivableTrade",
+                "AccountsReceivableTrade",
+                "NotesAndAccountsReceivableTradeAndContractAssets",
+                "TradeAndOtherReceivables",
+                "TradeAndOtherReceivablesIFRS",
+            ],
+        ),
+        (
+            "current_liabilities",
+            &["CurrentLiabilities", "CurrentLiabilitiesIFRS"],
+        ),
+        (
+            "trade_payables",
+            &[
+                "NotesAndAccountsPayableTrade",
+                "AccountsPayableTrade",
+                "TradeAndOtherPayables",
+                "TradeAndOtherPayablesIFRS",
+            ],
+        ),
+        (
+            "non_current_liabilities",
+            &[
+                "NoncurrentLiabilities",
+                "NoncurrentLiabilitiesIFRS",
+                "NonCurrentLiabilitiesIFRS",
+            ],
+        ),
+        (
+            "provision_for_directors_retirement_benefits",
+            &["ProvisionForDirectorsRetirementBenefits"],
+        ),
+        (
+            "short_term_debt",
+            &[
+                "ShortTermLoansPayable",
+                "ShortTermBorrowings",
+                "CurrentPortionOfLongTermLoansPayable",
+                "CurrentPortionOfLongTermBorrowingsCLIFRS",
+                "BorrowingsCLIFRS",
+                "BondsAndBorrowingsCLIFRS",
+            ],
+        ),
+        (
+            "long_term_debt",
+            &[
+                "LongTermLoansPayable",
+                "LongTermBorrowings",
+                "BorrowingsNCLIFRS",
+                "BondsAndBorrowingsNCLIFRS",
+            ],
+        ),
+        ("net_assets", &["NetAssets", "Equity", "EquityIFRS"]),
+        (
+            "stockholders_equity",
+            &[
+                "ShareholdersEquity",
+                "EquityAttributableToOwnersOfParent",
+                "EquityAttributableToOwnersOfParentIFRS",
+                "EquityAttributableToOwnersOfParentIFRSSummaryOfBusinessResults",
+                "OwnersEquity",
+            ],
+        ),
+        (
+            "total_assets",
+            &[
+                "Assets",
+                "AssetsIFRS",
+                "TotalAssetsIFRSSummaryOfBusinessResults",
+            ],
+        ),
+        ("total_equity", &["NetAssets", "Equity", "EquityIFRS"]),
+    ];
+
+    const MAIN_REQUIRED_PL_ITEM_CANDIDATES: ItemCandidates = &[
+        (
+            "revenue",
+            &[
+                "NetSales",
+                "Revenue",
+                "RevenueIFRS",
+                "RevenuesFromExternalCustomers",
+                "NetSalesSummaryOfBusinessResults",
+                "RevenueIFRSSummaryOfBusinessResults",
+            ],
+        ),
+        (
+            "cost_of_revenue",
+            &["CostOfSales", "CostOfRevenue", "CostOfSalesIFRS"],
+        ),
+        (
+            "provision_for_directors_retirement_benefits_sga",
+            &["ProvisionForDirectorsRetirementBenefitsSGA"],
+        ),
+        (
+            "reversal_of_provision_for_directors_retirement_benefits_noi",
+            &["ReversalOfProvisionForDirectorsRetirementBenefitsNOI"],
+        ),
+        (
+            "operating_income",
+            &[
+                "OperatingIncome",
+                "OperatingProfit",
+                "OperatingProfitIFRS",
+                "OperatingProfitIFRSSummaryOfBusinessResults",
+            ],
+        ),
+        (
+            "ordinary_income",
+            &[
+                "OrdinaryIncome",
+                "OrdinaryProfit",
+                "OrdinaryIncomeLossSummaryOfBusinessResults",
+                "ProfitLossBeforeTaxIFRS",
+                "ProfitLossBeforeTaxIFRSSummaryOfBusinessResults",
+            ],
+        ),
+        (
+            "reversal_of_provision_for_directors_retirement_benefits_ei",
+            &["ReversalOfProvisionForDirectorsRetirementBenefitsEI"],
+        ),
+        (
+            "provision_for_directors_retirement_benefits_el",
+            &["ProvisionForDirectorsRetirementBenefitsEL"],
+        ),
+        (
+            "net_income",
+            &[
+                "ProfitLossAttributableToOwnersOfParent",
+                "ProfitLossAttributableToOwnersOfParentIFRS",
+                "ProfitLoss",
+                "NetIncome",
+                "ProfitLossAttributableToOwnersOfParentSummaryOfBusinessResults",
+                "ProfitLossAttributableToOwnersOfParentIFRSSummaryOfBusinessResults",
+            ],
+        ),
+    ];
+
+    const MAIN_REQUIRED_CF_ITEM_CANDIDATES: ItemCandidates = &[
+        (
+            "cash_equivalents",
+            &[
+                "CashAndCashEquivalents",
+                "CashAndCashEquivalentsSummaryOfBusinessResults",
+                "CashAndCashEquivalentsIFRS",
+                "CashAndCashEquivalentsIFRSSummaryOfBusinessResults",
+            ],
+        ),
+        (
+            "operating_cf",
+            &[
+                "NetCashProvidedByUsedInOperatingActivities",
+                "NetCashProvidedByUsedInOperatingActivitiesSummaryOfBusinessResults",
+                "NetCashProvidedByUsedInOperatingActivitiesIFRS",
+                "CashFlowsFromUsedInOperatingActivitiesIFRSSummaryOfBusinessResults",
+            ],
+        ),
+        (
+            "investing_cf",
+            &[
+                "NetCashProvidedByUsedInInvestmentActivities",
+                "NetCashProvidedByUsedInInvestmentActivitiesSummaryOfBusinessResults",
+                "NetCashProvidedByUsedInInvestingActivitiesIFRS",
+                "CashFlowsFromUsedInInvestingActivitiesIFRSSummaryOfBusinessResults",
+            ],
+        ),
+        (
+            "financing_cf",
+            &[
+                "NetCashProvidedByUsedInFinancingActivities",
+                "NetCashProvidedByUsedInFinancingActivitiesSummaryOfBusinessResults",
+                "NetCashProvidedByUsedInFinancingActivitiesIFRS",
+                "CashFlowsFromUsedInFinancingActivitiesIFRSSummaryOfBusinessResults",
+            ],
+        ),
+        (
+            "increase_decrease_in_provision_for_directors_retirement_benefits_ope_cf",
+            &["IncreaseDecreaseInProvisionForDirectorsRetirementBenefitsOpeCF"],
+        ),
+    ];
+
+    const MAIN_REQUIRED_DIVIDEND_ITEM_CANDIDATES: ItemCandidates = &[
+        (
+            "dps",
+            &[
+                "DividendPaidPerShareSummaryOfBusinessResults",
+                "AnnualDividendPerShareSummaryOfBusinessResults",
+                "DividendPerShareDividendsOfSurplus",
+            ],
+        ),
+        (
+            "dividend_payment",
+            &["DividendsFromSurplus", "CashDividendsPaidFinCF"],
+        ),
+    ];
+
+    const MAIN_REQUIRED_SHARES_ITEM_CANDIDATES: ItemCandidates = &[(
+        "shares_outstanding",
+        &[
+            "NumberOfIssuedSharesAsOfFiscalYearEndIssuedSharesTotalNumberOfSharesEtc",
+            "NumberOfIssuedSharesAsOfFilingDateIssuedSharesTotalNumberOfSharesEtc",
+            "NumberOfIssuedSharesIssuedSharesTotalNumberOfSharesEtc",
+        ],
+    )];
+
+    const MAIN_REQUIRED_FORECAST_ITEM_CANDIDATES: ItemCandidates = &[
+        (
+            "revenue",
+            &[
+                "ForecastNetSalesSummaryOfBusinessResults",
+                "ForecastRevenueSummaryOfBusinessResults",
+            ],
+        ),
+        (
+            "operating_income",
+            &[
+                "ForecastOperatingIncomeSummaryOfBusinessResults",
+                "ForecastOperatingProfitSummaryOfBusinessResults",
+            ],
+        ),
+        (
+            "ordinary_income",
+            &[
+                "ForecastOrdinaryIncomeSummaryOfBusinessResults",
+                "ForecastOrdinaryProfitSummaryOfBusinessResults",
+            ],
+        ),
+        (
+            "net_income",
+            &[
+                "ForecastProfitLossAttributableToOwnersOfParentSummaryOfBusinessResults",
+                "ForecastProfitLossSummaryOfBusinessResults",
+                "ForecastNetIncomeSummaryOfBusinessResults",
+            ],
+        ),
+    ];
+
+    #[test]
+    fn main_candidate_tags_remain_supported() {
+        assert_main_candidate_contract("bs", MAIN_REQUIRED_BS_ITEM_CANDIDATES, BS_ITEM_CANDIDATES);
+        assert_main_candidate_contract("pl", MAIN_REQUIRED_PL_ITEM_CANDIDATES, PL_ITEM_CANDIDATES);
+        assert_main_candidate_contract("cf", MAIN_REQUIRED_CF_ITEM_CANDIDATES, CF_ITEM_CANDIDATES);
+        assert_main_candidate_contract(
+            "dividend",
+            MAIN_REQUIRED_DIVIDEND_ITEM_CANDIDATES,
+            DIVIDEND_ITEM_CANDIDATES,
+        );
+        assert_main_candidate_contract(
+            "shares",
+            MAIN_REQUIRED_SHARES_ITEM_CANDIDATES,
+            SHARES_ITEM_CANDIDATES,
+        );
+        assert_main_candidate_contract(
+            "forecast",
+            MAIN_REQUIRED_FORECAST_ITEM_CANDIDATES,
+            FORECAST_ITEM_CANDIDATES,
+        );
+    }
+
+    fn assert_main_candidate_contract(
+        statement: &str,
+        required: ItemCandidates,
+        current: ItemCandidates,
+    ) {
+        for &(item_name, required_tags) in required {
+            let current_tags = current
+                .iter()
+                .find_map(|&(current_item, current_tags)| {
+                    (current_item == item_name).then_some(current_tags)
+                })
+                .unwrap_or_else(|| {
+                    panic!("{statement}.{item_name} from the main tag contract is missing")
+                });
+
+            for required_tag in required_tags {
+                assert!(
+                    current_tags.contains(required_tag),
+                    "{statement}.{item_name} no longer supports main tag {required_tag}"
+                );
+            }
+        }
+    }
 }
