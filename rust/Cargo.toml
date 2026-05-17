@@ -8,6 +8,8 @@ name = "_edinet_xbrl"
 crate-type = ["cdylib", "lib"]
 
 [dependencies]
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
 pyo3 = { version = "0.24", features = ["extension-module"] }
 quick-xml = "0.37"
 rayon = "1"
+rusqlite = { version = "0.32", features = ["bundled"] }

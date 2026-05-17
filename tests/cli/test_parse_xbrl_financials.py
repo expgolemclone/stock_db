@@ -12,17 +12,64 @@ from stock_db.storage.sec_reports import upsert_sec_report
 from stock_db.storage.stocks import upsert_stock
 
 
-@pytest.fixture(autouse=True)
-def _stub_share_classes(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(cli, "parse_xbrl_share_classes", lambda _path: [])
-    monkeypatch.setattr(
-        cli,
-        "replace_share_classes_for_ticker_source",
-        lambda _conn, *, ticker, source, rows: None,
+def _write_financial_xbrl(path: Path, revenue: float) -> Path:
+    path.write_text(
+        f"""
+        <xbrli:xbrl
+            xmlns:xbrli="http://www.xbrl.org/2003/instance"
+            xmlns:iso4217="http://www.xbrl.org/2003/iso4217"
+            xmlns:jppfs_cor="http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor">
+          <xbrli:context id="CurrentYearDuration">
+            <xbrli:entity><xbrli:identifier scheme="test">E1</xbrli:identifier></xbrli:entity>
+            <xbrli:period>
+              <xbrli:startDate>2024-04-01</xbrli:startDate>
+              <xbrli:endDate>2025-03-31</xbrli:endDate>
+            </xbrli:period>
+          </xbrli:context>
+          <xbrli:unit id="JPY"><xbrli:measure>iso4217:JPY</xbrli:measure></xbrli:unit>
+          <jppfs_cor:NetSales contextRef="CurrentYearDuration" unitRef="JPY">{revenue}</jppfs_cor:NetSales>
+        </xbrli:xbrl>
+        """,
+        encoding="utf-8",
     )
+    return path
 
 
-def _build_db(db_path: Path) -> None:
+def _write_share_class_xbrl(path: Path) -> Path:
+    path.write_text(
+        """
+        <xbrli:xbrl
+            xmlns:xbrli="http://www.xbrl.org/2003/instance"
+            xmlns:xbrldi="http://xbrl.org/2006/xbrldi"
+            xmlns:iso4217="http://www.xbrl.org/2003/iso4217"
+            xmlns:jppfs_cor="http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor"
+            xmlns:jpcrp_cor="http://disclosure.edinet-fsa.go.jp/taxonomy/jpcrp/2024-11-01/jpcrp_cor">
+          <xbrli:context id="CurrentYearInstant">
+            <xbrli:entity><xbrli:identifier scheme="test">E1</xbrli:identifier></xbrli:entity>
+            <xbrli:period><xbrli:instant>2025-03-31</xbrli:instant></xbrli:period>
+          </xbrli:context>
+          <xbrli:context id="FilingDateInstant_ClassAPreferredSharesMember">
+            <xbrli:entity>
+              <xbrli:identifier scheme="test">E1</xbrli:identifier>
+              <xbrli:segment>
+                <xbrldi:explicitMember dimension="jpcrp_cor:ClassesOfSharesAxis">jpcrp_cor:ClassAPreferredSharesMember</xbrldi:explicitMember>
+              </xbrli:segment>
+            </xbrli:entity>
+            <xbrli:period><xbrli:instant>2025-06-27</xbrli:instant></xbrli:period>
+          </xbrli:context>
+          <xbrli:unit id="JPY"><xbrli:measure>iso4217:JPY</xbrli:measure></xbrli:unit>
+          <xbrli:unit id="shares"><xbrli:measure>xbrli:shares</xbrli:measure></xbrli:unit>
+          <jppfs_cor:Assets contextRef="CurrentYearInstant" unitRef="JPY">1000</jppfs_cor:Assets>
+          <jpcrp_cor:NumberOfIssuedSharesAsOfFiscalYearEndIssuedSharesTotalNumberOfSharesEtc
+              contextRef="FilingDateInstant_ClassAPreferredSharesMember" unitRef="shares" decimals="0">3800</jpcrp_cor:NumberOfIssuedSharesAsOfFiscalYearEndIssuedSharesTotalNumberOfSharesEtc>
+        </xbrli:xbrl>
+        """,
+        encoding="utf-8",
+    )
+    return path
+
+
+def _build_db(db_path: Path, tmp_path: Path) -> None:
     conn = get_connection(db_path)
     init_db(conn)
     upsert_stock(conn, "1301", "Alpha", "Sector", "Prime")
@@ -32,331 +79,168 @@ def _build_db(db_path: Path) -> None:
         ticker="1301",
         fiscal_year="2025-03",
         doc_id="S100TEST1",
-        xbrl_path="/tmp/1301/S100TEST1",
+        xbrl_path=str(_write_financial_xbrl(tmp_path / "1301.xbrl", 200.0)),
     )
     upsert_sec_report(
         conn,
         ticker="1302",
         fiscal_year="2025-03",
         doc_id="S100TEST2",
-        xbrl_path="/tmp/1302/S100TEST2",
+        xbrl_path=str(_write_financial_xbrl(tmp_path / "1302.xbrl", 300.0)),
     )
     upsert_financial_item(conn, "1301", "2025-03", "pl", "revenue", 100.0, "edinet_xbrl")
     conn.commit()
     conn.close()
 
 
-def test_main_skips_existing_by_default(tmp_path: Path, monkeypatch: object, capsys: object) -> None:
+def _financial_value(db_path: Path, ticker: str, item_name: str) -> float | None:
+    conn = get_connection(db_path)
+    try:
+        row = conn.execute(
+            """
+            SELECT value FROM financial_items
+            WHERE ticker = ? AND period = '2025-03' AND item_name = ?
+            """,
+            (ticker, item_name),
+        ).fetchone()
+        return None if row is None else row["value"]
+    finally:
+        conn.close()
+
+
+def test_main_skips_existing_by_default(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     db_path = tmp_path / "stocks.db"
-    _build_db(db_path)
-
-    parse_calls: list[str] = []
-    replace_calls: list[dict[str, object]] = []
-
-    def fake_parse(xbrl_path: str) -> dict[str, dict[str, dict[str, float | None]]]:
-        parse_calls.append(xbrl_path)
-        return {"2025-03": {"pl": {"revenue": 200.0}}}
-
-    def fake_replace(
-        conn: object,
-        *,
-        ticker: str,
-        sources: tuple[str, ...],
-        rows: list[dict[str, object]],
-    ) -> None:
-        del conn
-        replace_calls.append({"ticker": ticker, "sources": sources, "rows": rows})
-
+    _build_db(db_path, tmp_path)
     monkeypatch.setattr(cli, "STOCKS_DB_PATH", db_path)
-    monkeypatch.setattr(cli, "parse_xbrl_financials", fake_parse)
-    monkeypatch.setattr(cli, "replace_financial_items_for_ticker_sources", fake_replace)
 
     rc = cli.main([])
     captured = capsys.readouterr()
 
     assert rc == 0
-    assert parse_calls == ["/tmp/1302/S100TEST2"]
-    assert [call["ticker"] for call in replace_calls] == ["1302"]
+    assert _financial_value(db_path, "1301", "revenue") == pytest.approx(100.0)
+    assert _financial_value(db_path, "1302", "revenue") == pytest.approx(300.0)
     assert "Done: 1 ok, 0 errors" in captured.err
 
 
 def test_main_ticker_still_honors_default_skip_existing(
-    tmp_path: Path, monkeypatch: object, capsys: object,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     db_path = tmp_path / "stocks.db"
-    _build_db(db_path)
-
-    parse_calls: list[str] = []
-    replace_calls: list[dict[str, object]] = []
-
-    def fake_parse(xbrl_path: str) -> dict[str, dict[str, dict[str, float | None]]]:
-        parse_calls.append(xbrl_path)
-        return {"2025-03": {"pl": {"revenue": 200.0}}}
-
-    def fake_replace(
-        conn: object,
-        *,
-        ticker: str,
-        sources: tuple[str, ...],
-        rows: list[dict[str, object]],
-    ) -> None:
-        del conn, sources, rows
-        replace_calls.append({"ticker": ticker})
-
+    _build_db(db_path, tmp_path)
     monkeypatch.setattr(cli, "STOCKS_DB_PATH", db_path)
-    monkeypatch.setattr(cli, "parse_xbrl_financials", fake_parse)
-    monkeypatch.setattr(cli, "replace_financial_items_for_ticker_sources", fake_replace)
 
     rc = cli.main(["--ticker", "1301"])
     captured = capsys.readouterr()
 
     assert rc == 0
-    assert parse_calls == []
-    assert replace_calls == []
+    assert _financial_value(db_path, "1301", "revenue") == pytest.approx(100.0)
     assert "Done: 0 ok, 0 errors" in captured.err
 
 
-def test_main_force_reparses_existing_ticker(tmp_path: Path, monkeypatch: object, capsys: object) -> None:
+def test_main_force_reparses_existing_ticker(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     db_path = tmp_path / "stocks.db"
-    _build_db(db_path)
-
-    parse_calls: list[str] = []
-    replace_calls: list[dict[str, object]] = []
-
-    def fake_parse(xbrl_path: str) -> dict[str, dict[str, dict[str, float | None]]]:
-        parse_calls.append(xbrl_path)
-        return {"2025-03": {"bs": {"cash_and_deposits": 50.0}, "pl": {"revenue": 200.0}}}
-
-    def fake_replace(
-        conn: object,
-        *,
-        ticker: str,
-        sources: tuple[str, ...],
-        rows: list[dict[str, object]],
-    ) -> None:
-        del conn
-        replace_calls.append({"ticker": ticker, "sources": sources, "rows": rows})
-
+    _build_db(db_path, tmp_path)
     monkeypatch.setattr(cli, "STOCKS_DB_PATH", db_path)
-    monkeypatch.setattr(cli, "parse_xbrl_financials", fake_parse)
-    monkeypatch.setattr(cli, "replace_financial_items_for_ticker_sources", fake_replace)
 
     rc = cli.main(["--ticker", "1301", "--force"])
     captured = capsys.readouterr()
 
     assert rc == 0
-    assert parse_calls == ["/tmp/1301/S100TEST1"]
-    assert len(replace_calls) == 1
-    assert replace_calls[0]["ticker"] == "1301"
-    assert replace_calls[0]["sources"] == cli._REPLACED_SOURCES
-    assert replace_calls[0]["rows"] == [
-        {
-            "ticker": "1301",
-            "period": "2025-03",
-            "statement": "bs",
-            "item_name": "cash_and_deposits",
-            "value": 50.0,
-            "source": "edinet_xbrl",
-        },
-        {
-            "ticker": "1301",
-            "period": "2025-03",
-            "statement": "pl",
-            "item_name": "revenue",
-            "value": 200.0,
-            "source": "edinet_xbrl",
-        },
-    ]
+    assert _financial_value(db_path, "1301", "revenue") == pytest.approx(200.0)
+    assert "Done: 1 ok, 0 errors" in captured.err
+
+
+def test_main_from_ticker_resumes_sorted_tickers(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    db_path = tmp_path / "stocks.db"
+    _build_db(db_path, tmp_path)
+    monkeypatch.setattr(cli, "STOCKS_DB_PATH", db_path)
+
+    rc = cli.main(["--from-ticker", "1302", "--force"])
+    captured = capsys.readouterr()
+
+    assert rc == 0
+    assert _financial_value(db_path, "1301", "revenue") == pytest.approx(100.0)
+    assert _financial_value(db_path, "1302", "revenue") == pytest.approx(300.0)
     assert "Done: 1 ok, 0 errors" in captured.err
 
 
 def test_main_writes_share_classes(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-    capsys: object,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     db_path = tmp_path / "stocks.db"
-    _build_db(db_path)
-
-    financial_replace_calls: list[dict[str, object]] = []
-    share_class_replace_calls: list[dict[str, object]] = []
-
-    def fake_parse(_xbrl_path: str) -> dict[str, dict[str, dict[str, float | None]]]:
-        return {"2025-03": {"bs": {"has_preferred_shares": 1.0}}}
-
-    def fake_parse_share_classes(_xbrl_path: str) -> list[cli.ShareClassRow]:
-        return [
-            {
-                "period": "2025-03",
-                "class_key": "http://example.test#ClassAPreferredSharesMember",
-                "class_name": "Ａ種優先株式",
-                "shares": 3800.0,
-                "is_preferred": True,
-                "source_kind": "classes_of_shares_axis",
-            }
-        ]
-
-    def fake_replace_financial(
-        conn: object,
-        *,
-        ticker: str,
-        sources: tuple[str, ...],
-        rows: list[dict[str, object]],
-    ) -> None:
-        del conn
-        financial_replace_calls.append({"ticker": ticker, "sources": sources, "rows": rows})
-
-    def fake_replace_share_classes(
-        conn: object,
-        *,
-        ticker: str,
-        source: str,
-        rows: list[dict[str, object]],
-    ) -> None:
-        del conn
-        share_class_replace_calls.append({"ticker": ticker, "source": source, "rows": rows})
-
+    conn = get_connection(db_path)
+    init_db(conn)
+    upsert_stock(conn, "1301", "Alpha", "Sector", "Prime")
+    upsert_sec_report(
+        conn,
+        ticker="1301",
+        fiscal_year="2025-03",
+        doc_id="S100TEST1",
+        xbrl_path=str(_write_share_class_xbrl(tmp_path / "1301.xbrl")),
+    )
+    conn.commit()
+    conn.close()
     monkeypatch.setattr(cli, "STOCKS_DB_PATH", db_path)
-    monkeypatch.setattr(cli, "parse_xbrl_financials", fake_parse)
-    monkeypatch.setattr(cli, "parse_xbrl_share_classes", fake_parse_share_classes)
-    monkeypatch.setattr(cli, "replace_financial_items_for_ticker_sources", fake_replace_financial)
-    monkeypatch.setattr(cli, "replace_share_classes_for_ticker_source", fake_replace_share_classes)
 
     rc = cli.main(["--ticker", "1301", "--force"])
     captured = capsys.readouterr()
 
+    conn = get_connection(db_path)
+    try:
+        preferred = conn.execute(
+            """
+            SELECT class_name, shares, is_preferred, source_kind
+            FROM share_classes
+            WHERE ticker = '1301'
+            """
+        ).fetchone()
+        flag = conn.execute(
+            """
+            SELECT value FROM financial_items
+            WHERE ticker = '1301' AND item_name = 'has_preferred_shares'
+            """
+        ).fetchone()
+    finally:
+        conn.close()
+
     assert rc == 0
-    assert financial_replace_calls[0]["rows"] == [
-        {
-            "ticker": "1301",
-            "period": "2025-03",
-            "statement": "bs",
-            "item_name": "has_preferred_shares",
-            "value": 1.0,
-            "source": "edinet_xbrl",
-        }
-    ]
-    assert share_class_replace_calls == [
-        {
-            "ticker": "1301",
-            "source": "edinet_xbrl",
-            "rows": [
-                {
-                    "ticker": "1301",
-                    "period": "2025-03",
-                    "source": "edinet_xbrl",
-                    "class_key": "http://example.test#ClassAPreferredSharesMember",
-                    "class_name": "Ａ種優先株式",
-                    "shares": 3800.0,
-                    "is_preferred": 1,
-                    "source_kind": "classes_of_shares_axis",
-                }
-            ],
-        }
-    ]
+    assert preferred["class_name"] == "Ａ種優先株式"
+    assert preferred["shares"] == pytest.approx(3800.0)
+    assert preferred["is_preferred"] == 1
+    assert preferred["source_kind"] == "classes_of_shares_axis"
+    assert flag["value"] == pytest.approx(1.0)
     assert "Done: 1 ok, 0 errors" in captured.err
 
 
-def test_main_from_ticker_resumes_sorted_tickers(
-    tmp_path: Path, monkeypatch: object, capsys: object,
+def test_main_returns_1_when_no_xbrl_files(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     db_path = tmp_path / "stocks.db"
-    _build_db(db_path)
-
-    parse_calls: list[str] = []
-    replace_calls: list[str] = []
-
-    def fake_parse(xbrl_path: str) -> dict[str, dict[str, dict[str, float | None]]]:
-        parse_calls.append(xbrl_path)
-        return {"2025-03": {"pl": {"revenue": 200.0}}}
-
-    def fake_replace(
-        conn: object,
-        *,
-        ticker: str,
-        sources: tuple[str, ...],
-        rows: list[dict[str, object]],
-    ) -> None:
-        del conn, sources, rows
-        replace_calls.append(ticker)
-
+    conn = get_connection(db_path)
+    init_db(conn)
+    conn.close()
     monkeypatch.setattr(cli, "STOCKS_DB_PATH", db_path)
-    monkeypatch.setattr(cli, "parse_xbrl_financials", fake_parse)
-    monkeypatch.setattr(cli, "replace_financial_items_for_ticker_sources", fake_replace)
 
-    rc = cli.main(["--from-ticker", "1302", "--force"])
+    rc = cli.main([])
     captured = capsys.readouterr()
 
-    assert rc == 0
-    assert parse_calls == ["/tmp/1302/S100TEST2"]
-    assert replace_calls == ["1302"]
-    assert "Done: 1 ok, 0 errors" in captured.err
-
-
-def test_main_jobs_2_parses_all_tickers(
-    tmp_path: Path, monkeypatch: object, capsys: object,
-) -> None:
-    db_path = tmp_path / "stocks.db"
-    _build_db(db_path)
-
-    parse_calls: list[str] = []
-    replace_calls: list[dict[str, object]] = []
-
-    def fake_parse(xbrl_path: str) -> dict[str, dict[str, dict[str, float | None]]]:
-        parse_calls.append(xbrl_path)
-        return {"2025-03": {"pl": {"revenue": 200.0}}}
-
-    def fake_replace(
-        conn: object,
-        *,
-        ticker: str,
-        sources: tuple[str, ...],
-        rows: list[dict[str, object]],
-    ) -> None:
-        del conn
-        replace_calls.append({"ticker": ticker, "sources": sources, "rows": rows})
-
-    monkeypatch.setattr(cli, "STOCKS_DB_PATH", db_path)
-    monkeypatch.setattr(cli, "parse_xbrl_financials", fake_parse)
-    monkeypatch.setattr(cli, "replace_financial_items_for_ticker_sources", fake_replace)
-
-    rc = cli.main(["--force", "--jobs", "2"])
-    captured = capsys.readouterr()
-
-    assert rc == 0
-    assert sorted(parse_calls) == ["/tmp/1301/S100TEST1", "/tmp/1302/S100TEST2"]
-    assert sorted(call["ticker"] for call in replace_calls) == ["1301", "1302"]
-    assert "Done: 2 ok, 0 errors" in captured.err
-
-
-def test_main_jobs_1_is_serial_equivalent(
-    tmp_path: Path, monkeypatch: object, capsys: object,
-) -> None:
-    db_path = tmp_path / "stocks.db"
-    _build_db(db_path)
-
-    parse_calls: list[str] = []
-
-    def fake_parse(xbrl_path: str) -> dict[str, dict[str, dict[str, float | None]]]:
-        parse_calls.append(xbrl_path)
-        return {"2025-03": {"pl": {"revenue": 200.0}}}
-
-    def fake_replace(
-        conn: object,
-        *,
-        ticker: str,
-        sources: tuple[str, ...],
-        rows: list[dict[str, object]],
-    ) -> None:
-        del conn, sources, rows
-
-    monkeypatch.setattr(cli, "STOCKS_DB_PATH", db_path)
-    monkeypatch.setattr(cli, "parse_xbrl_financials", fake_parse)
-    monkeypatch.setattr(cli, "replace_financial_items_for_ticker_sources", fake_replace)
-
-    rc = cli.main(["--force", "--jobs", "1"])
-    captured = capsys.readouterr()
-
-    assert rc == 0
-    assert parse_calls == ["/tmp/1301/S100TEST1", "/tmp/1302/S100TEST2"]
-    assert "Done: 2 ok, 0 errors" in captured.err
+    assert rc == 1
+    assert "No XBRL files to parse" in captured.err

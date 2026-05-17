@@ -251,6 +251,45 @@ pub fn load_xbrl_artifact(path: &str) -> Result<LoadedXbrlArtifact, String> {
     })
 }
 
+/// Return true when a saved EDINET artifact directory has a sibling ZIP and
+/// contains at least one parseable XBRL/iXBRL fact document.
+pub fn is_valid_xbrl_path(path: Option<&str>) -> bool {
+    let Some(path) = path else {
+        return false;
+    };
+    let artifact_path = Path::new(path);
+    if !artifact_path.is_dir() {
+        return false;
+    }
+
+    let Some(parent) = artifact_path.parent() else {
+        return false;
+    };
+    let Some(name) = artifact_path.file_name().and_then(|n| n.to_str()) else {
+        return false;
+    };
+    if !parent.join(format!("{name}.zip")).is_file() {
+        return false;
+    }
+
+    for fp in xml_util::iter_fact_document_paths(artifact_path) {
+        let ext = fp
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("")
+            .to_ascii_lowercase();
+        if ext == "xbrl" {
+            return true;
+        }
+        if let Some(content) = xml_util::read_file_content(&fp)
+            && xml_util::is_valid_xbrl_text(&content)
+        {
+            return true;
+        }
+    }
+    false
+}
+
 // ── Data structures ──
 
 struct InlineFact {

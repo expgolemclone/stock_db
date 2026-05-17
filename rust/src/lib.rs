@@ -2,11 +2,17 @@ use pyo3::exceptions::PyRuntimeError;
 use pyo3::prelude::*;
 
 mod artifact;
+mod db;
 mod financials;
 mod inventory;
 mod share_classes;
 mod types;
 mod xml_util;
+
+type PyFinancials = std::collections::HashMap<
+    String,
+    std::collections::HashMap<String, std::collections::HashMap<String, Option<f64>>>,
+>;
 
 /// Custom exception for inventory tag mismatch errors.
 #[derive(Debug, Clone)]
@@ -38,8 +44,12 @@ impl From<InventoriesTagMismatchError> for PyErr {
 #[pymodule]
 fn _edinet_xbrl(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(parse_inventories, m)?)?;
+    m.add_function(wrap_pyfunction!(parse_xbrl_artifact, m)?)?;
     m.add_function(wrap_pyfunction!(parse_financials, m)?)?;
     m.add_function(wrap_pyfunction!(parse_share_classes, m)?)?;
+    m.add_function(wrap_pyfunction!(parse_xbrl_financials_to_db, m)?)?;
+    m.add_function(wrap_pyfunction!(is_valid_xbrl_text, m)?)?;
+    m.add_function(wrap_pyfunction!(is_valid_xbrl_path, m)?)?;
     Ok(())
 }
 
@@ -70,22 +80,79 @@ fn parse_inventories(py: Python<'_>, path: &str) -> PyResult<PyObject> {
     Ok(outer.into())
 }
 
+/// Parse an EDINET XBRL artifact once and return financials plus share classes.
+#[pyfunction]
+fn parse_xbrl_artifact(py: Python<'_>, path: &str) -> PyResult<PyObject> {
+    let (financials, share_classes) = py.allow_threads(|| parse_xbrl_artifact_inner(path))?;
+
+    let outer = pyo3::types::PyDict::new(py);
+    outer.set_item("financials", financials_to_py(py, &financials)?)?;
+    outer.set_item("share_classes", share_classes_to_py(py, &share_classes)?)?;
+    Ok(outer.into())
+}
+
 /// Parse an EDINET XBRL artifact and return canonical financial_items.
 ///
 /// Returns: dict[str, dict[str, dict[str, float | None]]]
 ///          (period → statement → item_name → value)
 #[pyfunction]
 fn parse_financials(py: Python<'_>, path: &str) -> PyResult<PyObject> {
-    let artifact = py.allow_threads(|| {
-        artifact::load_xbrl_artifact(path).map_err(|e| PyRuntimeError::new_err(e))
-    })?;
-    let result = py.allow_threads(|| {
-        financials::parse_financials_from_artifact(&artifact)
-            .map_err(|e: InventoriesTagMismatchError| PyRuntimeError::new_err(e.message))
-    })?;
+    let (financials, _) = py.allow_threads(|| parse_xbrl_artifact_inner(path))?;
+    financials_to_py(py, &financials)
+}
 
+/// Parse an EDINET XBRL artifact and return share class issued-share details.
+///
+/// Returns: list[dict[str, str | float | bool]]
+#[pyfunction]
+fn parse_share_classes(py: Python<'_>, path: &str) -> PyResult<PyObject> {
+    let (_, result) = py.allow_threads(|| parse_xbrl_artifact_inner(path))?;
+    share_classes_to_py(py, &result)
+}
+
+/// Parse selected EDINET XBRL artifacts from SQLite and replace DB rows.
+#[pyfunction]
+#[pyo3(signature = (db_path, ticker=None, from_ticker=None, skip_existing=true))]
+fn parse_xbrl_financials_to_db(
+    py: Python<'_>,
+    db_path: &str,
+    ticker: Option<String>,
+    from_ticker: Option<String>,
+    skip_existing: bool,
+) -> PyResult<PyObject> {
+    let summary = py.allow_threads(|| {
+        db::parse_xbrl_financials_to_db(
+            db_path,
+            ticker.as_deref(),
+            from_ticker.as_deref(),
+            skip_existing,
+        )
+        .map_err(PyRuntimeError::new_err)
+    })?;
+    summary_to_py(py, &summary)
+}
+
+#[pyfunction]
+fn is_valid_xbrl_text(content: &str) -> bool {
+    xml_util::is_valid_xbrl_text(content)
+}
+
+#[pyfunction]
+fn is_valid_xbrl_path(path: Option<&str>) -> bool {
+    artifact::is_valid_xbrl_path(path)
+}
+
+fn parse_xbrl_artifact_inner(path: &str) -> PyResult<(PyFinancials, Vec<types::ShareClassFact>)> {
+    let artifact = artifact::load_xbrl_artifact(path).map_err(|e| PyRuntimeError::new_err(e))?;
+    let financials = financials::parse_financials_from_artifact(&artifact)
+        .map_err(|e: InventoriesTagMismatchError| PyRuntimeError::new_err(e.message))?;
+    let share_classes = share_classes::parse_share_classes_from_artifact(&artifact);
+    Ok((financials, share_classes))
+}
+
+fn financials_to_py(py: Python<'_>, result: &PyFinancials) -> PyResult<PyObject> {
     let outer = pyo3::types::PyDict::new(py);
-    for (period, statements) in &result {
+    for (period, statements) in result {
         let mid = pyo3::types::PyDict::new(py);
         for (statement, items) in statements {
             let inner = pyo3::types::PyDict::new(py);
@@ -102,18 +169,9 @@ fn parse_financials(py: Python<'_>, path: &str) -> PyResult<PyObject> {
     Ok(outer.into())
 }
 
-/// Parse an EDINET XBRL artifact and return share class issued-share details.
-///
-/// Returns: list[dict[str, str | float | bool]]
-#[pyfunction]
-fn parse_share_classes(py: Python<'_>, path: &str) -> PyResult<PyObject> {
-    let artifact = py.allow_threads(|| {
-        artifact::load_xbrl_artifact(path).map_err(|e| PyRuntimeError::new_err(e))
-    })?;
-    let result = py.allow_threads(|| share_classes::parse_share_classes_from_artifact(&artifact));
-
+fn share_classes_to_py(py: Python<'_>, result: &[types::ShareClassFact]) -> PyResult<PyObject> {
     let rows = pyo3::types::PyList::empty(py);
-    for row in &result {
+    for row in result {
         let item = pyo3::types::PyDict::new(py);
         item.set_item("period", &row.period)?;
         item.set_item("class_key", &row.class_key)?;
@@ -124,4 +182,29 @@ fn parse_share_classes(py: Python<'_>, path: &str) -> PyResult<PyObject> {
         rows.append(item)?;
     }
     Ok(rows.into())
+}
+
+fn summary_to_py(py: Python<'_>, summary: &db::ParseDbSummary) -> PyResult<PyObject> {
+    let result = pyo3::types::PyDict::new(py);
+    result.set_item("ok", summary.ok)?;
+    result.set_item("errors", summary.errors)?;
+    result.set_item("skipped", summary.skipped)?;
+    result.set_item("no_xbrl_files", summary.no_xbrl_files)?;
+
+    let rows = pyo3::types::PyList::empty(py);
+    for row in &summary.results {
+        let item = pyo3::types::PyDict::new(py);
+        item.set_item("ticker", &row.ticker)?;
+        item.set_item("status", &row.status)?;
+        item.set_item("financial_rows", row.financial_rows)?;
+        item.set_item("period_count", row.period_count)?;
+        item.set_item("share_class_rows", row.share_class_rows)?;
+        match &row.message {
+            Some(message) => item.set_item("message", message)?,
+            None => item.set_item("message", py.None())?,
+        }
+        rows.append(item)?;
+    }
+    result.set_item("results", rows)?;
+    Ok(result.into())
 }

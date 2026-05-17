@@ -9,7 +9,6 @@ disable_xvfb = true
 
 [parse_xbrl_financials]
 skip_existing = true
-jobs = 4
 
 [scrape_stooq_prices]
 pool_size = 1

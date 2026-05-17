@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TypedDict
 
-from stock_db._edinet_xbrl import parse_share_classes as _rust_parse_share_classes
+from stock_db._edinet_xbrl import parse_xbrl_artifact as _rust_parse_xbrl_artifact
 
 
 class ShareClassRow(TypedDict):
@@ -18,4 +18,4 @@ class ShareClassRow(TypedDict):
 
 def parse_xbrl_share_classes(xbrl_path: str) -> list[ShareClassRow]:
     """Parse an EDINET XBRL artifact and return share-class issued share counts."""
-    return _rust_parse_share_classes(xbrl_path)
+    return _rust_parse_xbrl_artifact(xbrl_path)["share_classes"]
