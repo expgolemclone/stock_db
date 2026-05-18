@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: stooq-price-update-${{ github.ref_name }}
@@ -50,15 +51,19 @@ jobs:
             fonts-freefont-ttf \
             fonts-liberation
 
-      - name: Download stocks.db artifact
-        continue-on-error: true
-        uses: actions/download-artifact@v4
-        with:
-          name: stocks-db
-          path: var/db
+      - name: Restore previous stocks.db artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          run_id="$(gh run list --workflow update-stooq-prices.yml --status success --limit 1 --json databaseId --jq '.[0].databaseId // empty')"
+          if [ -n "$run_id" ]; then
+            gh run download "$run_id" -n stocks-db -D var/db
+          else
+            echo "No prior successful stocks-db artifact found; starting from the checked-out DB state."
+          fi
 
-      - name: Update Stooq prices
-        run: uv run scrape-stooq-prices --headless
+      - name: Refresh stock prices
+        run: uv run refresh-prices --headless
 
       - name: Purge irbank financial_items
         run: uv run purge-irbank-financials

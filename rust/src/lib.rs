@@ -2,6 +2,7 @@ use pyo3::exceptions::PyRuntimeError;
 use pyo3::prelude::*;
 
 mod artifact;
+mod auto_update;
 mod db;
 mod financials;
 mod inventory;

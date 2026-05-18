@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import subprocess
+from datetime import date
 from pathlib import Path
 
 import pytest
@@ -11,6 +12,7 @@ from stock_db.sources.stooq.downloader import DownloadedStooqDailyFile
 from stock_db.sources.stooq.exceptions import StooqDownloadError
 from stock_db.storage.connection import get_connection
 from stock_db.storage.prices import get_stooq_price_update_checked_at, upsert_price
+from stock_db.storage.schema import init_db
 
 
 class FakeBrowserServiceClient:
@@ -192,6 +194,135 @@ def test_run_stooq_price_update_command_passes_paths(
         "--output-dir",
         str(output_dir),
     ]
+
+
+def test_run_stooq_price_update_command_passes_if_needed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+    db_path = tmp_path / "custom-stocks.db"
+
+    def fake_run(
+        args: list[str],
+        *,
+        cwd: str,
+        capture_output: bool,
+        text: bool,
+        timeout: int,
+    ) -> subprocess.CompletedProcess[str]:
+        del cwd, capture_output, text, timeout
+        captured["args"] = args
+        return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(updater_module.subprocess, "run", fake_run)
+
+    updater_module.run_stooq_price_update_command(
+        db_path=db_path,
+        if_needed=True,
+    )
+
+    assert captured["args"] == [
+        "uv",
+        "run",
+        "scrape-stooq-prices",
+        "--if-needed",
+        "--db",
+        str(db_path),
+    ]
+
+
+def test_api_auto_update_is_noop_inside_stock_db(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    db_path = tmp_path / "stocks.db"
+    conn = get_connection(db_path)
+
+    def unexpected_run_stooq_price_update_command(**kwargs: object) -> object:
+        del kwargs
+        raise AssertionError("unexpected Stooq update")
+
+    monkeypatch.setattr(
+        updater_module,
+        "run_stooq_price_update_command",
+        unexpected_run_stooq_price_update_command,
+    )
+
+    try:
+        assert updater_module.ensure_stooq_prices_fresh_for_api(
+            conn,
+            cwd=PROJECT_ROOT,
+        ) is None
+    finally:
+        conn.close()
+
+
+def test_api_auto_update_skips_fresh_external_db(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    db_path = tmp_path / "stocks.db"
+    conn = get_connection(db_path)
+    init_db(conn)
+    upsert_price(conn, "7203", "2026-05-18", 3067.0, None)
+    conn.commit()
+
+    def unexpected_run_stooq_price_update_command(**kwargs: object) -> object:
+        del kwargs
+        raise AssertionError("unexpected Stooq update")
+
+    monkeypatch.setattr(
+        updater_module,
+        "run_stooq_price_update_command",
+        unexpected_run_stooq_price_update_command,
+    )
+
+    try:
+        assert updater_module.ensure_stooq_prices_fresh_for_api(
+            conn,
+            today=date(2026, 5, 18),
+            cwd=tmp_path,
+        ) is None
+    finally:
+        conn.close()
+
+
+def test_api_auto_update_runs_for_stale_external_db(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    db_path = tmp_path / "stocks.db"
+    conn = get_connection(db_path)
+    init_db(conn)
+    upsert_price(conn, "7203", "2026-05-08", 3067.0, None)
+    conn.commit()
+    captured: dict[str, object] = {}
+
+    def fake_run_stooq_price_update_command(**kwargs: object) -> updater_module.StooqPriceUpdateCommandResult:
+        captured.update(kwargs)
+        return updater_module.StooqPriceUpdateCommandResult(stdout="", stderr="updated")
+
+    monkeypatch.setattr(
+        updater_module,
+        "run_stooq_price_update_command",
+        fake_run_stooq_price_update_command,
+    )
+
+    try:
+        result = updater_module.ensure_stooq_prices_fresh_for_api(
+            conn,
+            today=date(2026, 5, 11),
+            cwd=tmp_path,
+        )
+    finally:
+        conn.close()
+
+    assert result == updater_module.StooqPriceUpdateCommandResult(stdout="", stderr="updated")
+    assert captured == {
+        "db_path": db_path,
+        "if_needed": True,
+    }
 
 
 def test_run_stooq_price_update_command_raises_on_nonzero_exit(

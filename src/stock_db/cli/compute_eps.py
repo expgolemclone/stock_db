@@ -11,6 +11,7 @@ from typing import Sequence
 from stock_db.paths import STOCKS_DB_PATH
 from stock_db.storage.connection import get_connection
 from stock_db.storage.financials import upsert_financial_items_bulk
+from stock_db.storage.schema import init_db
 
 _SOURCE = "computed"
 
@@ -104,6 +105,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     conn: sqlite3.Connection = get_connection(Path(args.db))
     try:
+        init_db(conn)
         tickers, items = _compute(conn)
         print(f"Computed EPS for {tickers} tickers ({items} items)", file=sys.stderr)
         return 0

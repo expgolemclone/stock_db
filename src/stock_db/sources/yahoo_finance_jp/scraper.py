@@ -34,6 +34,10 @@ class YFScrapeError(RuntimeError):
     pass
 
 
+class YFStaleQuoteError(RuntimeError):
+    pass
+
+
 def _quote_url(ticker: str, suffix: str) -> str:
     return _QUOTE_URL.format(ticker=ticker, suffix=suffix)
 
@@ -165,6 +169,8 @@ def scrape_and_store(
     tickers: list[str],
     *,
     skip_existing: bool = True,
+    min_date: str | None = None,
+    fail_fast: bool = False,
 ) -> tuple[int, int]:
     """Scrape prices for tickers and store in DB.
 
@@ -215,10 +221,17 @@ def scrape_and_store(
                 "  %s: close=%.0f date=%s volume=%s",
                 ticker, quote.close, quote.date, quote.volume,
             )
+            if min_date is not None and (quote.date is None or quote.date < min_date):
+                message = f"{ticker}: quote date {quote.date or 'unknown'} is older than {min_date}"
+                if fail_fast:
+                    raise YFStaleQuoteError(message)
+                logger.warning("  %s", message)
             ok += 1
         except (YFScrapeError, BrowserServiceError, sqlite3.OperationalError) as exc:
             errors += 1
             logger.exception("Error processing %s: %s", ticker, exc)
+            if fail_fast:
+                raise
 
         if i < len(tickers):
             _delay(interval)

@@ -343,7 +343,7 @@ def scrape_edinet_phase1(
                 client,
                 ticker,
                 known_suffix=suffixes.get(ticker),
-                interval=0.0,
+                interval=interval,
             )
             yahoo_candidates = [
                 candidate

@@ -10,7 +10,8 @@ from typing import Sequence
 
 from stock_db.paths import STOCKS_DB_PATH
 from stock_db.storage.connection import get_connection
-from stock_db.storage.financials import replace_financial_items_for_source
+from stock_db.storage.financials import upsert_financial_items_bulk
+from stock_db.storage.schema import init_db
 
 _SHIKIHO_DB_PATH = (
     STOCKS_DB_PATH.parent.parent.parent.parent
@@ -44,9 +45,20 @@ def _sync(conn: sqlite3.Connection, shikiho_db_path: str) -> tuple[int, int]:
     for row in rows:
         grouped.setdefault(row["stock_code"], []).append(row)
 
+    conn.execute(
+        """
+        DELETE FROM financial_items
+        WHERE source = ?
+          AND statement = 'forecast'
+          AND item_name IN ('net_income_current', 'net_income_next')
+        """,
+        (_SOURCE,),
+    )
+
     ok = 0
     skipped = 0
     for ticker, forecasts in sorted(grouped.items()):
+        forecasts = forecasts[-2:]
         if len(forecasts) < 1 or forecasts[0]["net_income"] is None:
             skipped += 1
             continue
@@ -80,7 +92,7 @@ def _sync(conn: sqlite3.Connection, shikiho_db_path: str) -> tuple[int, int]:
             )
 
         if db_rows:
-            replace_financial_items_for_source(conn, ticker, _SOURCE, db_rows)
+            upsert_financial_items_bulk(conn, db_rows)
             ok += 1
 
     conn.commit()
@@ -105,6 +117,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     conn: sqlite3.Connection = get_connection(Path(args.db))
     try:
+        init_db(conn)
         ok, skipped = _sync(conn, args.shikiho_db)
         print(f"Synced {ok} tickers ({skipped} skipped)", file=sys.stderr)
         return 0

@@ -85,6 +85,64 @@ def test_main_passes_output_dir(
     assert captured["output_dir"] == raw_dir
 
 
+def test_main_skips_update_when_if_needed_is_fresh(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    db_path = tmp_path / "stocks.db"
+
+    class FakeConnection:
+        def close(self) -> None:
+            pass
+
+    def unexpected_update_stooq_daily_prices(**kwargs: object) -> StooqDailyPriceUpdateResult:
+        del kwargs
+        raise AssertionError("unexpected Stooq update")
+
+    monkeypatch.setattr(cli_module, "get_connection", lambda _db_path: FakeConnection())
+    monkeypatch.setattr(cli_module, "init_db", lambda _conn: None)
+    monkeypatch.setattr(cli_module, "is_stooq_price_update_required", lambda _conn: False)
+    monkeypatch.setattr(cli_module, "update_stooq_daily_prices", unexpected_update_stooq_daily_prices)
+
+    rc = cli_module.main(["--db", str(db_path), "--if-needed"])
+    output = capsys.readouterr()
+
+    assert rc == 0
+    assert output.err.strip() == "Stooq prices are fresh; no update needed"
+
+
+def test_main_updates_when_if_needed_is_stale(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    db_path = tmp_path / "stocks.db"
+    captured: dict[str, object] = {}
+
+    class FakeConnection:
+        def close(self) -> None:
+            pass
+
+    def fake_update_stooq_daily_prices(**kwargs: object) -> StooqDailyPriceUpdateResult:
+        captured.update(kwargs)
+        return StooqDailyPriceUpdateResult(
+            imported=1,
+            date="20260429",
+            label="0429_d",
+            file_path=tmp_path / "raw" / "0429_d.csv",
+        )
+
+    monkeypatch.setattr(cli_module, "get_connection", lambda _db_path: FakeConnection())
+    monkeypatch.setattr(cli_module, "init_db", lambda _conn: None)
+    monkeypatch.setattr(cli_module, "is_stooq_price_update_required", lambda _conn: True)
+    monkeypatch.setattr(cli_module, "update_stooq_daily_prices", fake_update_stooq_daily_prices)
+
+    rc = cli_module.main(["--db", str(db_path), "--if-needed"])
+
+    assert rc == 0
+    assert captured["db_path"] == db_path
+
+
 def test_main_returns_1_on_update_failure(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

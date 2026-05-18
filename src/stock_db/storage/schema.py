@@ -27,7 +27,7 @@ CREATE TABLE IF NOT EXISTS financial_items (
     value      REAL,
     source     TEXT    NOT NULL,
     updated_at TEXT    NOT NULL,
-    PRIMARY KEY (ticker, period, statement, item_name)
+    PRIMARY KEY (ticker, period, statement, item_name, source)
 );
 
 CREATE INDEX IF NOT EXISTS idx_fi_statement_item
@@ -236,6 +236,46 @@ def _rebuild_sec_reports_with_composite_pk(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
+def _rebuild_financial_items_with_source_pk(conn: sqlite3.Connection) -> None:
+    conn.executescript(
+        """
+        CREATE TABLE financial_items__new (
+            ticker     TEXT    NOT NULL,
+            period     TEXT    NOT NULL,
+            statement  TEXT    NOT NULL,
+            item_name  TEXT    NOT NULL,
+            value      REAL,
+            source     TEXT    NOT NULL,
+            updated_at TEXT    NOT NULL,
+            PRIMARY KEY (ticker, period, statement, item_name, source)
+        );
+
+        INSERT INTO financial_items__new (
+            ticker,
+            period,
+            statement,
+            item_name,
+            value,
+            source,
+            updated_at
+        )
+        SELECT
+            ticker,
+            period,
+            statement,
+            item_name,
+            value,
+            source,
+            updated_at
+        FROM financial_items;
+
+        DROP TABLE financial_items;
+        ALTER TABLE financial_items__new RENAME TO financial_items;
+        """
+    )
+    conn.commit()
+
+
 def _table_info(conn: sqlite3.Connection, table: str) -> list[sqlite3.Row]:
     rows = conn.execute(f"PRAGMA table_info({table})").fetchall()  # noqa: S608
     return list(rows)
@@ -270,6 +310,12 @@ def _migrate(conn: sqlite3.Connection) -> None:
     if _table_columns(conn, "market_cap"):
         conn.execute("DROP TABLE market_cap")
         conn.commit()
+
+    fi_cols = _table_columns(conn, "financial_items")
+    if fi_cols:
+        fi_pk = {row[1]: row[5] for row in _table_info(conn, "financial_items")}
+        if fi_pk.get("source", 0) == 0:
+            _rebuild_financial_items_with_source_pk(conn)
 
     sr_cols = _table_columns(conn, "sec_reports")
     if sr_cols and "xbrl_path" not in sr_cols:

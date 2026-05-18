@@ -17,6 +17,7 @@ pub struct ScreeningStock {
     pub ticker: String,
     pub name: String,
     pub price: Option<f64>,
+    pub price_date: Option<String>,
     pub shares_outstanding: Option<i64>,
     pub financials: StatementMap,
     pub cf_history: Vec<HistoricalItems>,
@@ -29,6 +30,8 @@ pub fn load_screening_stocks(
     fcf_periods: usize,
     pl_periods: usize,
 ) -> Result<Vec<ScreeningStock>, String> {
+    crate::auto_update::ensure_prices_fresh_for_api(db_path)?;
+
     let conn = Connection::open(db_path).map_err(|err| err.to_string())?;
     let names = get_stock_names(&conn)?;
     let selected_tickers = match tickers {
@@ -77,7 +80,7 @@ fn build_screening_stock(
     pl_periods: usize,
 ) -> Result<ScreeningStock, String> {
     let financials = get_financial_dict(conn, &ticker)?;
-    let (price, shares_outstanding) = get_latest_price_with_shares(conn, &ticker)?;
+    let (price, price_date, shares_outstanding) = get_latest_price_with_shares(conn, &ticker)?;
     let cf_history = get_historical_items(conn, &ticker, "cf", fcf_periods)?;
     let pl_history = get_historical_items(conn, &ticker, "pl", pl_periods)?;
 
@@ -85,6 +88,7 @@ fn build_screening_stock(
         ticker,
         name,
         price,
+        price_date,
         shares_outstanding,
         financials,
         cf_history,
@@ -206,21 +210,26 @@ fn merge_latest_statement_rows(
 fn get_latest_price_with_shares(
     conn: &Connection,
     ticker: &str,
-) -> Result<(Option<f64>, Option<i64>), String> {
-    let price = conn
+) -> Result<(Option<f64>, Option<String>, Option<i64>), String> {
+    let price_row = conn
         .query_row(
             r#"
-            SELECT close
+            SELECT close, date
             FROM prices
             WHERE ticker = ?1
             ORDER BY date DESC
             LIMIT 1
             "#,
             params![ticker],
-            |row| row.get::<_, Option<f64>>(0),
+            |row| {
+                Ok((
+                    row.get::<_, Option<f64>>(0)?,
+                    row.get::<_, Option<String>>(1)?,
+                ))
+            },
         )
-        .ok()
-        .flatten();
+        .ok();
+    let (price, price_date) = price_row.unwrap_or((None, None));
     let shares = conn
         .query_row(
             "SELECT shares_outstanding FROM stocks WHERE ticker = ?1",
@@ -229,7 +238,7 @@ fn get_latest_price_with_shares(
         )
         .ok()
         .flatten();
-    Ok((price, shares))
+    Ok((price, price_date, shares))
 }
 
 fn get_historical_items(
@@ -281,4 +290,110 @@ fn get_historical_items(
         }
     }
     Ok(grouped)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn fixture_conn() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            r#"
+            CREATE TABLE stocks (
+                ticker TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                shares_outstanding INTEGER
+            );
+            CREATE TABLE prices (
+                ticker TEXT NOT NULL,
+                date TEXT NOT NULL,
+                close REAL
+            );
+            CREATE TABLE financial_items (
+                ticker TEXT NOT NULL,
+                period TEXT NOT NULL,
+                statement TEXT NOT NULL,
+                item_name TEXT NOT NULL,
+                value REAL,
+                source TEXT NOT NULL
+            );
+            "#,
+        )
+        .unwrap();
+        conn
+    }
+
+    #[test]
+    fn build_screening_stock_merges_source_specific_rows_and_history() {
+        let conn = fixture_conn();
+        conn.execute(
+            "INSERT INTO stocks (ticker, name, shares_outstanding) VALUES (?1, ?2, ?3)",
+            params!["1234", "Example", 1_000_i64],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO prices (ticker, date, close) VALUES (?1, ?2, ?3)",
+            params!["1234", "2026-05-18", 321.0_f64],
+        )
+        .unwrap();
+        for (period, statement, item_name, value, source) in [
+            ("2025-03", "pl", "net_income", 100.0, "edinet_xbrl"),
+            ("2025-03", "bs", "total_assets", 900.0, "edinet_xbrl"),
+            ("2024-03", "cf", "operating_cf", 10.0, "edinet_xbrl"),
+            ("2025-03", "cf", "operating_cf", 20.0, "edinet_xbrl"),
+            ("2024-03", "pl", "net_income", 80.0, "edinet_xbrl"),
+            ("2026-03", "forecast", "net_income", 111.0, "edinet_xbrl"),
+            ("2027-03", "forecast", "net_income", 222.0, "edinet_xbrl"),
+            ("2026-03", "forecast", "net_income", 333.0, "shikiho"),
+            ("2027-03", "forecast", "net_income", 444.0, "shikiho"),
+            ("2026-03", "dividend", "dividend_per_share", 10.0, "shikiho"),
+            ("2027-03", "dividend", "dividend_per_share", 12.0, "shikiho"),
+        ] {
+            conn.execute(
+                r#"
+                INSERT INTO financial_items
+                    (ticker, period, statement, item_name, value, source)
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+                "#,
+                params!["1234", period, statement, item_name, value, source],
+            )
+            .unwrap();
+        }
+
+        let stock =
+            build_screening_stock(&conn, "1234".to_string(), "Example".to_string(), 2, 2).unwrap();
+
+        assert_eq!(stock.price, Some(321.0));
+        assert_eq!(stock.shares_outstanding, Some(1_000));
+        assert_eq!(stock.financials["pl"].get("net_income"), Some(&Some(100.0)));
+        assert_eq!(
+            stock.financials["bs"].get("total_assets"),
+            Some(&Some(900.0))
+        );
+        assert_eq!(
+            stock.financials["forecast"].get("net_income"),
+            Some(&Some(444.0))
+        );
+        assert_eq!(
+            stock.financials["dividend"].get("dividend_per_share"),
+            Some(&Some(12.0))
+        );
+        assert_eq!(
+            stock
+                .cf_history
+                .iter()
+                .map(|row| row.period.as_str())
+                .collect::<Vec<_>>(),
+            vec!["2025-03", "2024-03"]
+        );
+        assert_eq!(
+            stock
+                .pl_history
+                .iter()
+                .map(|row| row.period.as_str())
+                .collect::<Vec<_>>(),
+            vec!["2025-03", "2024-03"]
+        );
+    }
 }

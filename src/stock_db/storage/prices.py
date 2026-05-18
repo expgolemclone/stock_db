@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
+from collections.abc import Iterable
 from datetime import date, datetime, timedelta, timezone
 from typing import TypedDict
 from zoneinfo import ZoneInfo
@@ -10,6 +11,14 @@ from stock_db.storage._util import utc_now_iso
 
 STOOQ_PRICE_REFRESH_SOURCE = "stooq_prices"
 STOOQ_PRICE_REFRESH_COOLDOWN = timedelta(days=1)
+PRICE_REFRESH_SOURCE = "price_refresh"
+PRICE_REFRESH_COOLDOWN = timedelta(days=1)
+
+
+def _ensure_prices_fresh_for_api(conn: sqlite3.Connection) -> None:
+    from stock_db.sources.price_refresh import ensure_prices_fresh_for_api
+
+    ensure_prices_fresh_for_api(conn)
 
 
 def upsert_price(
@@ -62,6 +71,7 @@ def get_latest_price(
     conn: sqlite3.Connection,
     ticker: str,
 ) -> float | None:
+    _ensure_prices_fresh_for_api(conn)
     row = conn.execute(
         "SELECT close FROM prices WHERE ticker = ? ORDER BY date DESC LIMIT 1",
         (ticker,),
@@ -78,6 +88,7 @@ def get_latest_price_date(conn: sqlite3.Connection) -> date | None:
 
 class PriceWithShares(TypedDict):
     price: float | None
+    price_date: str | None
     shares_outstanding: int | None
     updated_at: str | None
 
@@ -86,8 +97,9 @@ def get_latest_price_with_shares(
     conn: sqlite3.Connection,
     ticker: str,
 ) -> PriceWithShares:
+    _ensure_prices_fresh_for_api(conn)
     price_row = conn.execute(
-        "SELECT close, updated_at FROM prices WHERE ticker = ? ORDER BY date DESC LIMIT 1",
+        "SELECT close, date, updated_at FROM prices WHERE ticker = ? ORDER BY date DESC LIMIT 1",
         (ticker,),
     ).fetchone()
     shares_row = conn.execute(
@@ -96,6 +108,7 @@ def get_latest_price_with_shares(
     ).fetchone()
     return PriceWithShares(
         price=price_row["close"] if price_row else None,
+        price_date=price_row["date"] if price_row else None,
         shares_outstanding=shares_row["shares_outstanding"] if shares_row else None,
         updated_at=price_row["updated_at"] if price_row else None,
     )
@@ -107,6 +120,7 @@ def get_price_at_or_before(
     date_str: str,
 ) -> float | None:
     """Return the closing price on or before *date_str* (YYYY-MM-DD)."""
+    _ensure_prices_fresh_for_api(conn)
     row = conn.execute(
         "SELECT close FROM prices WHERE ticker = ? AND date <= ? ORDER BY date DESC LIMIT 1",
         (ticker, date_str),
@@ -122,6 +136,7 @@ def is_price_stale(updated_at: str | None, stale_days: int) -> bool:
 
 
 def get_fresh_price_tickers(conn: sqlite3.Connection, stale_days: int) -> set[str]:
+    _ensure_prices_fresh_for_api(conn)
     threshold = (
         datetime.now(timezone.utc) - timedelta(days=stale_days)
     ).isoformat()
@@ -132,11 +147,86 @@ def get_fresh_price_tickers(conn: sqlite3.Connection, stale_days: int) -> set[st
     return {r[0] for r in rows}
 
 
+def get_previous_jpx_business_day(*, today: date | None = None) -> date:
+    """Return the latest completed JPX business day before *today*."""
+    if today is None:
+        today = datetime.now(ZoneInfo("Asia/Tokyo")).date()
+
+    current = today - timedelta(days=1)
+    while not is_jpx_business_day(current):
+        current -= timedelta(days=1)
+    return current
+
+
+def get_stale_price_tickers(
+    conn: sqlite3.Connection,
+    *,
+    target_date: date,
+    tickers: Iterable[str] | None = None,
+) -> list[str]:
+    """Return tickers whose latest stored price date is older than *target_date*."""
+    target = target_date.isoformat()
+    if tickers is None:
+        rows = conn.execute(
+            """
+            WITH latest_price AS (
+                SELECT ticker, MAX(date) AS latest_date
+                FROM prices
+                GROUP BY ticker
+            )
+            SELECT s.ticker
+            FROM stocks s
+            LEFT JOIN latest_price lp
+              ON lp.ticker = s.ticker
+            WHERE lp.latest_date IS NULL
+               OR lp.latest_date < ?
+            ORDER BY s.ticker
+            """,
+            (target,),
+        ).fetchall()
+        return [row["ticker"] for row in rows]
+
+    ticker_list = [str(ticker) for ticker in tickers]
+    if not ticker_list:
+        return []
+
+    placeholders = ", ".join("?" for _ in ticker_list)
+    rows = conn.execute(
+        f"""
+        WITH latest_price AS (
+            SELECT ticker, MAX(date) AS latest_date
+            FROM prices
+            GROUP BY ticker
+        )
+        SELECT s.ticker
+        FROM stocks s
+        LEFT JOIN latest_price lp
+          ON lp.ticker = s.ticker
+        WHERE s.ticker IN ({placeholders})
+          AND (lp.latest_date IS NULL OR lp.latest_date < ?)
+        ORDER BY s.ticker
+        """,
+        (*ticker_list, target),
+    ).fetchall()
+    return [row["ticker"] for row in rows]
+
+
 def get_stooq_price_update_checked_at(conn: sqlite3.Connection) -> datetime | None:
+    return _get_source_refresh_checked_at(conn, STOOQ_PRICE_REFRESH_SOURCE)
+
+
+def get_price_refresh_checked_at(conn: sqlite3.Connection) -> datetime | None:
+    return _get_source_refresh_checked_at(conn, PRICE_REFRESH_SOURCE)
+
+
+def _get_source_refresh_checked_at(
+    conn: sqlite3.Connection,
+    source: str,
+) -> datetime | None:
     try:
         row = conn.execute(
             "SELECT checked_at FROM source_refresh_log WHERE source = ?",
-            (STOOQ_PRICE_REFRESH_SOURCE,),
+            (source,),
         ).fetchone()
     except sqlite3.OperationalError as exc:
         if "no such table" in str(exc):
@@ -157,6 +247,31 @@ def record_stooq_price_update_check(
     *,
     checked_at: datetime | None = None,
 ) -> None:
+    _record_source_refresh_check(
+        conn,
+        source=STOOQ_PRICE_REFRESH_SOURCE,
+        checked_at=checked_at,
+    )
+
+
+def record_price_refresh_check(
+    conn: sqlite3.Connection,
+    *,
+    checked_at: datetime | None = None,
+) -> None:
+    _record_source_refresh_check(
+        conn,
+        source=PRICE_REFRESH_SOURCE,
+        checked_at=checked_at,
+    )
+
+
+def _record_source_refresh_check(
+    conn: sqlite3.Connection,
+    *,
+    source: str,
+    checked_at: datetime | None = None,
+) -> None:
     if checked_at is None:
         checked_at = datetime.now(timezone.utc)
     elif checked_at.tzinfo is None:
@@ -169,7 +284,7 @@ def record_stooq_price_update_check(
         ON CONFLICT(source) DO UPDATE SET
             checked_at=excluded.checked_at
         """,
-        (STOOQ_PRICE_REFRESH_SOURCE, checked_at.astimezone(timezone.utc).isoformat()),
+        (source, checked_at.astimezone(timezone.utc).isoformat()),
     )
 
 
@@ -182,6 +297,22 @@ def _has_recent_stooq_price_update_check(
     if checked_at is None:
         return False
     return now.astimezone(timezone.utc) - checked_at.astimezone(timezone.utc) < STOOQ_PRICE_REFRESH_COOLDOWN
+
+
+def has_recent_price_refresh_check(
+    conn: sqlite3.Connection,
+    *,
+    now: datetime | None = None,
+) -> bool:
+    if now is None:
+        now = datetime.now(timezone.utc)
+    elif now.tzinfo is None:
+        now = now.replace(tzinfo=timezone.utc)
+
+    checked_at = get_price_refresh_checked_at(conn)
+    if checked_at is None:
+        return False
+    return now.astimezone(timezone.utc) - checked_at.astimezone(timezone.utc) < PRICE_REFRESH_COOLDOWN
 
 
 def is_stooq_price_update_required(

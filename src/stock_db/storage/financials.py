@@ -19,9 +19,8 @@ def upsert_financial_item(
         INSERT INTO financial_items
             (ticker, period, statement, item_name, value, source, updated_at)
         VALUES (?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(ticker, period, statement, item_name) DO UPDATE SET
+        ON CONFLICT(ticker, period, statement, item_name, source) DO UPDATE SET
             value=excluded.value,
-            source=excluded.source,
             updated_at=excluded.updated_at
         """,
         (ticker, period, statement, item_name, value, source, utc_now_iso()),
@@ -38,9 +37,8 @@ def upsert_financial_items_bulk(
         INSERT INTO financial_items
             (ticker, period, statement, item_name, value, source, updated_at)
         VALUES (:ticker, :period, :statement, :item_name, :value, :source, :updated_at)
-        ON CONFLICT(ticker, period, statement, item_name) DO UPDATE SET
+        ON CONFLICT(ticker, period, statement, item_name, source) DO UPDATE SET
             value=excluded.value,
-            source=excluded.source,
             updated_at=excluded.updated_at
         """,
         [{**r, "updated_at": now} for r in rows],

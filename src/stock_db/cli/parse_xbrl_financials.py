@@ -7,6 +7,8 @@ from typing import Sequence
 
 from stock_db._edinet_xbrl import parse_xbrl_financials_to_db as _rust_parse_xbrl_financials_to_db
 from stock_db.paths import STOCKS_DB_PATH, cli_defaults
+from stock_db.storage.connection import get_connection
+from stock_db.storage.schema import init_db
 
 
 def parse_xbrl_financials_to_db(
@@ -18,6 +20,11 @@ def parse_xbrl_financials_to_db(
     emit_progress: bool = False,
 ) -> dict:
     """Parse EDINET XBRL artifacts and replace DB rows via the Rust core."""
+    conn = get_connection(db_path)
+    try:
+        init_db(conn)
+    finally:
+        conn.close()
     return _rust_parse_xbrl_financials_to_db(
         str(db_path),
         ticker=ticker,

@@ -331,7 +331,17 @@ fn load_ticker_inputs(conn: &Connection) -> Result<Vec<TickerInput>, String> {
 
 fn load_existing_edinet_tickers(conn: &Connection) -> Result<HashSet<String>, String> {
     let mut stmt = conn
-        .prepare("SELECT DISTINCT ticker FROM financial_items WHERE source = ?")
+        .prepare(
+            r#"
+            SELECT fi.ticker
+            FROM financial_items AS fi
+            JOIN sec_reports AS sr
+              ON sr.ticker = fi.ticker
+            WHERE fi.source = ?1
+            GROUP BY fi.ticker
+            HAVING MAX(fi.updated_at) >= MAX(sr.updated_at)
+            "#,
+        )
         .map_err(|err| err.to_string())?;
     let rows = stmt
         .query_map([SOURCE], |row| row.get::<_, String>(0))
@@ -472,9 +482,8 @@ fn write_ticker(conn: &mut Connection, parsed: &ParsedTicker) -> Result<(), Stri
                 INSERT INTO financial_items
                     (ticker, period, statement, item_name, value, source, updated_at)
                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
-                ON CONFLICT(ticker, period, statement, item_name) DO UPDATE SET
+                ON CONFLICT(ticker, period, statement, item_name, source) DO UPDATE SET
                     value=excluded.value,
-                    source=excluded.source,
                     updated_at=excluded.updated_at
                 "#,
             )

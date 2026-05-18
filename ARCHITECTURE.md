@@ -56,11 +56,11 @@ flowchart LR
     rustcore --> sqlite
     sqlite --> artifact
 
-    pyapi -->|storage API / Stooq update API| formula
+    pyapi -->|storage API / price refresh API| formula
     rustcore -->|screening::load_screening_stocks| formula
     sqlite -->|screening input| formula
 
-    pyapi -->|Stooq update API / stock names| legends
+    pyapi -->|price refresh API / stock names| legends
     sqlite -->|financial_items / stocks / prices| legends
     artifact -.->|CI bootstrap| legends
 
@@ -72,7 +72,7 @@ flowchart LR
 
 - `japan_company_handbook` は `data/stock_performance.db` を生成し、`stock_db` の `sync-shikiho-*` CLI がこれを読む。
 - `formula_screening` は `stock_db` を editable Python dependency として使い、Rust 側では `stock-db-xbrl` crate の `screening` module を直接読む。
-- `invest_like_legends` は `stock_db` の DB と Stooq 更新 API を使い、CI では `stocks-db` artifact を bootstrap に使う。
+- `invest_like_legends` は `stock_db` の DB と価格更新 API を使い、CI では `stocks-db` artifact を bootstrap に使う。
 - `stock_web_ui` は downstream UI 検証やローカル表示で `stock_db/var/db/stocks.db` を参照する。
 
 関連 repo の bookmark は Rust 移行後の現行実装を `main`、旧 Python 系を `py` として扱う。`push-*` は `jj git push --change` 由来の一時 bookmark であり、長期運用名にはしない。
@@ -99,7 +99,7 @@ EDINET API を使う処理では `EDINET_API_KEY` が必要である。環境変
 export EDINET_API_KEY=...
 ```
 
-既存 DB は GitHub Actions の `stocks-db` artifact から復元できる。復元後は `uv run inspect-stock-db 7203 --limit 1` で読み取り確認する。
+既存 DB は GitHub Actions の `stocks-db` artifact から復元できる。定期価格更新 workflow も前回成功 run の artifact を復元してから更新する。復元後は `uv run inspect-stock-db 7203 --limit 1` で読み取り確認する。
 
 ## 4. 主要コンポーネント
 
@@ -185,9 +185,9 @@ flowchart LR
     yf_cli --> stocks_suffix["stocks.yf_suffix"]
 ```
 
-Stooq は JP 全銘柄の日次 CSV を取り込み、`prices.close` を upsert する。価格更新が必要かどうかは最新価格日と JPX 営業日カレンダーを比較し、成功した更新チェック時刻は `source_refresh_log` に保存する。
+Stooq は JP 全銘柄の日次 CSV を取り込み、`prices.close` を upsert する。価格更新が必要かどうかは前営業日の JPX 終値が全 DB 銘柄に揃っているかで判定し、Stooq 側の成功した更新チェック時刻は `source_refresh_log` に保存する。`stock_db` 外の repo から Python の価格読み取り API または Rust screening API が呼ばれた場合は、この鮮度確認を API 側で行い、古ければ `refresh-prices --if-needed` 経由で自動更新する。
 
-Yahoo Finance JP は Stooq だけでは埋まらない stale 銘柄の前日終値を補完する。接尾辞 `.T` などは自動検出し、`stocks.yf_suffix` に保存して次回以降の探索を省く。
+Yahoo Finance JP は Stooq だけでは埋まらない stale 銘柄の前日終値を補完する。接尾辞 `.T`、`.N`、`.S`、`.F` などは自動検出し、`stocks.yf_suffix` に保存して次回以降の探索を省く。Yahoo 補完は 1 銘柄ずつ実行し、個別銘柄の未取得・古い quote・接尾辞未解決は `PriceRefreshResult` の `yahoo_errors` / `unresolved_tickers` に集約する。個別銘柄の失敗では価格更新全体を停止せず、最後まで試行してから結果を返す。
 
 ### 5.3 Shikiho and derived data
 
@@ -202,7 +202,7 @@ flowchart LR
     eps --> computed["financial_items\nsource=computed"]
 ```
 
-四季報予想は `forecast.net_income_current` と `forecast.net_income_next` として保存する。配当は `dividend.dps` として保存する。`compute-eps` は過去 EPS と予想 EPS を `source=computed` で生成する。
+四季報予想は upstream に残る全履歴から最新2期を選び、古い方を `forecast.net_income_current`、新しい方を `forecast.net_income_next` として保存する。配当は `dividend.dps` として保存する。同期時は upstream から消えた `shikiho` 行も削除してから再生成する。`compute-eps` は過去 EPS と予想 EPS を `source=computed` で生成する。
 
 ## 6. SQLite スキーマと保存方針
 
@@ -212,10 +212,10 @@ flowchart LR
 |---|---|
 | `stocks` | ticker、会社名、EDINET / Yahoo 補助メタデータ、発行済株式数 |
 | `sec_reports` | 有報 docID、fiscal year、XBRL artifact path |
-| `financial_items` | 財務値。EDINET、四季報、計算値を statement / item 単位で保持 |
+| `financial_items` | 財務値。EDINET、四季報、計算値を `statement / item / source` 単位で保持 |
 | `share_classes` | 種類株式別の発行済株式数 |
 | `prices` | 日次価格。Yahoo 由来行では volume を保持し得る |
-| `source_refresh_log` | Stooq 更新チェック時刻 |
+| `source_refresh_log` | Stooq 更新チェック時刻と価格更新試行時刻 |
 
 保存方針:
 
@@ -223,6 +223,7 @@ flowchart LR
 - `financial_items` の正本は EDINET XBRL の `source=edinet_xbrl` とする。
 - 四季報由来の予想純利益と配当は `source=shikiho` とする。
 - EPS など派生値は `source=computed` とする。
+- `financial_items` の主キーには `source` を含め、同一 item の source 別共存を許す。
 - `parse-xbrl-financials` は ticker 単位で旧 EDINET / IRBank 系 source を置換し、同一 ticker の最新 parse 結果に揃える。
 - raw EDINET artifact は `var/raw/edinet/xbrl/{ticker}/{doc_id}.zip` と sibling の展開 directory を正規入力とする。
 
@@ -246,6 +247,7 @@ uv run purge-irbank-financials
 Prices:
 
 ```bash
+uv run refresh-prices
 uv run scrape-stooq-prices
 uv run scrape-yahoo-finance-prices
 ```
@@ -273,10 +275,17 @@ uv run generate-validation-site-list
 - `stock_db.storage.connection.get_connection`
 - `stock_db.storage.schema.init_db`
 - `stock_db.storage.financials.*`
-- `stock_db.storage.prices.is_stooq_price_update_required`
+- `stock_db.storage.prices.get_previous_jpx_business_day`
+- `stock_db.storage.prices.get_stale_price_tickers`
+- `stock_db.storage.prices.get_latest_price*`
+- `stock_db.storage.stocks.get_validation_targets`
+- `stock_db.sources.price_refresh.ensure_prices_fresh_for_api`
+- `stock_db.sources.price_refresh.run_price_refresh_command`
 - `stock_db.sources.stooq.run_stooq_price_update_command`
 
-Stooq 更新を他 repo から実行する場合は `run_stooq_price_update_command()` を使う。これは `stock_db` repo root を cwd にして `uv run scrape-stooq-prices` を実行し、CLI と同じ browser service 経路を使う。
+`stock_db` 外の repo から価格読み取り API を呼ぶ場合、API は前営業日終値が全 DB 銘柄に揃っているかを確認し、必要なら `run_price_refresh_command(if_needed=True)` で `stock_db` repo root から `uv run refresh-prices --if-needed` を実行する。更新は Stooq を先に試し、まだ stale な銘柄を Yahoo Finance JP で直列・2秒ベースのディレイで補完する。個別銘柄の取得失敗や補完後に残った stale 銘柄は結果 summary に出すが、価格更新コマンド自体は最後まで完走する。完走後は価格更新試行時刻を `source_refresh_log` に記録し、同日内の API 呼び出しで同じ大量スクレイピングを繰り返さない。DB 接続失敗や subprocess 起動失敗などの基盤エラーは例外にする。明示的に Stooq 更新だけを実行する場合は `run_stooq_price_update_command()` を使う。
+
+`get_latest_price_with_shares()` は最新終値と発行済株式数に加えて、その終値の `price_date` も返す。下流 UI は `price_date` と前営業日 metadata を比較し、古い株価・未取得株価を通常銘柄より目立ちにくく表示できる。
 
 ### 7.3 Rust API
 
@@ -293,18 +302,18 @@ PyO3 module `stock_db._edinet_xbrl` の代表 API:
 - `is_valid_xbrl_text(content)`
 - `is_valid_xbrl_path(path)`
 
-Rust crate 側では `screening::load_screening_stocks(db_path, tickers, fcf_periods, pl_periods)` を下流の Rust screening 実装が使う。
+Rust crate 側では `screening::load_screening_stocks(db_path, tickers, fcf_periods, pl_periods)` を下流の Rust screening 実装が使う。この入口も `stock_db` 外の cwd から呼ばれた場合は、DB 読み取り前に `refresh-prices --if-needed` で汎用価格更新を確認する。返却する `ScreeningStock` には株価基準日の `price_date` を含める。
 
 ## 8. 運用
 
-GitHub Actions の `update-stooq-prices.yml` は毎日 16:00 JST に実行される。
+GitHub Actions の `update-stooq-prices.yml` は毎日 16:00 JST に実行され、Stooq と Yahoo Finance JP 補完で価格を更新する。
 
 運用の流れ:
 
 1. Python / Rust / Node.js 依存を準備する。
 2. Stooq CAPTCHA OCR 用 font を runner に入れる。
 3. 前回の `stocks-db` artifact を `var/db` に download する。
-4. `uv run scrape-stooq-prices --headless` で日次価格を更新する。
+4. `uv run refresh-prices --headless` で日次価格を更新する。Stooq を先に取り込み、残った stale 銘柄を Yahoo Finance JP で補完する。Stooq 更新だけを確認したい場合は `uv run scrape-stooq-prices --headless` を使う。
 5. `uv run purge-irbank-financials` で artifact から IRBank 系 source を除去する。
 6. `var/db/stocks.db` を `stocks-db` artifact として upload する。
 
@@ -341,3 +350,4 @@ uv run inspect-stock-db 7203 --limit 1
 - スクレイピング系の実行では直列処理と 2 秒ディレイを守る。
 - XBRL 解析の変更では IFRS と J-GAAP の両方を壊していないことを確認する。
 - XBRL の canonical financial item 候補タグは `rust/src/financials.rs` の unit test に `main` 由来の静的スナップショットを持つ。実行時に `main` を読まず、現在実装が最低条件として包含していることを検証する。
+- `rust/src/screening.rs` の unit test は、source ごとの forecast / dividend 統合と履歴期間の組み立てを直接固定する。

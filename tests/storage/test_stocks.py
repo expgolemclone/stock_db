@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sqlite3
 
+from stock_db.storage import stocks as stocks_module
 from stock_db.storage.financials import upsert_financial_item
 from stock_db.storage.stocks import (
     get_all_tickers,
@@ -129,8 +130,19 @@ class TestCompanyMetadata:
 
 
 class TestGetValidationTargets:
-    def test_returns_stocks_ordered_by_market_cap(self, db_conn: sqlite3.Connection) -> None:
+    def test_returns_stocks_ordered_by_market_cap(
+        self,
+        db_conn: sqlite3.Connection,
+        monkeypatch,
+    ) -> None:
         from stock_db.storage.prices import upsert_price, upsert_shares_outstanding
+
+        checked: list[sqlite3.Connection] = []
+        monkeypatch.setattr(
+            stocks_module,
+            "_ensure_prices_fresh_for_api",
+            lambda conn: checked.append(conn),
+        )
 
         upsert_stock(db_conn, "1111", "Alpha", "", "")
         upsert_shares_outstanding(db_conn, "1111", 100)
@@ -148,6 +160,7 @@ class TestGetValidationTargets:
         assert len(rows) == 2
         assert rows[0]["ticker"] == "2222"  # 300*50=15000
         assert rows[1]["ticker"] == "1111"  # 100*100=10000
+        assert checked == [db_conn]
 
     def test_excludes_stocks_without_url_or_shares(self, db_conn: sqlite3.Connection) -> None:
         from stock_db.storage.prices import upsert_price, upsert_shares_outstanding

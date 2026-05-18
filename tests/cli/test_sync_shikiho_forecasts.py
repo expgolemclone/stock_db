@@ -33,6 +33,7 @@ def _build_shikiho_db(shikiho_db_path: Path) -> None:
         VALUES (?, ?, ?, ?, ?, ?, ?)
         """,
         [
+            ("1301", "Test Co", "shikiho", "25.3", 7000, 5000, "2025-01-01T00:00:00"),
             ("1301", "Test Co", "shikiho", "26.3", 7500, 5400, "2025-01-01T00:00:00"),
             ("1301", "Test Co", "shikiho", "27.3", 8200, 6000, "2025-01-01T00:00:00"),
             ("1302", "Other Co", "shikiho", "26.3", None, None, "2025-01-01T00:00:00"),
@@ -171,5 +172,28 @@ def test_sync_replaces_existing_shikiho_data(tmp_path: Path) -> None:
         assert len(rows) == 2
         assert rows[0]["period"] == "26.3"
         assert rows[0]["value"] == 5_400_000_000
+    finally:
+        conn.close()
+
+
+def test_sync_removes_tickers_missing_from_upstream(tmp_path: Path) -> None:
+    db_path = tmp_path / "stocks.db"
+    conn = get_connection(db_path)
+    init_db(conn)
+    upsert_financial_item(conn, "9999", "25.3", "forecast", "net_income_current", 1.0, "shikiho")
+    conn.commit()
+    conn.close()
+
+    shikiho_db_path = tmp_path / "stock_performance.db"
+    _build_shikiho_db(shikiho_db_path)
+
+    main(["--db", str(db_path), "--shikiho-db", str(shikiho_db_path)])
+
+    conn = get_connection(db_path)
+    try:
+        rows = conn.execute(
+            "SELECT * FROM financial_items WHERE ticker = '9999' AND source = 'shikiho'"
+        ).fetchall()
+        assert rows == []
     finally:
         conn.close()

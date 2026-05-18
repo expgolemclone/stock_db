@@ -2,24 +2,21 @@ from __future__ import annotations
 
 import argparse
 import logging
-from pathlib import Path
 import sys
+from pathlib import Path
 from typing import Sequence
 
 from stock_db.paths import STOCKS_DB_PATH, STOOQ_DIR, cli_defaults
-from stock_db.sources.stooq import (
-    StooqDailyPriceUpdateError,
-    StooqDailyPriceUpdateResult,
-    update_stooq_daily_prices,
+from stock_db.sources.price_refresh import (
+    PriceRefreshError,
+    describe_price_refresh_result,
+    refresh_prices,
 )
-from stock_db.storage.connection import get_connection
-from stock_db.storage.prices import is_stooq_price_update_required
-from stock_db.storage.schema import init_db
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Download the latest Stooq daily JP prices and upsert them into stocks.db"
+        description="Refresh Japanese stock prices using Stooq and Yahoo Finance JP fallback",
     )
     parser.add_argument(
         "--db",
@@ -42,7 +39,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--if-needed",
         action="store_true",
-        help="Skip the Stooq download when the configured DB is already fresh",
+        help="Skip refresh when all DB tickers already have the target price date",
     )
     return parser
 
@@ -58,31 +55,17 @@ def main(argv: Sequence[str] | None = None) -> int:
     logging.basicConfig(level=logging.INFO, format="%(message)s")
 
     try:
-        if args.if_needed:
-            conn = get_connection(args.db)
-            try:
-                init_db(conn)
-                update_required = is_stooq_price_update_required(conn)
-            finally:
-                conn.close()
-
-            if not update_required:
-                print("Stooq prices are fresh; no update needed", file=sys.stderr)
-                return 0
-
-        result: StooqDailyPriceUpdateResult = update_stooq_daily_prices(
+        result = refresh_prices(
             db_path=args.db,
             output_dir=args.output_dir,
+            if_needed=args.if_needed,
             headless=args.headless,
         )
-    except (StooqDailyPriceUpdateError, ValueError) as exc:
+    except (PriceRefreshError, ValueError) as exc:
         print(str(exc), file=sys.stderr)
         return 1
 
-    print(
-        f"Imported {result.imported} JP prices for {result.date} from {result.file_path}",
-        file=sys.stderr,
-    )
+    print(describe_price_refresh_result(result), file=sys.stderr)
     return 0
 
 

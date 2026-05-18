@@ -5,6 +5,12 @@ import sqlite3
 from stock_db.storage._util import utc_now_iso
 
 
+def _ensure_prices_fresh_for_api(conn: sqlite3.Connection) -> None:
+    from stock_db.sources.price_refresh import ensure_prices_fresh_for_api
+
+    ensure_prices_fresh_for_api(conn)
+
+
 def upsert_stock(
     conn: sqlite3.Connection,
     ticker: str,
@@ -104,6 +110,7 @@ def get_validation_targets(
     Only includes stocks that have a securities_report_url, shares_outstanding,
     and a latest closing price.
     """
+    _ensure_prices_fresh_for_api(conn)
     rows = conn.execute(
         """
         WITH latest_price AS (

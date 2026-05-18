@@ -52,6 +52,28 @@ class TestFinancialItems:
         assert result["pl"]["revenue"] == 100.0
         assert result["pl"]["net_income"] == 10.0
 
+    def test_same_item_can_coexist_across_sources(self, db_conn: sqlite3.Connection) -> None:
+        upsert_financial_item(db_conn, "1234", "2025-03", "forecast", "net_income", 100.0, "edinet_xbrl")
+        upsert_financial_item(db_conn, "1234", "2025-03", "forecast", "net_income", 200.0, "shikiho")
+        db_conn.commit()
+
+        rows = db_conn.execute(
+            """
+            SELECT source, value
+            FROM financial_items
+            WHERE ticker = '1234'
+              AND period = '2025-03'
+              AND statement = 'forecast'
+              AND item_name = 'net_income'
+            ORDER BY source
+            """
+        ).fetchall()
+
+        assert [tuple(row) for row in rows] == [
+            ("edinet_xbrl", 100.0),
+            ("shikiho", 200.0),
+        ]
+
     def test_get_historical_items(self, db_conn: sqlite3.Connection) -> None:
         for year in range(2020, 2025):
             upsert_financial_item(db_conn, "1234", str(year), "pl", "revenue", float(year), "test_source")

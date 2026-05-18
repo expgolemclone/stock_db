@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import sqlite3
 import subprocess
+import threading
 from dataclasses import dataclass
+from datetime import date
 from pathlib import Path
 
 from stock_db.browser_client.client import BrowserServiceClient, BrowserServiceError
@@ -15,8 +17,13 @@ from stock_db.sources.stooq.exceptions import (
 )
 from stock_db.sources.stooq.parser import ingest_daily_prices
 from stock_db.storage.connection import get_connection
-from stock_db.storage.prices import record_stooq_price_update_check
+from stock_db.storage.prices import (
+    is_stooq_price_update_required,
+    record_stooq_price_update_check,
+)
 from stock_db.storage.schema import init_db
+
+_AUTO_UPDATE_LOCK = threading.Lock()
 
 
 class StooqDailyPriceUpdateError(RuntimeError):
@@ -61,6 +68,68 @@ def _to_result(downloaded: DownloadedStooqDailyFile, imported: int) -> StooqDail
     )
 
 
+def _is_cwd_inside_project(cwd: Path | None = None) -> bool:
+    current = (cwd or Path.cwd()).resolve()
+    project_root = PROJECT_ROOT.resolve()
+    return current == project_root or current.is_relative_to(project_root)
+
+
+def _connection_db_path(conn: sqlite3.Connection) -> Path | None:
+    rows = conn.execute("PRAGMA database_list").fetchall()
+    for row in rows:
+        name = row["name"] if isinstance(row, sqlite3.Row) else row[1]
+        if name != "main":
+            continue
+        filename = row["file"] if isinstance(row, sqlite3.Row) else row[2]
+        if not filename:
+            return None
+        return Path(filename)
+    return None
+
+
+def _is_update_required_for_path(
+    db_path: Path,
+    *,
+    today: date | None = None,
+) -> bool:
+    conn = get_connection(db_path)
+    try:
+        init_db(conn)
+        return is_stooq_price_update_required(conn, today=today)
+    finally:
+        conn.close()
+
+
+def ensure_stooq_prices_fresh_for_api(
+    conn: sqlite3.Connection | None = None,
+    *,
+    db_path: Path | None = None,
+    today: date | None = None,
+    cwd: Path | None = None,
+) -> StooqPriceUpdateCommandResult | None:
+    if _is_cwd_inside_project(cwd):
+        return None
+
+    resolved_db_path = db_path
+    if resolved_db_path is None and conn is not None:
+        resolved_db_path = _connection_db_path(conn)
+    if resolved_db_path is None:
+        return None
+
+    if conn is not None and not is_stooq_price_update_required(conn, today=today):
+        return None
+    if conn is None and not _is_update_required_for_path(resolved_db_path, today=today):
+        return None
+
+    with _AUTO_UPDATE_LOCK:
+        if not _is_update_required_for_path(resolved_db_path, today=today):
+            return None
+        return run_stooq_price_update_command(
+            db_path=resolved_db_path,
+            if_needed=True,
+        )
+
+
 def update_stooq_daily_prices(
     *,
     db_path: Path = STOCKS_DB_PATH,
@@ -101,9 +170,12 @@ def run_stooq_price_update_command(
     cwd: Path = PROJECT_ROOT,
     db_path: Path | None = None,
     output_dir: Path | None = None,
+    if_needed: bool = False,
     timeout: int = 300,
 ) -> StooqPriceUpdateCommandResult:
     command = ["uv", "run", "scrape-stooq-prices"]
+    if if_needed:
+        command.append("--if-needed")
     if db_path is not None:
         command.extend(["--db", str(db_path)])
     if output_dir is not None:

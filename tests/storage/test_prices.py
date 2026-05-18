@@ -3,12 +3,15 @@ from __future__ import annotations
 import sqlite3
 from datetime import date, datetime, timezone
 
+from stock_db.storage import prices as prices_module
 from stock_db.storage.prices import (
     get_fresh_price_tickers,
     get_latest_price_date,
     get_latest_price,
     get_latest_price_with_shares,
+    get_previous_jpx_business_day,
     get_stooq_price_update_checked_at,
+    get_stale_price_tickers,
     get_tickers_with_shares,
     is_price_stale,
     is_stooq_price_update_required,
@@ -20,7 +23,18 @@ from stock_db.storage.stocks import upsert_stock
 
 
 class TestPrices:
-    def test_upsert_and_get_latest(self, db_conn: sqlite3.Connection) -> None:
+    def test_upsert_and_get_latest(
+        self,
+        db_conn: sqlite3.Connection,
+        monkeypatch,
+    ) -> None:
+        checked: list[sqlite3.Connection] = []
+        monkeypatch.setattr(
+            prices_module,
+            "_ensure_prices_fresh_for_api",
+            lambda conn: checked.append(conn),
+        )
+
         upsert_price(db_conn, "1234", "2024-01-01", 100.0, 1000)
         upsert_price(db_conn, "1234", "2024-01-02", 110.0, 2000)
         db_conn.commit()
@@ -28,6 +42,7 @@ class TestPrices:
         result = get_latest_price(db_conn, "1234")
 
         assert result == 110.0
+        assert checked == [db_conn]
 
     def test_returns_none_for_missing(self, db_conn: sqlite3.Connection) -> None:
         assert get_latest_price(db_conn, "9999") is None
@@ -62,7 +77,18 @@ class TestShares:
         assert row["shares_outstanding"] == 500_000
         assert row["name"] == ""
 
-    def test_get_latest_price_with_shares(self, db_conn: sqlite3.Connection) -> None:
+    def test_get_latest_price_with_shares(
+        self,
+        db_conn: sqlite3.Connection,
+        monkeypatch,
+    ) -> None:
+        checked: list[sqlite3.Connection] = []
+        monkeypatch.setattr(
+            prices_module,
+            "_ensure_prices_fresh_for_api",
+            lambda conn: checked.append(conn),
+        )
+
         upsert_shares_outstanding(db_conn, "1234", 1_000_000)
         upsert_price(db_conn, "1234", "2024-01-01", 500.0, 100)
         db_conn.commit()
@@ -70,7 +96,9 @@ class TestShares:
         result = get_latest_price_with_shares(db_conn, "1234")
 
         assert result["price"] == 500.0
+        assert result["price_date"] == "2024-01-01"
         assert result["shares_outstanding"] == 1_000_000
+        assert checked == [db_conn]
 
 
 class TestIsPriceStale:
@@ -91,6 +119,26 @@ class TestGetFreshPriceTickers:
         result = get_fresh_price_tickers(db_conn, stale_days=99999)
 
         assert "1234" in result
+
+
+class TestPriceFreshnessTarget:
+    def test_uses_previous_business_day(self) -> None:
+        assert get_previous_jpx_business_day(today=date(2026, 5, 11)) == date(2026, 5, 8)
+
+    def test_skips_jpx_holidays(self) -> None:
+        assert get_previous_jpx_business_day(today=date(2026, 5, 7)) == date(2026, 5, 1)
+
+    def test_returns_tickers_older_than_target_date(self, db_conn: sqlite3.Connection) -> None:
+        upsert_stock(db_conn, "1234", "fresh", "", "")
+        upsert_stock(db_conn, "5678", "old", "", "")
+        upsert_stock(db_conn, "9999", "missing", "", "")
+        upsert_price(db_conn, "1234", "2026-05-08", 100.0, 1000)
+        upsert_price(db_conn, "5678", "2026-05-07", 100.0, 1000)
+        db_conn.commit()
+
+        result = get_stale_price_tickers(db_conn, target_date=date(2026, 5, 8))
+
+        assert result == ["5678", "9999"]
 
 
 class TestIsStooqPriceUpdateRequired:
