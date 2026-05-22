@@ -16,7 +16,9 @@ from stock_db.sources.price_refresh import (
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Refresh Japanese stock prices using Stooq and Yahoo Finance JP fallback",
+        description=(
+            "Refresh Japanese stock prices using Stooq and non-TSE Yahoo Finance JP fallback"
+        ),
     )
     parser.add_argument(
         "--db",

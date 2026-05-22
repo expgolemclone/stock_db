@@ -157,7 +157,10 @@ class TestIsStooqPriceUpdateRequired:
 
         assert is_stooq_price_update_required(db_conn, today=date(2026, 5, 11)) is True
 
-    def test_recent_stooq_check_suppresses_repeated_update(self, db_conn: sqlite3.Connection) -> None:
+    def test_recent_stooq_check_suppresses_repeated_lagged_update(
+        self,
+        db_conn: sqlite3.Connection,
+    ) -> None:
         upsert_price(db_conn, "1234", "2026-05-08", 100.0, 1000)
         record_stooq_price_update_check(
             db_conn,
@@ -169,16 +172,19 @@ class TestIsStooqPriceUpdateRequired:
             is_stooq_price_update_required(
                 db_conn,
                 today=date(2026, 5, 11),
-                now=datetime(2026, 5, 11, 1, 0, tzinfo=timezone.utc),
+                now=datetime(2026, 5, 11, 0, 30, tzinfo=timezone.utc),
             )
             is False
         )
 
-    def test_old_stooq_check_allows_update(self, db_conn: sqlite3.Connection) -> None:
+    def test_lagged_old_stooq_check_allows_update(
+        self,
+        db_conn: sqlite3.Connection,
+    ) -> None:
         upsert_price(db_conn, "1234", "2026-05-08", 100.0, 1000)
         record_stooq_price_update_check(
             db_conn,
-            checked_at=datetime(2026, 5, 10, 0, 0, tzinfo=timezone.utc),
+            checked_at=datetime(2026, 5, 11, 0, 0, tzinfo=timezone.utc),
         )
         db_conn.commit()
 
@@ -186,7 +192,7 @@ class TestIsStooqPriceUpdateRequired:
             is_stooq_price_update_required(
                 db_conn,
                 today=date(2026, 5, 11),
-                now=datetime(2026, 5, 11, 1, 0, tzinfo=timezone.utc),
+                now=datetime(2026, 5, 11, 2, 0, tzinfo=timezone.utc),
             )
             is True
         )

@@ -10,20 +10,16 @@ pub fn ensure_prices_fresh_for_api(db_path: &Path) -> Result<(), String> {
     }
 
     let command_db_path = resolve_command_db_path(db_path, &cwd);
-    let output = Command::new("uv")
+    let status = Command::new("uv")
         .args(["run", "refresh-prices", "--if-needed", "--db"])
         .arg(&command_db_path)
         .current_dir(&project_root)
-        .output()
+        .status()
         .map_err(|err| format!("stock price refresh command failed: {err}"))?;
 
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-        let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        let message = if stderr.is_empty() { stdout } else { stderr };
+    if !status.success() {
         return Err(format!(
-            "stock price refresh command failed (exit={}): {}",
-            output.status, message
+            "stock price refresh command failed (exit={status})"
         ));
     }
 

@@ -10,7 +10,11 @@ from typing import Sequence
 
 from stock_db.browser_client.client import BrowserServiceClient, BrowserServiceError
 from stock_db.paths import STOCKS_DB_PATH, cli_defaults, magic_numbers
-from stock_db.sources.yahoo_finance_jp.scraper import YFScrapeError, scrape_and_store
+from stock_db.sources.yahoo_finance_jp.scraper import (
+    NON_TSE_SUFFIXES,
+    YFScrapeError,
+    scrape_and_store,
+)
 from stock_db.storage.connection import get_connection
 from stock_db.storage.schema import init_db
 from stock_db.storage.stocks import get_all_tickers
@@ -58,8 +62,12 @@ def main(argv: Sequence[str] | None = None) -> int:
 
         with BrowserServiceClient(config=client_cfg) as client:
             ok, errors = scrape_and_store(
-                client, conn, tickers,
+                client,
+                conn,
+                tickers,
                 skip_existing=not args.force,
+                allowed_suffixes=NON_TSE_SUFFIXES,
+                discover_missing_suffix=False,
             )
 
         conn.commit()

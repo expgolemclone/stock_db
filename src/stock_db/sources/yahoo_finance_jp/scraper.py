@@ -6,6 +6,7 @@ import logging
 import random
 import sqlite3
 import time
+from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
 from stock_db.browser_client.client import BrowserServiceError
@@ -26,6 +27,7 @@ logger = logging.getLogger("stock_db.sources.yahoo_finance_jp.scraper")
 
 _QUOTE_URL = "https://finance.yahoo.co.jp/quote/{ticker}.{suffix}"
 _SUFFIXES = ("T", "N", "S", "F")
+NON_TSE_SUFFIXES = ("N", "S", "F")
 _FETCH_RETRIES = 3
 _RETRYABLE_HTTP_STATUSES = {408, 425, 429, 500, 502, 503, 504}
 
@@ -85,19 +87,27 @@ def _delay(base_interval: float) -> None:
     time.sleep(jittered)
 
 
+def _normalize_suffixes(suffixes: Sequence[str] | None) -> list[str]:
+    values = _SUFFIXES if suffixes is None else suffixes
+    return [suffix.upper() for suffix in values if suffix.upper() in _SUFFIXES]
+
+
 def _discover_quote_page(
     client: BrowserServiceClient,
     ticker: str,
     *,
     known_suffix: str | None = None,
     interval: float = 1.0,
+    suffixes: Sequence[str] | None = None,
 ) -> tuple[str, str] | None:
-    suffixes = list(_SUFFIXES)
-    if known_suffix in suffixes:
-        suffixes.remove(known_suffix)
-        suffixes.insert(0, known_suffix)
+    ordered_suffixes = _normalize_suffixes(suffixes)
+    if known_suffix is not None:
+        known_suffix = known_suffix.upper()
+    if known_suffix in ordered_suffixes:
+        ordered_suffixes.remove(known_suffix)
+        ordered_suffixes.insert(0, known_suffix)
 
-    for i, suffix in enumerate(suffixes):
+    for i, suffix in enumerate(ordered_suffixes):
         url = _quote_url(ticker, suffix)
         try:
             html = _fetch_html(client, url)
@@ -110,7 +120,7 @@ def _discover_quote_page(
         if is_quote_page(html):
             logger.debug("  %s.%s: found quote page without quote data", ticker, suffix)
             return html, suffix
-        if i < len(suffixes) - 1:
+        if i < len(ordered_suffixes) - 1:
             _delay(interval)
 
     return None
@@ -121,9 +131,15 @@ def discover_suffix(
     ticker: str,
     *,
     interval: float = 1.0,
+    suffixes: Sequence[str] | None = None,
 ) -> str | None:
     """Try each exchange suffix and return the first quote page that resolves."""
-    quote_page = _discover_quote_page(client, ticker, interval=interval)
+    quote_page = _discover_quote_page(
+        client,
+        ticker,
+        interval=interval,
+        suffixes=suffixes,
+    )
     if quote_page is None:
         logger.info("No valid suffix found for %s", ticker)
         return None
@@ -137,12 +153,14 @@ def discover_company_name(
     *,
     known_suffix: str | None = None,
     interval: float = 1.0,
+    suffixes: Sequence[str] | None = None,
 ) -> tuple[str | None, str | None]:
     quote_page = _discover_quote_page(
         client,
         ticker,
         known_suffix=known_suffix,
         interval=interval,
+        suffixes=suffixes,
     )
     if quote_page is None:
         logger.info("No valid quote page found for %s", ticker)
@@ -171,6 +189,8 @@ def scrape_and_store(
     skip_existing: bool = True,
     min_date: str | None = None,
     fail_fast: bool = False,
+    allowed_suffixes: Sequence[str] | None = None,
+    discover_missing_suffix: bool = True,
 ) -> tuple[int, int]:
     """Scrape prices for tickers and store in DB.
 
@@ -182,6 +202,11 @@ def scrape_and_store(
     from stock_db.storage.stocks import get_ticker_suffix_map
 
     suffix_map = get_ticker_suffix_map(conn)
+    allowed_suffix_set = (
+        set(_normalize_suffixes(allowed_suffixes))
+        if allowed_suffixes is not None
+        else None
+    )
 
     if skip_existing:
         from stock_db.storage.prices import get_fresh_price_tickers
@@ -200,8 +225,21 @@ def scrape_and_store(
         logger.info("[%d/%d] Processing %s", i, len(tickers), ticker)
         try:
             suffix = suffix_map.get(ticker)
+            if suffix is not None:
+                suffix = suffix.upper()
+                if allowed_suffix_set is not None and suffix not in allowed_suffix_set:
+                    logger.info("  %s: skipped suffix %s", ticker, suffix)
+                    continue
             if suffix is None:
-                suffix = discover_suffix(client, ticker, interval=interval)
+                if not discover_missing_suffix:
+                    logger.info("  %s: skipped missing Yahoo suffix", ticker)
+                    continue
+                suffix = discover_suffix(
+                    client,
+                    ticker,
+                    interval=interval,
+                    suffixes=allowed_suffixes,
+                )
                 if suffix is None:
                     errors += 1
                     logger.warning("  %s: no valid suffix found", ticker)

@@ -26,7 +26,7 @@ pub struct ScreeningStock {
     pub pl_history: Vec<HistoricalItems>,
 }
 
-pub fn load_screening_stocks(
+fn load_screening_stocks(
     db_path: &Path,
     tickers: Option<&[String]>,
     fcf_periods: usize,

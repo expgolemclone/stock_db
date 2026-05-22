@@ -8,6 +8,7 @@ from typing import TypedDict
 from stock_db.paths import STOCKS_DB_PATH
 from stock_db.sources.price_refresh import (
     PriceRefreshCommandResult,
+    PriceRefreshError,
     ensure_prices_fresh_for_api,
 )
 from stock_db.storage.connection import get_connection

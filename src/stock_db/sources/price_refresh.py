@@ -15,11 +15,13 @@ from stock_db.sources.stooq.updater import (
     update_stooq_daily_prices,
 )
 from stock_db.sources.yahoo_finance_jp.scraper import (
+    NON_TSE_SUFFIXES,
     YFScrapeError,
     scrape_and_store,
 )
 from stock_db.storage.connection import get_connection
 from stock_db.storage.prices import (
+    get_latest_price_date,
     get_previous_jpx_business_day,
     get_stale_price_tickers,
     has_recent_price_refresh_check,
@@ -27,6 +29,7 @@ from stock_db.storage.prices import (
     record_price_refresh_check,
 )
 from stock_db.storage.schema import init_db
+from stock_db.storage.stocks import get_ticker_suffix_map
 
 _AUTO_UPDATE_LOCK = threading.Lock()
 
@@ -45,6 +48,8 @@ class PriceRefreshResult:
     stooq_result: StooqDailyPriceUpdateResult | None
     yahoo_ok: int
     yahoo_errors: int
+    yahoo_skipped_reason: str | None = None
+    yahoo_skipped_tickers: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -109,6 +114,19 @@ def _format_ticker_sample(tickers: list[str], *, limit: int = 20) -> str:
     return sample
 
 
+def _get_non_tse_yahoo_fallback_tickers(
+    conn: sqlite3.Connection,
+    tickers: list[str],
+) -> list[str]:
+    allowed_suffixes = set(NON_TSE_SUFFIXES)
+    suffix_map = get_ticker_suffix_map(conn)
+    return [
+        ticker
+        for ticker in tickers
+        if (suffix_map.get(ticker) or "").upper() in allowed_suffixes
+    ]
+
+
 def refresh_prices(
     *,
     db_path: Path = STOCKS_DB_PATH,
@@ -148,28 +166,64 @@ def refresh_prices(
         stale_after_yahoo: list[str] = []
         yahoo_ok = 0
         yahoo_errors = 0
+        yahoo_skipped_reason: str | None = None
+        yahoo_skipped_tickers = 0
+        record_refresh_check = True
 
         if stale_after_stooq:
-            try:
-                with BrowserServiceClient(config=_yahoo_browser_config(headless=headless)) as client:
-                    yahoo_ok, yahoo_errors = scrape_and_store(
-                        client,
+            latest_price_date = get_latest_price_date(conn)
+            if latest_price_date is None or latest_price_date < target_date:
+                record_refresh_check = False
+                latest = (
+                    latest_price_date.isoformat()
+                    if latest_price_date is not None
+                    else "none"
+                )
+                yahoo_skipped_reason = (
+                    "stooq_latest_date="
+                    f"{latest} is older than target_date={target_date.isoformat()}"
+                )
+                stale_after_yahoo = stale_after_stooq
+            else:
+                yahoo_tickers = _get_non_tse_yahoo_fallback_tickers(
+                    conn,
+                    stale_after_stooq,
+                )
+                yahoo_skipped_tickers = len(stale_after_stooq) - len(yahoo_tickers)
+                if not yahoo_tickers:
+                    yahoo_skipped_reason = "no non-TSE Yahoo fallback tickers"
+                    stale_after_yahoo = stale_after_stooq
+                else:
+                    try:
+                        with BrowserServiceClient(
+                            config=_yahoo_browser_config(headless=headless),
+                        ) as client:
+                            yahoo_ok, yahoo_errors = scrape_and_store(
+                                client,
+                                conn,
+                                yahoo_tickers,
+                                skip_existing=False,
+                                min_date=target_date.isoformat(),
+                                fail_fast=False,
+                                allowed_suffixes=NON_TSE_SUFFIXES,
+                                discover_missing_suffix=False,
+                            )
+                    except (
+                        BrowserServiceError,
+                        YFScrapeError,
+                        sqlite3.OperationalError,
+                    ) as exc:
+                        raise PriceRefreshError(
+                            f"Yahoo Finance JP price refresh failed: {exc}",
+                        ) from exc
+
+                    stale_after_yahoo = get_stale_price_tickers(
                         conn,
-                        stale_after_stooq,
-                        skip_existing=False,
-                        min_date=target_date.isoformat(),
-                        fail_fast=False,
+                        target_date=target_date,
                     )
-            except (
-                BrowserServiceError,
-                YFScrapeError,
-                sqlite3.OperationalError,
-            ) as exc:
-                raise PriceRefreshError(f"Yahoo Finance JP price refresh failed: {exc}") from exc
 
-            stale_after_yahoo = get_stale_price_tickers(conn, target_date=target_date)
-
-        record_price_refresh_check(conn)
+        if record_refresh_check:
+            record_price_refresh_check(conn)
         conn.commit()
     except Exception:
         conn.rollback()
@@ -186,6 +240,8 @@ def refresh_prices(
         stooq_result=stooq_result,
         yahoo_ok=yahoo_ok,
         yahoo_errors=yahoo_errors,
+        yahoo_skipped_reason=yahoo_skipped_reason,
+        yahoo_skipped_tickers=yahoo_skipped_tickers,
     )
 
 
@@ -203,6 +259,10 @@ def describe_price_refresh_result(result: PriceRefreshResult | None) -> str:
         parts.append(f"yahoo={result.yahoo_ok} ok")
     if result.yahoo_errors:
         parts.append(f"yahoo_errors={result.yahoo_errors}")
+    if result.yahoo_skipped_reason:
+        parts.append(f"yahoo_skipped={result.yahoo_skipped_reason}")
+    if result.yahoo_skipped_tickers:
+        parts.append(f"yahoo_skipped_tickers={result.yahoo_skipped_tickers}")
     if result.unresolved_tickers:
         parts.append(
             "unresolved_stale="

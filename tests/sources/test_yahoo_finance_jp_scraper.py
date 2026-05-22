@@ -7,13 +7,14 @@ import pytest
 
 from stock_db.browser_client.client import BrowserResponse
 from stock_db.sources.yahoo_finance_jp.scraper import (
+    NON_TSE_SUFFIXES,
     YFStaleQuoteError,
     discover_company_name,
     discover_suffix,
     scrape_and_store,
 )
 from stock_db.storage.schema import init_db
-from stock_db.storage.stocks import upsert_stock
+from stock_db.storage.stocks import upsert_stock, upsert_yf_suffix
 
 
 class FakeBrowserClient:
@@ -75,6 +76,23 @@ def test_discover_suffix_returns_page_suffix_even_without_quote_data() -> None:
     assert client.urls == ["https://finance.yahoo.co.jp/quote/289A.T"]
 
 
+def test_discover_suffix_can_exclude_tse_suffix() -> None:
+    client = FakeBrowserClient(
+        {
+            "https://finance.yahoo.co.jp/quote/289A.T": _quote_page_without_quote(),
+            "https://finance.yahoo.co.jp/quote/289A.S": _quote_page_without_quote(),
+        }
+    )
+
+    suffix = discover_suffix(client, "289A", interval=0, suffixes=NON_TSE_SUFFIXES)
+
+    assert suffix == "S"
+    assert client.urls == [
+        "https://finance.yahoo.co.jp/quote/289A.N",
+        "https://finance.yahoo.co.jp/quote/289A.S",
+    ]
+
+
 def test_discover_company_name_returns_normalized_quote_title() -> None:
     client = FakeBrowserClient(
         {
@@ -122,6 +140,32 @@ def test_scrape_and_store_persists_suffix_for_page_without_quote_data() -> None:
         "https://finance.yahoo.co.jp/quote/289A.T",
         "https://finance.yahoo.co.jp/quote/289A.T",
     ]
+
+
+def test_scrape_and_store_skips_tse_suffix_when_only_non_tse_allowed() -> None:
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    init_db(conn)
+    upsert_stock(conn, "8306", "銘柄名", "", "")
+    upsert_yf_suffix(conn, "8306", "T")
+    conn.commit()
+    client = FakeBrowserClient(
+        {
+            "https://finance.yahoo.co.jp/quote/8306.T": _quote_page("1,000", "05/20"),
+        }
+    )
+
+    ok, errors = scrape_and_store(
+        client,
+        conn,
+        ["8306"],
+        skip_existing=False,
+        allowed_suffixes=NON_TSE_SUFFIXES,
+        discover_missing_suffix=False,
+    )
+
+    assert (ok, errors) == (0, 0)
+    assert client.urls == []
 
 
 def test_scrape_and_store_fails_fast_when_quote_date_is_stale() -> None:

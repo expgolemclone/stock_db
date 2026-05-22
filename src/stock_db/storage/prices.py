@@ -11,6 +11,7 @@ from stock_db.storage._util import utc_now_iso
 
 STOOQ_PRICE_REFRESH_SOURCE = "stooq_prices"
 STOOQ_PRICE_REFRESH_COOLDOWN = timedelta(days=1)
+STOOQ_LAGGED_PRICE_REFRESH_COOLDOWN = timedelta(hours=1)
 PRICE_REFRESH_SOURCE = "price_refresh"
 PRICE_REFRESH_COOLDOWN = timedelta(days=1)
 
@@ -292,11 +293,12 @@ def _has_recent_stooq_price_update_check(
     conn: sqlite3.Connection,
     *,
     now: datetime,
+    cooldown: timedelta = STOOQ_PRICE_REFRESH_COOLDOWN,
 ) -> bool:
     checked_at = get_stooq_price_update_checked_at(conn)
     if checked_at is None:
         return False
-    return now.astimezone(timezone.utc) - checked_at.astimezone(timezone.utc) < STOOQ_PRICE_REFRESH_COOLDOWN
+    return now.astimezone(timezone.utc) - checked_at.astimezone(timezone.utc) < cooldown
 
 
 def has_recent_price_refresh_check(
@@ -339,5 +341,9 @@ def is_stooq_price_update_required(
     days_since_latest = (today - latest_date).days
     for offset in range(1, days_since_latest + 1):
         if is_jpx_business_day(latest_date + timedelta(days=offset)):
-            return not _has_recent_stooq_price_update_check(conn, now=now)
+            return not _has_recent_stooq_price_update_check(
+                conn,
+                now=now,
+                cooldown=STOOQ_LAGGED_PRICE_REFRESH_COOLDOWN,
+            )
     return False

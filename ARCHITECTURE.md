@@ -68,6 +68,7 @@ flowchart LR
 - `formula_screening` は `stock_db.api` と Rust crate の `screening::load_default_screening_stocks()` を使い、DB path や内部テーブルを受け取らない。
 - `invest_like_legends` は `stock_db.api` から価格更新、会社名、株価 metadata を取得する。
 - `stock_web_ui` の downstream UI 検証は各 consumer の公開 HTTP/API 経由で動かし、サンプル銘柄選択も `stock_db.api` を使う。
+- `japan_company_handbook/data/stock_performance.db` は upstream が所有する大株主データの入力 artifact として扱う。`stock_db` issue 16 の DB 境界は `stock_db/var/db/stocks.db` とその内部テーブルを対象にし、handbook DB の直接読み取り禁止は別スコープにする。
 
 関連 repo の bookmark は Rust 移行後の現行実装を `main`、旧 Python 系を `py` として扱う。`push-*` は `jj git push --change` 由来の一時 bookmark であり、長期運用名にはしない。
 
@@ -179,9 +180,9 @@ flowchart LR
     yf_cli --> stocks_suffix["stocks.yf_suffix"]
 ```
 
-Stooq は JP 全銘柄の日次 CSV を取り込み、`prices.close` を upsert する。価格更新が必要かどうかは前営業日の JPX 終値が全 DB 銘柄に揃っているかで判定し、Stooq 側の成功した更新チェック時刻は `source_refresh_log` に保存する。`stock_db` 外の repo から Python の価格読み取り API または Rust screening API が呼ばれた場合は、この鮮度確認を API 側で行い、古ければ `refresh-prices --if-needed` 経由で自動更新する。
+Stooq は JP 全銘柄の日次 CSV を取り込み、`prices.close` を upsert する。価格更新が必要かどうかは前営業日の JPX 終値が全 DB 銘柄に揃っているかで判定し、Stooq 側の成功した更新チェック時刻は `source_refresh_log` に保存する。Stooq の配布ファイルが最新でも `.JP` 行だけ前営業日に追いついていない場合は、短い間隔で Stooq を再試行し、Yahoo Finance JP の全銘柄補完には進まない。`stock_db` 外の repo から Python の価格読み取り API または Rust screening API が呼ばれた場合は、この鮮度確認を API 側で行い、古ければ `refresh-prices --if-needed` 経由で自動更新する。
 
-Yahoo Finance JP は Stooq だけでは埋まらない stale 銘柄の前日終値を補完する。接尾辞 `.T`、`.N`、`.S`、`.F` などは自動検出し、`stocks.yf_suffix` に保存して次回以降の探索を省く。Yahoo 補完は 1 銘柄ずつ実行し、個別銘柄の未取得・古い quote・接尾辞未解決は `PriceRefreshResult` の `yahoo_errors` / `unresolved_tickers` に集約する。個別銘柄の失敗では価格更新全体を停止せず、最後まで試行してから結果を返す。
+Yahoo Finance JP は Stooq が目標営業日に到達した後でも埋まらない非東証 stale 銘柄の前日終値を補完する。自動価格更新では `stocks.yf_suffix` が `.N`、`.S`、`.F` と分かっている銘柄だけを対象にし、`.T` の東証銘柄と suffix 未判定銘柄は Yahoo で探索・取得しない。接尾辞は EDINET 補助などで検出した値を `stocks.yf_suffix` に保存して次回以降の探索を省く。Yahoo 補完は 1 銘柄ずつ実行し、個別銘柄の未取得・古い quote・接尾辞未解決は `PriceRefreshResult` の `yahoo_errors` / `unresolved_tickers` に集約する。個別銘柄の失敗では価格更新全体を停止せず、最後まで試行してから結果を返す。
 
 ### 5.3 Shikiho and derived data
 
@@ -267,6 +268,8 @@ uv run generate-validation-site-list
 下流 repo が使う代表的な API:
 
 - `stock_db.api.ensure_prices_fresh()`
+- `stock_db.api.PriceRefreshCommandResult`
+- `stock_db.api.PriceRefreshError`
 - `stock_db.api.get_all_tickers()`
 - `stock_db.api.get_stock_names()`
 - `stock_db.api.get_screening_tickers(limit=None)`
@@ -294,7 +297,7 @@ PyO3 module `stock_db._edinet_xbrl` の代表 API:
 - `is_valid_xbrl_text(content)`
 - `is_valid_xbrl_path(path)`
 
-Rust crate 側では `screening::load_default_screening_stocks(tickers, fcf_periods, pl_periods)` を下流の Rust screening 実装が使う。この入口は `STOCK_DB_VAR_DIR` から内部 DB を解決し、DB path を公開 contract にしない。`stock_db` 外の cwd から呼ばれた場合は、DB 読み取り前に `refresh-prices --if-needed` で汎用価格更新を確認する。返却する `ScreeningStock` には株価基準日の `price_date` を含める。
+Rust crate 側では `screening::load_default_screening_stocks(tickers, fcf_periods, pl_periods)` を下流の Rust screening 実装が使う。この入口は `STOCK_DB_VAR_DIR` から内部 DB を解決し、DB path を公開 contract にしない。DB path を受け取る読み取り関数は crate 外へ公開しない。`stock_db` 外の cwd から呼ばれた場合は、DB 読み取り前に `refresh-prices --if-needed` で汎用価格更新を確認する。返却する `ScreeningStock` には株価基準日の `price_date` を含める。
 
 ## 8. 運用
 
