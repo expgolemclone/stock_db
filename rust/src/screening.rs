@@ -1,5 +1,7 @@
 use std::collections::HashMap;
+use std::env;
 use std::path::Path;
+use std::path::PathBuf;
 
 use rusqlite::{Connection, params};
 
@@ -46,6 +48,27 @@ pub fn load_screening_stocks(
             build_screening_stock(&conn, ticker, name, fcf_periods, pl_periods)
         })
         .collect()
+}
+
+pub fn load_default_screening_stocks(
+    tickers: Option<&[String]>,
+    fcf_periods: usize,
+    pl_periods: usize,
+) -> Result<Vec<ScreeningStock>, String> {
+    let db_path = default_stocks_db_path();
+    load_screening_stocks(&db_path, tickers, fcf_periods, pl_periods)
+}
+
+pub fn default_stocks_db_path() -> PathBuf {
+    if let Ok(var_dir) = env::var("STOCK_DB_VAR_DIR") {
+        return PathBuf::from(var_dir).join("db").join("stocks.db");
+    }
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("rust crate must live under stock_db/rust")
+        .join("var")
+        .join("db")
+        .join("stocks.db")
 }
 
 pub fn get_all_tickers(conn: &Connection) -> Result<Vec<String>, String> {

@@ -210,6 +210,7 @@ const CF_ITEM_CANDIDATES: ItemCandidates = &[
         &[
             "NetCashProvidedByUsedInInvestmentActivities",
             "NetCashProvidedByUsedInInvestmentActivitiesSummaryOfBusinessResults",
+            "NetCashProvidedByUsedInInvestingActivitiesSummaryOfBusinessResults",
             "NetCashProvidedByUsedInInvestingActivitiesIFRS",
             "CashFlowsFromUsedInInvestingActivitiesIFRSSummaryOfBusinessResults",
         ],
@@ -223,6 +224,7 @@ const CF_ITEM_CANDIDATES: ItemCandidates = &[
             "CashFlowsFromUsedInFinancingActivitiesIFRSSummaryOfBusinessResults",
         ],
     ),
+    ("treasury_stock_purchase", &["PurchaseOfTreasuryStockFinCF"]),
     (
         "increase_decrease_in_provision_for_directors_retirement_benefits_ope_cf",
         &["IncreaseDecreaseInProvisionForDirectorsRetirementBenefitsOpeCF"],
@@ -683,6 +685,7 @@ mod tests {
                 "CashFlowsFromUsedInFinancingActivitiesIFRSSummaryOfBusinessResults",
             ],
         ),
+        ("treasury_stock_purchase", &["PurchaseOfTreasuryStockFinCF"]),
         (
             "increase_decrease_in_provision_for_directors_retirement_benefits_ope_cf",
             &["IncreaseDecreaseInProvisionForDirectorsRetirementBenefitsOpeCF"],

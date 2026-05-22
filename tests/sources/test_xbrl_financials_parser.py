@@ -150,6 +150,33 @@ def test_parses_fact_before_context_and_unit_declarations(tmp_path: Path) -> Non
     assert current["bs"]["total_assets"] == pytest.approx(1600)
 
 
+def test_parses_treasury_stock_purchase_financing_cf(tmp_path: Path) -> None:
+    xbrl = tmp_path / "sample.xbrl"
+    xbrl.write_text(
+        """
+        <xbrli:xbrl
+            xmlns:xbrli="http://www.xbrl.org/2003/instance"
+            xmlns:iso4217="http://www.xbrl.org/2003/iso4217"
+            xmlns:jppfs_cor="http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor">
+          <xbrli:context id="CurrentYearDuration">
+            <xbrli:entity><xbrli:identifier scheme="test">E1</xbrli:identifier></xbrli:entity>
+            <xbrli:period>
+              <xbrli:startDate>2024-04-01</xbrli:startDate>
+              <xbrli:endDate>2025-03-31</xbrli:endDate>
+            </xbrli:period>
+          </xbrli:context>
+          <xbrli:unit id="JPY"><xbrli:measure>iso4217:JPY</xbrli:measure></xbrli:unit>
+          <jppfs_cor:PurchaseOfTreasuryStockFinCF contextRef="CurrentYearDuration" unitRef="JPY">-2500</jppfs_cor:PurchaseOfTreasuryStockFinCF>
+        </xbrli:xbrl>
+        """,
+        encoding="utf-8",
+    )
+
+    current = xbrl_financials_parser.parse_xbrl_financials(str(xbrl))["2025-03"]
+
+    assert current["cf"]["treasury_stock_purchase"] == pytest.approx(-2500)
+
+
 def test_parses_synthetic_forecast_tags(tmp_path: Path) -> None:
     xbrl = tmp_path / "sample.xbrl"
     xbrl.write_text(
@@ -416,6 +443,15 @@ def test_segment_non_consolidated_context_is_not_total_fallback(tmp_path: Path) 
     )
 
     assert xbrl_financials_parser.parse_xbrl_financials(str(xbrl)) == {}
+
+
+def test_investing_cf_from_jpcrp_investing_activities_tag() -> None:
+    """1400 uses jpcrp_cor:NetCashProvidedByUsedInInvestingActivitiesSummaryOfBusinessResults
+    (Investing, not Investment). Verify the Rust parser picks it up."""
+    parsed = xbrl_financials_parser.parse_xbrl_financials(_xbrl_path("1400"))
+    # The latest report for 1400 is a December year-end; find the most recent period.
+    latest = max(p for p in parsed if p.endswith("-12"))
+    assert parsed[latest]["cf"]["investing_cf"] is not None
 
 
 def test_rust_parse_financials_returns_dict() -> None:

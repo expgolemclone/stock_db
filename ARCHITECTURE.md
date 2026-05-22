@@ -22,13 +22,13 @@
 - Rust core で EDINET XBRL を解析し、BS / PL / CF / forecast / dividend / shares outstanding / 種類株式明細を正規化する。
 - Stooq の JP 日次 CSV と Yahoo Finance JP の quote page から日次価格を保存する。
 - `japan_company_handbook` の SQLite から四季報予想純利益と配当を同期する。
-- 下流 repo が Python API、Rust crate、または `var/db/stocks.db` を通じて同じデータを読めるようにする。
+- 下流 repo が Python API または Rust crate の公開入口だけで同じデータを読めるようにする。`var/db/stocks.db` とテーブル構造は内部実装であり、下流の公開契約にはしない。
 
 重要な制約として、スクレイピングは直列実行を基本とし、外部サイトへの連続アクセスには 2 秒ディレイを置く。XBRL パーサは IFRS と J-GAAP の両方を正規化対象にする。
 
 ## 2. Repo 間依存関係
 
-`stock_db` は外部データ取得と正規化を担当し、下流 repo は `stock_db` の DB / API / artifact を読む。Mermaid 図では実線を通常の依存、点線を CI artifact や検証時の参照として表す。
+`stock_db` は外部データ取得と正規化を担当し、下流 repo は `stock_db` の公開 API だけを読む。SQLite DB と `stocks-db` artifact は `stock_db` 内部の保存・復元手段であり、下流 repo は DB パスや内部テーブルを通常実装から参照しない。
 
 ```mermaid
 flowchart LR
@@ -37,11 +37,11 @@ flowchart LR
     end
 
     subgraph stockdb["stock_db"]
-        pyapi["Python package\nstock_db.*"]
+        pyapi["Python API\nstock_db.api"]
         rustcore["Rust crate\nstock-db-xbrl"]
-        sqlite["SQLite\nvar/db/stocks.db"]
+        sqlite["Internal SQLite\nvar/db/stocks.db"]
         cli["CLI\nuv run ..."]
-        artifact["GitHub Actions artifact\nstocks-db"]
+        artifact["Internal artifact\nstocks-db"]
     end
 
     subgraph downstream["Downstream repos"]
@@ -56,24 +56,21 @@ flowchart LR
     rustcore --> sqlite
     sqlite --> artifact
 
-    pyapi -->|storage API / price refresh API| formula
-    rustcore -->|screening::load_screening_stocks| formula
-    sqlite -->|screening input| formula
+    pyapi -->|tickers / metadata / validation data| formula
+    rustcore -->|screening::load_default_screening_stocks| formula
 
-    pyapi -->|price refresh API / stock names| legends
-    sqlite -->|financial_items / stocks / prices| legends
-    artifact -.->|CI bootstrap| legends
+    pyapi -->|price refresh / stock names / metadata| legends
+    artifact -.->|stock_db internal bootstrap| legends
 
-    sqlite -->|STOCKS_DB_PATH| webui
     pyapi -.->|downstream UI checks| webui
 ```
 
 依存の読み方:
 
 - `japan_company_handbook` は `data/stock_performance.db` を生成し、`stock_db` の `sync-shikiho-*` CLI がこれを読む。
-- `formula_screening` は `stock_db` を editable Python dependency として使い、Rust 側では `stock-db-xbrl` crate の `screening` module を直接読む。
-- `invest_like_legends` は `stock_db` の DB と価格更新 API を使い、CI では `stocks-db` artifact を bootstrap に使う。
-- `stock_web_ui` は downstream UI 検証やローカル表示で `stock_db/var/db/stocks.db` を参照する。
+- `formula_screening` は `stock_db.api` と Rust crate の `screening::load_default_screening_stocks()` を使い、DB path や内部テーブルを受け取らない。
+- `invest_like_legends` は `stock_db.api` から価格更新、会社名、株価 metadata を取得する。CI で復元する `stocks-db` artifact は `stock_db` API の内部入力であり、下流 contract ではない。
+- `stock_web_ui` の downstream UI 検証は各 consumer の公開 HTTP/API 経由で動かし、サンプル銘柄選択も `stock_db.api` を使う。
 
 関連 repo の bookmark は Rust 移行後の現行実装を `main`、旧 Python 系を `py` として扱う。`push-*` は `jj git push --change` 由来の一時 bookmark であり、長期運用名にはしない。
 
@@ -120,7 +117,7 @@ export EDINET_API_KEY=...
 `rust/` は `stock-db-xbrl` crate であり、PyO3 extension `stock_db._edinet_xbrl` と Rust library の両方を提供する。
 
 - XBRL artifact をロードし、通常 `.xbrl` は 1 回の XML 走査で context / unit / namespace / fact を抽出する。
-- EDINET XBRL の BS / PL / CF / forecast / dividend / shares outstanding / 種類株式を正規化する。
+- EDINET XBRL の BS / PL / CF / forecast / dividend / shares outstanding / 種類株式を正規化する。CF では自己株式取得額を `cf.treasury_stock_purchase` として保持し、下流の総還元性向計算に使う。
 - ticker 単位の XBRL parse と DB 置換書き込みを Rust 側で実行する。
 - Stooq 日次 CSV parse を Rust 側で実行し、Python 側は DB upsert に集中する。
 - `screening` module は下流 Rust 実装向けに `stocks.db` から screening 用データを読む。
@@ -220,7 +217,8 @@ flowchart LR
 保存方針:
 
 - SQLite 接続は WAL と foreign key を有効にする。
-- `financial_items` の正本は EDINET XBRL の `source=edinet_xbrl` とする。
+- SQLite schema は `stock_db` 内部実装である。下流 repo は `stocks`、`prices`、`financial_items` などの内部テーブルを直接読まず、公開 API の戻り値 contract に依存する。
+- `financial_items` の正本は EDINET XBRL の `source=edinet_xbrl` とする。`cf.treasury_stock_purchase` は `jppfs_cor:PurchaseOfTreasuryStockFinCF` を canonical item として取り込む。
 - 四季報由来の予想純利益と配当は `source=shikiho` とする。
 - EPS など派生値は `source=computed` とする。
 - `financial_items` の主キーには `source` を含め、同一 item の source 別共存を許す。
@@ -271,21 +269,18 @@ uv run generate-validation-site-list
 
 下流 repo が使う代表的な API:
 
-- `stock_db.paths.STOCKS_DB_PATH`
-- `stock_db.storage.connection.get_connection`
-- `stock_db.storage.schema.init_db`
-- `stock_db.storage.financials.*`
-- `stock_db.storage.prices.get_previous_jpx_business_day`
-- `stock_db.storage.prices.get_stale_price_tickers`
-- `stock_db.storage.prices.get_latest_price*`
-- `stock_db.storage.stocks.get_validation_targets`
-- `stock_db.sources.price_refresh.ensure_prices_fresh_for_api`
-- `stock_db.sources.price_refresh.run_price_refresh_command`
-- `stock_db.sources.stooq.run_stooq_price_update_command`
+- `stock_db.api.ensure_prices_fresh()`
+- `stock_db.api.get_all_tickers()`
+- `stock_db.api.get_stock_names()`
+- `stock_db.api.get_screening_tickers(limit=None)`
+- `stock_db.api.load_screening_stocks(tickers=None, fcf_periods=10, pl_periods=6)`
+- `stock_db.api.get_stock_price_metadata()`
+- `stock_db.api.get_validation_targets(limit)`
+- `stock_db.api.get_latest_balance_sheet(ticker, source="edinet_xbrl")`
 
-`stock_db` 外の repo から価格読み取り API を呼ぶ場合、API は前営業日終値が全 DB 銘柄に揃っているかを確認し、必要なら `run_price_refresh_command(if_needed=True)` で `stock_db` repo root から `uv run refresh-prices --if-needed` を実行する。更新は Stooq を先に試し、まだ stale な銘柄を Yahoo Finance JP で直列・2秒ベースのディレイで補完する。個別銘柄の取得失敗や補完後に残った stale 銘柄は結果 summary に出すが、価格更新コマンド自体は最後まで完走する。完走後は価格更新試行時刻を `source_refresh_log` に記録し、同日内の API 呼び出しで同じ大量スクレイピングを繰り返さない。DB 接続失敗や subprocess 起動失敗などの基盤エラーは例外にする。明示的に Stooq 更新だけを実行する場合は `run_stooq_price_update_command()` を使う。
+`stock_db` 外の repo から価格を読む API を呼ぶ場合、API は前営業日終値が全 DB 銘柄に揃っているかを確認し、必要なら `stock_db` repo root から `uv run refresh-prices --if-needed` を実行する。更新は Stooq を先に試し、まだ stale な銘柄を Yahoo Finance JP で直列・2秒ベースのディレイで補完する。個別銘柄の取得失敗や補完後に残った stale 銘柄は結果 summary に出すが、価格更新コマンド自体は最後まで完走する。完走後は価格更新試行時刻を `source_refresh_log` に記録し、同日内の API 呼び出しで同じ大量スクレイピングを繰り返さない。DB 接続失敗や subprocess 起動失敗などの基盤エラーは例外にする。
 
-`get_latest_price_with_shares()` は最新終値と発行済株式数に加えて、その終値の `price_date` も返す。下流 UI は `price_date` と前営業日 metadata を比較し、古い株価・未取得株価を通常銘柄より目立ちにくく表示できる。
+`load_screening_stocks()` は銘柄名、最新終値、終値日、発行済株式数、最新財務値、CF/PL 履歴を返す。下流 UI は `get_stock_price_metadata()` の `price_date` と `target_price_date` を比較し、古い株価・未取得株価を通常銘柄より目立ちにくく表示できる。
 
 ### 7.3 Rust API
 
@@ -302,7 +297,7 @@ PyO3 module `stock_db._edinet_xbrl` の代表 API:
 - `is_valid_xbrl_text(content)`
 - `is_valid_xbrl_path(path)`
 
-Rust crate 側では `screening::load_screening_stocks(db_path, tickers, fcf_periods, pl_periods)` を下流の Rust screening 実装が使う。この入口も `stock_db` 外の cwd から呼ばれた場合は、DB 読み取り前に `refresh-prices --if-needed` で汎用価格更新を確認する。返却する `ScreeningStock` には株価基準日の `price_date` を含める。
+Rust crate 側では `screening::load_default_screening_stocks(tickers, fcf_periods, pl_periods)` を下流の Rust screening 実装が使う。この入口は `STOCK_DB_VAR_DIR` から内部 DB を解決し、DB path を公開 contract にしない。`stock_db` 外の cwd から呼ばれた場合は、DB 読み取り前に `refresh-prices --if-needed` で汎用価格更新を確認する。返却する `ScreeningStock` には株価基準日の `price_date` を含める。
 
 ## 8. 運用
 
