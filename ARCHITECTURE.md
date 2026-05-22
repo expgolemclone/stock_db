@@ -28,7 +28,7 @@
 
 ## 2. Repo 間依存関係
 
-`stock_db` は外部データ取得と正規化を担当し、下流 repo は `stock_db` の公開 API だけを読む。SQLite DB と `stocks-db` artifact は `stock_db` 内部の保存・復元手段であり、下流 repo は DB パスや内部テーブルを通常実装から参照しない。
+`stock_db` は外部データ取得と正規化を担当し、下流 repo は `stock_db` の公開 API だけを読む。SQLite DB は `stock_db` 内部の保存手段であり、下流 repo は DB パスや内部テーブルを通常実装から参照しない。
 
 ```mermaid
 flowchart LR
@@ -41,7 +41,6 @@ flowchart LR
         rustcore["Rust crate\nstock-db-xbrl"]
         sqlite["Internal SQLite\nvar/db/stocks.db"]
         cli["CLI\nuv run ..."]
-        artifact["Internal artifact\nstocks-db"]
     end
 
     subgraph downstream["Downstream repos"]
@@ -54,13 +53,11 @@ flowchart LR
     cli --> sqlite
     pyapi --> sqlite
     rustcore --> sqlite
-    sqlite --> artifact
 
     pyapi -->|tickers / metadata / validation data| formula
     rustcore -->|screening::load_default_screening_stocks| formula
 
     pyapi -->|price refresh / stock names / metadata| legends
-    artifact -.->|stock_db internal bootstrap| legends
 
     pyapi -.->|downstream UI checks| webui
 ```
@@ -69,7 +66,7 @@ flowchart LR
 
 - `japan_company_handbook` は `data/stock_performance.db` を生成し、`stock_db` の `sync-shikiho-*` CLI がこれを読む。
 - `formula_screening` は `stock_db.api` と Rust crate の `screening::load_default_screening_stocks()` を使い、DB path や内部テーブルを受け取らない。
-- `invest_like_legends` は `stock_db.api` から価格更新、会社名、株価 metadata を取得する。CI で復元する `stocks-db` artifact は `stock_db` API の内部入力であり、下流 contract ではない。
+- `invest_like_legends` は `stock_db.api` から価格更新、会社名、株価 metadata を取得する。
 - `stock_web_ui` の downstream UI 検証は各 consumer の公開 HTTP/API 経由で動かし、サンプル銘柄選択も `stock_db.api` を使う。
 
 関連 repo の bookmark は Rust 移行後の現行実装を `main`、旧 Python 系を `py` として扱う。`push-*` は `jj git push --change` 由来の一時 bookmark であり、長期運用名にはしない。
@@ -96,7 +93,7 @@ EDINET API を使う処理では `EDINET_API_KEY` が必要である。環境変
 export EDINET_API_KEY=...
 ```
 
-既存 DB は GitHub Actions の `stocks-db` artifact から復元できる。定期価格更新 workflow も前回成功 run の artifact を復元してから更新する。復元後は `uv run inspect-stock-db 7203 --limit 1` で読み取り確認する。
+既存 DB は `var/db/stocks.db` に配置する。`uv run inspect-stock-db 7203 --limit 1` で読み取り確認する。
 
 ## 4. 主要コンポーネント
 
@@ -301,18 +298,21 @@ Rust crate 側では `screening::load_default_screening_stocks(tickers, fcf_peri
 
 ## 8. 運用
 
-GitHub Actions の `update-stooq-prices.yml` は毎日 16:00 JST に実行され、Stooq と Yahoo Finance JP 補完で価格を更新する。
+手動で価格を更新する場合:
 
-運用の流れ:
+```bash
+uv run refresh-prices --headless
+```
 
-1. Python / Rust / Node.js 依存を準備する。
-2. Stooq CAPTCHA OCR 用 font を runner に入れる。
-3. 前回の `stocks-db` artifact を `var/db` に download する。
-4. `uv run refresh-prices --headless` で日次価格を更新する。Stooq を先に取り込み、残った stale 銘柄を Yahoo Finance JP で補完する。Stooq 更新だけを確認したい場合は `uv run scrape-stooq-prices --headless` を使う。
-5. `uv run purge-irbank-financials` で artifact から IRBank 系 source を除去する。
-6. `var/db/stocks.db` を `stocks-db` artifact として upload する。
+Stooq を先に取り込み、残った stale 銘柄を Yahoo Finance JP で補完する。Stooq 更新だけを確認したい場合は `uv run scrape-stooq-prices --headless` を使う。
 
-手動で DB を確認する場合:
+```bash
+uv run purge-irbank-financials
+```
+
+で artifact から IRBank 系 source を除去する。
+
+DB を確認する場合:
 
 ```bash
 uv run inspect-stock-db 7203 --limit 1
