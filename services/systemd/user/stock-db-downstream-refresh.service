@@ -1,0 +1,9 @@
+[Unit]
+Description=Refresh downstream project JSON data after price update
+After=stock-db-price-refresh.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/exp/projects/stock_db
+Environment=PATH=/etc/profiles/per-user/exp/bin:/usr/bin:/bin
+ExecStart=/etc/profiles/per-user/exp/bin/uv run python services/downstream_refresh.py

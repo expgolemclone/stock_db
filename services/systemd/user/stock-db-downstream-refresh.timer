@@ -1,0 +1,9 @@
+[Unit]
+Description=Run downstream JSON refresh on weekdays at 16:05 JST
+
+[Timer]
+OnCalendar=Mon..Fri *-*-* 16:05:00 Asia/Tokyo
+Persistent=true
+
+[Install]
+WantedBy=timers.target
