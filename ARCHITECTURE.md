@@ -105,7 +105,7 @@ export EDINET_API_KEY=...
 - `paths.py`: repo root、`var/`、設定ファイル、既定 DB パスを定義する。
 - `storage/`: SQLite 接続、schema 初期化、各テーブルの CRUD を提供する。
 - `sources/edinet/`: EDINET API、検索フォーム scraping、XBRL parser wrapper を持つ。
-- `sources/stooq/`: Stooq 日次 CSV の download / parse / ingest / command wrapper を持つ。
+- `sources/stooq/`: Stooq 日次 CSV と履歴バンドルの download / parse / ingest / command wrapper を持つ。
 - `sources/yahoo_finance_jp/`: Yahoo Finance JP HTML の parse / scrape / DB 保存を持つ。
 - `browser_client/`: Node.js browser service を subprocess で起動し HTTP API を呼ぶ。
 - `cli/`: repo の運用入口を `pyproject.toml` の project scripts として公開する。
@@ -131,7 +131,7 @@ export EDINET_API_KEY=...
 - `/fetch`: URL にアクセスして HTML を返す。
 - `/download`: browser 経由でファイルを download する。
 - `/evaluate`: ページ上で JavaScript を評価する。
-- `/stooq/*`: Stooq 日次 CSV 取得用の専用 endpoint。
+- `/stooq/*`: Stooq 日次 CSV と履歴バンドル取得用の専用 endpoint。
 - `/shutdown`: service を終了する。
 
 ### 4.4 設定ファイル
