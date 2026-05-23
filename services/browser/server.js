@@ -389,6 +389,22 @@ async function findLatestStooqDailyLink(page) {
   };
 }
 
+function validateStooqDailyDate(rawDate) {
+  if (rawDate === undefined || rawDate === null || rawDate === "") {
+    return null;
+  }
+
+  const requestedDate = String(rawDate).trim();
+  if (!/^\d{8}$/.test(requestedDate)) {
+    throw new Error("Invalid Stooq daily date");
+  }
+  return requestedDate;
+}
+
+function buildStooqDailyDownloadUrl(date) {
+  return `https://stooq.com/db/d/?d=${date}&t=d`;
+}
+
 async function openStooqCaptcha(page, downloadUrl, deadline) {
   await page.evaluate((href) => window.cpt_g(href, 1, 1), downloadUrl);
 
@@ -613,6 +629,13 @@ app.post("/evaluate", async (req, res) => {
 
 app.post("/stooq/prepare-daily-download", async (req, res) => {
   const pageTimeout = req.body.timeout || PAGE_TIMEOUT;
+  let requestedDate = null;
+  try {
+    requestedDate = validateStooqDailyDate(req.body.date);
+  } catch (error) {
+    return res.status(400).json({ error: error.message, status: 400 });
+  }
+
   const key = poolKey("direct");
   const deadline = Date.now() + pageTimeout;
   let page = null;
@@ -621,8 +644,14 @@ app.post("/stooq/prepare-daily-download", async (req, res) => {
     ({ page } = await openRequestPage("direct"));
     await navigateWithChallengeWait(page, "https://stooq.com/db/", deadline);
 
-    const latest = await findLatestStooqDailyLink(page);
-    const captchaImageBase64 = await openStooqCaptcha(page, latest.downloadUrl, deadline);
+    const dailyFile = requestedDate
+      ? {
+          date: requestedDate,
+          label: `${requestedDate}_d`,
+          downloadUrl: buildStooqDailyDownloadUrl(requestedDate),
+        }
+      : await findLatestStooqDailyLink(page);
+    const captchaImageBase64 = await openStooqCaptcha(page, dailyFile.downloadUrl, deadline);
     const sessionId = randomUUID();
 
     stooqSessions.set(sessionId, {
@@ -634,9 +663,9 @@ app.post("/stooq/prepare-daily-download", async (req, res) => {
 
     res.json({
       sessionId,
-      date: latest.date,
-      label: latest.label,
-      downloadUrl: latest.downloadUrl,
+      date: dailyFile.date,
+      label: dailyFile.label,
+      downloadUrl: dailyFile.downloadUrl,
       captchaImageBase64,
       status: 200,
     });

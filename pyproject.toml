@@ -36,6 +36,7 @@ sync-shikiho-forecasts = "stock_db.cli.sync_shikiho_forecasts:main"
 sync-shikiho-dividends = "stock_db.cli.sync_shikiho_dividends:main"
 compute-eps = "stock_db.cli.compute_eps:main"
 scrape-edinet-historical = "stock_db.cli.scrape_edinet_historical:main"
+scheduled-refresh-prices = "stock_db.cli.scheduled_refresh_prices:main"
 
 [build-system]
 requires = ["maturin>=1.0,<2"]

@@ -281,13 +281,16 @@ class BrowserServiceClient:
     def prepare_stooq_daily_download(
         self,
         *,
+        date: str | None = None,
         timeout: int | None = None,
     ) -> StooqDailyDownloadSession:
         if not self.running:
             raise BrowserServiceError("Browser service is not running")
 
         effective_timeout: int = timeout if timeout is not None else self._config["page_timeout"]
-        body: dict[str, int] = {"timeout": effective_timeout}
+        body: dict[str, str | int] = {"timeout": effective_timeout}
+        if date is not None:
+            body["date"] = date
         try:
             resp: requests.Response = requests.post(
                 f"{self._base_url}/stooq/prepare-daily-download",

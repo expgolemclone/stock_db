@@ -51,13 +51,36 @@ def download_latest_daily_file(
     captcha_solver: Callable[[bytes], str] = solve_stooq_captcha,
     max_captcha_attempts: int = _MAX_CAPTCHA_ATTEMPTS,
 ) -> DownloadedStooqDailyFile:
+    return download_daily_file(
+        client,
+        output_dir,
+        timeout=timeout,
+        captcha_solver=captcha_solver,
+        max_captcha_attempts=max_captcha_attempts,
+    )
+
+
+def download_daily_file(
+    client: BrowserServiceClient,
+    output_dir: Path,
+    *,
+    date: str | None = None,
+    timeout: int | None = None,
+    captcha_solver: Callable[[bytes], str] = solve_stooq_captcha,
+    max_captcha_attempts: int = _MAX_CAPTCHA_ATTEMPTS,
+) -> DownloadedStooqDailyFile:
     output_dir.mkdir(parents=True, exist_ok=True)
     if max_captcha_attempts < 1:
         raise ValueError("max_captcha_attempts must be >= 1")
+    if date is not None and (len(date) != 8 or not date.isdecimal()):
+        raise ValueError("date must be YYYYMMDD")
 
     last_captcha_error: StooqCaptchaError | None = None
     for attempt in range(1, max_captcha_attempts + 1):
-        prepared = client.prepare_stooq_daily_download(timeout=timeout)
+        prepare_kwargs: dict[str, int | str | None] = {"timeout": timeout}
+        if date is not None:
+            prepare_kwargs["date"] = date
+        prepared = client.prepare_stooq_daily_download(**prepare_kwargs)
         completed = False
         try:
             existing_path = _find_existing_download(output_dir, prepared.label, prepared.date)

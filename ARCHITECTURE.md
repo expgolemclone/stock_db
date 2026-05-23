@@ -246,6 +246,7 @@ Prices:
 uv run refresh-prices
 uv run scrape-stooq-prices
 uv run scrape-yahoo-finance-prices
+uv run scheduled-refresh-prices --headless
 ```
 
 External sync and derived data:
@@ -322,6 +323,10 @@ uv run inspect-stock-db 7203 --limit 1
 ```
 
 EDINET の進捗確認は `uv run report-edinet-progress` を使う。Phase 1 の actionable pending と excluded ticker は別々に見る。
+
+### Local scheduled price refresh
+
+`scheduled-refresh-prices` は JST 16:00 以降かつ JPX 営業日にのみ当日分の終値を取得する。user systemd timer が `Mon..Fri *-*-* 16:00:00 Asia/Tokyo` で起動し、CLI 側で JPX 営業日判定を行う。timer の unit file は `services/systemd/user/` にあり、home-manager に統合して使用する。ログアウト中も timer を動かすため `loginctl enable-linger` を有効にする。
 
 ## 9. 開発・検証
 

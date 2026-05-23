@@ -1,5 +1,6 @@
 from stock_db.sources.stooq.downloader import (
     DownloadedStooqDailyFile,
+    download_daily_file,
     download_latest_daily_file,
 )
 from stock_db.sources.stooq.exceptions import (
@@ -28,6 +29,7 @@ __all__ = [
     "StooqError",
     "StooqParseError",
     "download_latest_daily_file",
+    "download_daily_file",
     "ensure_stooq_prices_fresh_for_api",
     "ingest_daily_prices",
     "run_stooq_price_update_command",

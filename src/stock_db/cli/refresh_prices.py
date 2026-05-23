@@ -6,6 +6,8 @@ import sys
 from pathlib import Path
 from typing import Sequence
 
+from datetime import date
+
 from stock_db.paths import STOCKS_DB_PATH, STOOQ_DIR, cli_defaults
 from stock_db.sources.price_refresh import (
     PriceRefreshError,
@@ -43,6 +45,12 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Skip refresh when all DB tickers already have the target price date",
     )
+    parser.add_argument(
+        "--target-date",
+        type=date.fromisoformat,
+        default=None,
+        help="Explicit target date YYYY-MM-DD (default: previous JPX business day)",
+    )
     return parser
 
 
@@ -62,6 +70,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             output_dir=args.output_dir,
             if_needed=args.if_needed,
             headless=args.headless,
+            target_date=args.target_date,
         )
     except (PriceRefreshError, ValueError) as exc:
         print(str(exc), file=sys.stderr)

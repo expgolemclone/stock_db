@@ -464,3 +464,35 @@ def test_api_auto_update_skips_recent_refresh_attempt_for_stale_external_db(
         ) is None
     finally:
         conn.close()
+
+
+def test_refresh_prices_uses_explicit_target_date(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    db_path = tmp_path / "stocks.db"
+    _init_price_db(db_path, {"1234": "2026-05-07"})
+
+    monkeypatch.setattr(
+        refresh_module,
+        "is_stooq_price_update_required",
+        lambda *_args, **_kwargs: False,
+    )
+    monkeypatch.setattr(
+        refresh_module,
+        "BrowserServiceClient",
+        FakeBrowserServiceClient,
+    )
+    monkeypatch.setattr(
+        refresh_module,
+        "scrape_and_store",
+        lambda *_args, **_kwargs: (0, 0),
+    )
+
+    result = refresh_module.refresh_prices(
+        db_path=db_path,
+        target_date=date(2026, 5, 7),
+    )
+
+    assert result is not None
+    assert result.target_date == date(2026, 5, 7)

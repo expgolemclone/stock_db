@@ -6,6 +6,7 @@ mod auto_update;
 mod db;
 mod financials;
 mod inventory;
+pub mod price_lookup;
 pub mod screening;
 mod share_classes;
 mod stooq;

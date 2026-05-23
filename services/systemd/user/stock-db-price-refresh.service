@@ -1,0 +1,11 @@
+[Unit]
+Description=Stock DB scheduled price refresh
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/exp/projects/stock_db
+Environment=PATH=/etc/profiles/per-user/exp/bin:/usr/bin:/bin
+Environment=NODE_PATH=/etc/profiles/per-user/exp/bin/node
+ExecStart=/etc/profiles/per-user/exp/bin/uv run scheduled-refresh-prices --headless

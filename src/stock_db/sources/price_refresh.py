@@ -134,8 +134,10 @@ def refresh_prices(
     if_needed: bool = False,
     headless: bool | None = None,
     today: date | None = None,
+    target_date: date | None = None,
 ) -> PriceRefreshResult | None:
-    target_date = get_previous_jpx_business_day(today=today)
+    if target_date is None:
+        target_date = get_previous_jpx_business_day(today=today)
     conn = get_connection(db_path)
     try:
         init_db(conn)

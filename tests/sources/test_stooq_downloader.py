@@ -9,6 +9,7 @@ from stock_db.browser_client.client import BrowserServiceError, StooqDailyDownlo
 from stock_db.sources.stooq import (
     StooqCaptchaError,
     StooqDownloadError,
+    download_daily_file,
     download_latest_daily_file,
 )
 
@@ -25,16 +26,25 @@ class FakeBrowserClient:
         self._file_name = file_name
         self._complete_side_effects = complete_side_effects or []
         self.prepare_calls = 0
+        self.prepared_dates: list[str | None] = []
         self.completed_calls: list[tuple[str, str, str, int | None]] = []
         self.closed_sessions: list[str] = []
 
-    def prepare_stooq_daily_download(self, *, timeout: int | None = None) -> StooqDailyDownloadSession:
+    def prepare_stooq_daily_download(
+        self,
+        *,
+        date: str | None = None,
+        timeout: int | None = None,
+    ) -> StooqDailyDownloadSession:
+        del timeout
         self.prepare_calls += 1
+        self.prepared_dates.append(date)
+        download_date = date or "20260429"
         return StooqDailyDownloadSession(
             session_id=f"session-{self.prepare_calls}",
-            date="20260429",
-            label="0429_d",
-            download_url="https://stooq.com/db/d/?d=20260429&t=d",
+            date=download_date,
+            label=f"{download_date}_d" if date else "0429_d",
+            download_url=f"https://stooq.com/db/d/?d={download_date}&t=d",
             captcha_png_base64=base64.b64encode(b"captcha-bytes").decode("ascii"),
         )
 
@@ -110,6 +120,29 @@ def test_download_latest_daily_file_reuses_existing_date_named_file(tmp_path: Pa
     assert downloaded.file_path == existing_path
     assert client.completed_calls == []
     assert client.closed_sessions == ["session-1"]
+
+
+def test_download_daily_file_passes_requested_date(tmp_path: Path) -> None:
+    client = FakeBrowserClient(
+        content=(
+            b"<TICKER>,<PER>,<DATE>,<TIME>,<OPEN>,<HIGH>,<LOW>,<CLOSE>,<VOL>,<OPENINT>\n"
+            b"7203.JP,D,20260520,000000,3065,3101,3057,3067,19390900,0\n"
+        ),
+    )
+
+    downloaded = download_daily_file(
+        client,
+        tmp_path,
+        date="20260520",
+        captcha_solver=lambda _image: "D1TY",
+    )
+
+    assert downloaded.date == "20260520"
+    assert downloaded.label == "20260520_d"
+    assert client.prepared_dates == ["20260520"]
+    assert client.completed_calls == [
+        ("session-1", "D1TY", str(tmp_path), None),
+    ]
 
 
 def test_download_latest_daily_file_retries_after_captcha_rejection(tmp_path: Path) -> None:
