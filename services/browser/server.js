@@ -401,8 +401,24 @@ function validateStooqDailyDate(rawDate) {
   return requestedDate;
 }
 
+function validateStooqBundle(rawBundle) {
+  if (rawBundle === undefined || rawBundle === null || rawBundle === "") {
+    return null;
+  }
+
+  const bundle = String(rawBundle).trim();
+  if (!/^[0-9a-z_]+$/.test(bundle)) {
+    throw new Error("Invalid Stooq bundle");
+  }
+  return bundle;
+}
+
 function buildStooqDailyDownloadUrl(date) {
   return `https://stooq.com/db/d/?d=${date}&t=d`;
+}
+
+function buildStooqBundleDownloadUrl(bundle) {
+  return `https://stooq.com/db/d/?b=${bundle}`;
 }
 
 async function openStooqCaptcha(page, downloadUrl, deadline) {
@@ -630,10 +646,18 @@ app.post("/evaluate", async (req, res) => {
 app.post("/stooq/prepare-daily-download", async (req, res) => {
   const pageTimeout = req.body.timeout || PAGE_TIMEOUT;
   let requestedDate = null;
+  let requestedBundle = null;
   try {
     requestedDate = validateStooqDailyDate(req.body.date);
+    requestedBundle = validateStooqBundle(req.body.bundle);
   } catch (error) {
     return res.status(400).json({ error: error.message, status: 400 });
+  }
+  if (requestedDate && requestedBundle) {
+    return res.status(400).json({
+      error: "date and bundle cannot both be provided",
+      status: 400,
+    });
   }
 
   const key = poolKey("direct");
@@ -644,13 +668,22 @@ app.post("/stooq/prepare-daily-download", async (req, res) => {
     ({ page } = await openRequestPage("direct"));
     await navigateWithChallengeWait(page, "https://stooq.com/db/", deadline);
 
-    const dailyFile = requestedDate
-      ? {
-          date: requestedDate,
-          label: `${requestedDate}_d`,
-          downloadUrl: buildStooqDailyDownloadUrl(requestedDate),
-        }
-      : await findLatestStooqDailyLink(page);
+    let dailyFile;
+    if (requestedBundle) {
+      dailyFile = {
+        date: requestedBundle,
+        label: requestedBundle,
+        downloadUrl: buildStooqBundleDownloadUrl(requestedBundle),
+      };
+    } else if (requestedDate) {
+      dailyFile = {
+        date: requestedDate,
+        label: `${requestedDate}_d`,
+        downloadUrl: buildStooqDailyDownloadUrl(requestedDate),
+      };
+    } else {
+      dailyFile = await findLatestStooqDailyLink(page);
+    }
     const captchaImageBase64 = await openStooqCaptcha(page, dailyFile.downloadUrl, deadline);
     const sessionId = randomUUID();
 

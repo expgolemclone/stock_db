@@ -282,6 +282,7 @@ class BrowserServiceClient:
         self,
         *,
         date: str | None = None,
+        bundle: str | None = None,
         timeout: int | None = None,
     ) -> StooqDailyDownloadSession:
         if not self.running:
@@ -291,6 +292,8 @@ class BrowserServiceClient:
         body: dict[str, str | int] = {"timeout": effective_timeout}
         if date is not None:
             body["date"] = date
+        if bundle is not None:
+            body["bundle"] = bundle
         try:
             resp: requests.Response = requests.post(
                 f"{self._base_url}/stooq/prepare-daily-download",
