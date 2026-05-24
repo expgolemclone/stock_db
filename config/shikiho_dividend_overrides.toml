@@ -1,0 +1,5 @@
+# Corrections for Shikiho DPS rows when the source table has stale split basis.
+
+[dividend_overrides."8046"]
+"26.3" = 40.0
+"27.3" = 38.0
