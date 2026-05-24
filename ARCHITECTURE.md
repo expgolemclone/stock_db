@@ -217,6 +217,7 @@ flowchart LR
 - SQLite 接続は WAL と foreign key を有効にする。
 - SQLite schema は `stock_db` 内部実装である。下流 repo は `stocks`、`prices`、`financial_items` などの内部テーブルを直接読まず、公開 API の戻り値 contract に依存する。
 - `financial_items` の正本は EDINET XBRL の `source=edinet_xbrl` とする。`cf.treasury_stock_purchase` は `jppfs_cor:PurchaseOfTreasuryStockFinCF` を canonical item として取り込む。
+- `bs.non_current_liabilities` が XBRL に明示されず、`total_assets - total_equity - current_liabilities` が 0 以上に一意決定できる場合は、その値を canonical item として導出する。
 - 四季報由来の予想純利益と配当は `source=shikiho` とする。
 - EPS など派生値は `source=computed` とする。
 - `financial_items` の主キーには `source` を含め、同一 item の source 別共存を許す。

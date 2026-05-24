@@ -126,6 +126,73 @@ def test_parses_ifrs_total_liability_tags_from_synthetic_fixture(tmp_path: Path)
     assert current["bs"]["total_equity"] == pytest.approx(1100)
 
 
+@pytest.mark.parametrize(
+    ("total_assets", "total_equity", "current_liabilities", "expected"),
+    [
+        (1600, 1200, 400, 0),
+        (1600, 1100, 400, 100),
+    ],
+)
+def test_derives_missing_non_current_liabilities_from_balance_sheet_totals(
+    tmp_path: Path,
+    total_assets: int,
+    total_equity: int,
+    current_liabilities: int,
+    expected: int,
+) -> None:
+    xbrl = tmp_path / "sample.xbrl"
+    xbrl.write_text(
+        f"""
+        <xbrli:xbrl
+            xmlns:xbrli="http://www.xbrl.org/2003/instance"
+            xmlns:iso4217="http://www.xbrl.org/2003/iso4217"
+            xmlns:jppfs_cor="http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor">
+          <xbrli:context id="CurrentYearInstant">
+            <xbrli:entity><xbrli:identifier scheme="test">E1</xbrli:identifier></xbrli:entity>
+            <xbrli:period><xbrli:instant>2025-03-31</xbrli:instant></xbrli:period>
+          </xbrli:context>
+          <xbrli:unit id="JPY"><xbrli:measure>iso4217:JPY</xbrli:measure></xbrli:unit>
+          <jppfs_cor:CurrentAssets contextRef="CurrentYearInstant" unitRef="JPY">1000</jppfs_cor:CurrentAssets>
+          <jppfs_cor:CurrentLiabilities contextRef="CurrentYearInstant" unitRef="JPY">{current_liabilities}</jppfs_cor:CurrentLiabilities>
+          <jppfs_cor:Assets contextRef="CurrentYearInstant" unitRef="JPY">{total_assets}</jppfs_cor:Assets>
+          <jppfs_cor:NetAssets contextRef="CurrentYearInstant" unitRef="JPY">{total_equity}</jppfs_cor:NetAssets>
+        </xbrli:xbrl>
+        """,
+        encoding="utf-8",
+    )
+
+    current = xbrl_financials_parser.parse_xbrl_financials(str(xbrl))["2025-03"]
+
+    assert current["bs"]["non_current_liabilities"] == pytest.approx(expected)
+
+
+def test_does_not_derive_negative_non_current_liabilities(tmp_path: Path) -> None:
+    xbrl = tmp_path / "sample.xbrl"
+    xbrl.write_text(
+        """
+        <xbrli:xbrl
+            xmlns:xbrli="http://www.xbrl.org/2003/instance"
+            xmlns:iso4217="http://www.xbrl.org/2003/iso4217"
+            xmlns:jppfs_cor="http://disclosure.edinet-fsa.go.jp/taxonomy/jppfs/2024-11-01/jppfs_cor">
+          <xbrli:context id="CurrentYearInstant">
+            <xbrli:entity><xbrli:identifier scheme="test">E1</xbrli:identifier></xbrli:entity>
+            <xbrli:period><xbrli:instant>2025-03-31</xbrli:instant></xbrli:period>
+          </xbrli:context>
+          <xbrli:unit id="JPY"><xbrli:measure>iso4217:JPY</xbrli:measure></xbrli:unit>
+          <jppfs_cor:CurrentAssets contextRef="CurrentYearInstant" unitRef="JPY">1000</jppfs_cor:CurrentAssets>
+          <jppfs_cor:CurrentLiabilities contextRef="CurrentYearInstant" unitRef="JPY">300</jppfs_cor:CurrentLiabilities>
+          <jppfs_cor:Assets contextRef="CurrentYearInstant" unitRef="JPY">1000</jppfs_cor:Assets>
+          <jppfs_cor:NetAssets contextRef="CurrentYearInstant" unitRef="JPY">800</jppfs_cor:NetAssets>
+        </xbrli:xbrl>
+        """,
+        encoding="utf-8",
+    )
+
+    current = xbrl_financials_parser.parse_xbrl_financials(str(xbrl))["2025-03"]
+
+    assert "non_current_liabilities" not in current["bs"]
+
+
 def test_parses_fact_before_context_and_unit_declarations(tmp_path: Path) -> None:
     xbrl = tmp_path / "sample.xbrl"
     xbrl.write_text(

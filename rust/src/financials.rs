@@ -326,6 +326,31 @@ fn build_statement_items_with_fallback(
         .unwrap_or_default()
 }
 
+fn item_value(items: &HashMap<String, Option<f64>>, key: &str) -> Option<f64> {
+    items.get(key).copied().flatten()
+}
+
+fn derive_non_current_liabilities(bs_items: &mut HashMap<String, Option<f64>>) {
+    if item_value(bs_items, "non_current_liabilities").is_some() {
+        return;
+    }
+
+    let Some(total_assets) = item_value(bs_items, "total_assets") else {
+        return;
+    };
+    let Some(total_equity) = item_value(bs_items, "total_equity") else {
+        return;
+    };
+    let Some(current_liabilities) = item_value(bs_items, "current_liabilities") else {
+        return;
+    };
+
+    let derived = total_assets - total_equity - current_liabilities;
+    if derived >= 0.0 {
+        bs_items.insert("non_current_liabilities".to_string(), Some(derived));
+    }
+}
+
 /// Parse financial statements from a loaded XBRL artifact.
 ///
 /// Mirrors the Python `parse_xbrl_financials` function.
@@ -369,11 +394,6 @@ pub fn parse_financials_from_artifact(
         {
             bs_items.insert("inventories".to_string(), Some(inv));
         }
-        if let Some(ncl) = bs_items.get("non_current_liabilities").copied().flatten() {
-            if !bs_items.contains_key("non_current_liabilities_total") {
-                bs_items.insert("non_current_liabilities_total".to_string(), Some(ncl));
-            }
-        }
         if let Some(na) = bs_items.get("net_assets").copied().flatten() {
             if !bs_items.contains_key("total_equity") {
                 bs_items.insert("total_equity".to_string(), Some(na));
@@ -387,6 +407,12 @@ pub fn parse_financials_from_artifact(
         if !bs_items.contains_key("stockholders_equity") && bs_items.contains_key("total_equity") {
             if let Some(te) = bs_items.get("total_equity").copied().flatten() {
                 bs_items.insert("stockholders_equity".to_string(), Some(te));
+            }
+        }
+        derive_non_current_liabilities(&mut bs_items);
+        if let Some(ncl) = bs_items.get("non_current_liabilities").copied().flatten() {
+            if !bs_items.contains_key("non_current_liabilities_total") {
+                bs_items.insert("non_current_liabilities_total".to_string(), Some(ncl));
             }
         }
 
