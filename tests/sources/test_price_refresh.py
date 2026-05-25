@@ -170,6 +170,51 @@ def test_refresh_prices_reports_unresolved_when_yahoo_leaves_stale_tickers(
     assert "unresolved_stale=1 (1234)" in refresh_module.describe_price_refresh_result(result)
 
 
+def test_refresh_prices_forces_stooq_download_when_refreshing_stale_prices(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    db_path = tmp_path / "stocks.db"
+    _init_price_db(db_path, {"1234": "2026-05-07"})
+    captured: dict[str, object] = {}
+
+    def fake_update_stooq_daily_prices(**kwargs: object) -> refresh_module.StooqDailyPriceUpdateResult:
+        captured.update(kwargs)
+        conn = get_connection(db_path)
+        try:
+            upsert_price(conn, "1234", "2026-05-08", 110.0, 1000)
+            conn.commit()
+        finally:
+            conn.close()
+        return refresh_module.StooqDailyPriceUpdateResult(
+            imported=1,
+            date="20260508",
+            label="20260508_d",
+            file_path=tmp_path / "raw" / "20260508_d.txt",
+        )
+
+    monkeypatch.setattr(
+        refresh_module,
+        "is_stooq_price_update_required",
+        lambda *_args, **_kwargs: True,
+    )
+    monkeypatch.setattr(
+        refresh_module,
+        "update_stooq_daily_prices",
+        fake_update_stooq_daily_prices,
+    )
+
+    result = refresh_module.refresh_prices(
+        db_path=db_path,
+        if_needed=True,
+        today=date(2026, 5, 11),
+    )
+
+    assert result is not None
+    assert result.stooq_result is not None
+    assert captured["reuse_existing"] is False
+
+
 def test_refresh_prices_only_uses_non_tse_yahoo_suffixes(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

@@ -49,8 +49,10 @@ def test_update_stooq_daily_prices_imports_and_commits(
         output_dir: Path,
         *,
         timeout: int | None = None,
+        reuse_existing: bool = True,
     ) -> DownloadedStooqDailyFile:
         del client, timeout
+        assert reuse_existing is True
         output_dir.mkdir(parents=True, exist_ok=True)
         file_path = output_dir / "0429_d.csv"
         file_path.write_text("placeholder", encoding="utf-8")
@@ -104,8 +106,9 @@ def test_update_stooq_daily_prices_wraps_expected_failures(
         output_dir: Path,
         *,
         timeout: int | None = None,
+        reuse_existing: bool = True,
     ) -> DownloadedStooqDailyFile:
-        del client, output_dir, timeout
+        del client, output_dir, timeout, reuse_existing
         raise StooqDownloadError("Unauthorized")
 
     monkeypatch.setattr(updater_module, "BrowserServiceClient", FakeBrowserServiceClient)

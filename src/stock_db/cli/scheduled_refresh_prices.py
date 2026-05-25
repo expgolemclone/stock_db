@@ -61,6 +61,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 1
 
     print(describe_price_refresh_result(result), file=sys.stderr)
+    if result is not None and result.unresolved_tickers:
+        return 1
     return 0
 
 

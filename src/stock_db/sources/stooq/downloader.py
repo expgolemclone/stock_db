@@ -50,6 +50,7 @@ def download_latest_daily_file(
     timeout: int | None = None,
     captcha_solver: Callable[[bytes], str] = solve_stooq_captcha,
     max_captcha_attempts: int = _MAX_CAPTCHA_ATTEMPTS,
+    reuse_existing: bool = True,
 ) -> DownloadedStooqDailyFile:
     return download_daily_file(
         client,
@@ -57,6 +58,7 @@ def download_latest_daily_file(
         timeout=timeout,
         captcha_solver=captcha_solver,
         max_captcha_attempts=max_captcha_attempts,
+        reuse_existing=reuse_existing,
     )
 
 
@@ -68,6 +70,7 @@ def download_daily_file(
     timeout: int | None = None,
     captcha_solver: Callable[[bytes], str] = solve_stooq_captcha,
     max_captcha_attempts: int = _MAX_CAPTCHA_ATTEMPTS,
+    reuse_existing: bool = True,
 ) -> DownloadedStooqDailyFile:
     output_dir.mkdir(parents=True, exist_ok=True)
     if max_captcha_attempts < 1:
@@ -83,7 +86,11 @@ def download_daily_file(
         prepared = client.prepare_stooq_daily_download(**prepare_kwargs)
         completed = False
         try:
-            existing_path = _find_existing_download(output_dir, prepared.label, prepared.date)
+            existing_path = (
+                _find_existing_download(output_dir, prepared.label, prepared.date)
+                if reuse_existing
+                else None
+            )
             if existing_path is not None:
                 client.close_stooq_session(prepared.session_id)
                 completed = True

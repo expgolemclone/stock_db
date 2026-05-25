@@ -122,6 +122,26 @@ def test_download_latest_daily_file_reuses_existing_date_named_file(tmp_path: Pa
     assert client.closed_sessions == ["session-1"]
 
 
+def test_download_latest_daily_file_can_skip_existing_file_reuse(tmp_path: Path) -> None:
+    existing_path = tmp_path / "0429_d.csv"
+    existing_path.write_text("stale download\n", encoding="utf-8")
+    client = FakeBrowserClient(content=b"fresh download\n", file_name="0429_d.csv")
+
+    downloaded = download_latest_daily_file(
+        client,
+        tmp_path,
+        captcha_solver=lambda _image: "D1TY",
+        reuse_existing=False,
+    )
+
+    assert downloaded.file_path == existing_path
+    assert existing_path.read_text(encoding="utf-8") == "fresh download\n"
+    assert client.completed_calls == [
+        ("session-1", "D1TY", str(tmp_path), None),
+    ]
+    assert client.closed_sessions == []
+
+
 def test_download_daily_file_passes_requested_date(tmp_path: Path) -> None:
     client = FakeBrowserClient(
         content=(

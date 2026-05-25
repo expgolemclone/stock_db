@@ -157,6 +157,7 @@ def refresh_prices(
                 db_path=db_path,
                 output_dir=output_dir,
                 headless=headless,
+                reuse_existing=False,
             )
         except StooqDailyPriceUpdateError as exc:
             raise PriceRefreshError(f"Stooq price refresh failed: {exc}") from exc

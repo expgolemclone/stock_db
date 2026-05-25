@@ -135,6 +135,7 @@ def update_stooq_daily_prices(
     db_path: Path = STOCKS_DB_PATH,
     output_dir: Path = STOOQ_DIR,
     headless: bool | None = None,
+    reuse_existing: bool = True,
 ) -> StooqDailyPriceUpdateResult:
     client_cfg = build_stooq_browser_config(headless=headless)
     conn: sqlite3.Connection = get_connection(db_path)
@@ -145,6 +146,7 @@ def update_stooq_daily_prices(
                 client,
                 output_dir,
                 timeout=client_cfg["page_timeout"],
+                reuse_existing=reuse_existing,
             )
             imported = ingest_daily_prices(conn, downloaded.file_path)
             record_stooq_price_update_check(conn)

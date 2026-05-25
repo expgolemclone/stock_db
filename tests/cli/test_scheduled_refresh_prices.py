@@ -112,6 +112,41 @@ def test_runs_on_business_day_after_16(
     assert "no update needed" in output.err
 
 
+def test_returns_1_when_refresh_leaves_unresolved_tickers(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(
+        cli_module,
+        "datetime",
+        type("_DT", (), {
+            "now": staticmethod(lambda tz: datetime(2026, 5, 7, 16, 30, tzinfo=tz)),
+        }),
+    )
+
+    def fake_refresh(**kwargs: object) -> refresh_module.PriceRefreshResult:
+        del kwargs
+        return refresh_module.PriceRefreshResult(
+            target_date=date(2026, 5, 7),
+            stale_before=1,
+            stale_after_stooq=1,
+            stale_after_yahoo=1,
+            unresolved_tickers=("7203",),
+            stooq_result=None,
+            yahoo_ok=0,
+            yahoo_errors=0,
+            yahoo_skipped_reason="stooq_latest_date=2026-05-01 is older than target_date=2026-05-07",
+        )
+
+    monkeypatch.setattr(cli_module, "refresh_prices", fake_refresh)
+
+    rc = cli_module.main(["--headless"])
+    output = capsys.readouterr()
+
+    assert rc == 1
+    assert "unresolved_stale=1 (7203)" in output.err
+
+
 def test_exit_1_on_missing_holiday_year(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
