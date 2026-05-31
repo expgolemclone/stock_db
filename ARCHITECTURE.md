@@ -282,7 +282,7 @@ uv run generate-validation-site-list
 
 `stock_db` 外の repo から価格を読む API を呼ぶ場合、API は前営業日終値が全 DB 銘柄に揃っているかを確認し、必要なら `stock_db` repo root から `uv run refresh-prices --if-needed` を実行する。更新は Stooq を先に試し、まだ stale な銘柄を Yahoo Finance JP で直列・2秒ベースのディレイで補完する。個別銘柄の取得失敗や補完後に残った stale 銘柄は結果 summary に出すが、価格更新コマンド自体は最後まで完走する。完走後は価格更新試行時刻を `source_refresh_log` に記録し、同日内の API 呼び出しで同じ大量スクレイピングを繰り返さない。DB 接続失敗や subprocess 起動失敗などの基盤エラーは例外にする。
 
-`load_screening_stocks()` は銘柄名、最新終値、終値日、発行済株式数、最新財務値、CF/PL 履歴を返す。下流 UI は `get_stock_price_metadata()` の `price_date` と `target_price_date` を比較し、古い株価・未取得株価を通常銘柄より目立ちにくく表示できる。
+`load_screening_stocks()` は銘柄名、最新終値、終値日、発行済株式数、最新財務値、CF/PL/dividend 履歴を返す。下流 UI は `get_stock_price_metadata()` の `price_date` と `target_price_date` を比較し、古い株価・未取得株価を通常銘柄より目立ちにくく表示できる。
 
 ### 7.3 Rust API
 
@@ -299,7 +299,7 @@ PyO3 module `stock_db._edinet_xbrl` の代表 API:
 - `is_valid_xbrl_text(content)`
 - `is_valid_xbrl_path(path)`
 
-Rust crate 側では `screening::load_default_screening_stocks(tickers, fcf_periods, pl_periods)` を下流の Rust screening 実装が使う。この入口は `STOCK_DB_VAR_DIR` から内部 DB を解決し、DB path を公開 contract にしない。DB path を受け取る読み取り関数は crate 外へ公開しない。`stock_db` 外の cwd から呼ばれた場合は、DB 読み取り前に `refresh-prices --if-needed` で汎用価格更新を確認する。返却する `ScreeningStock` には株価基準日の `price_date` を含める。
+Rust crate 側では `screening::load_default_screening_stocks(tickers, fcf_periods, pl_periods, payout_periods)` を下流の Rust screening 実装が使う。この入口は `STOCK_DB_VAR_DIR` から内部 DB を解決し、DB path を公開 contract にしない。DB path を受け取る読み取り関数は crate 外へ公開しない。`stock_db` 外の cwd から呼ばれた場合は、DB 読み取り前に `refresh-prices --if-needed` で汎用価格更新を確認する。返却する `ScreeningStock` には株価基準日の `price_date` と `dividend_history` を含める。
 
 ## 8. 運用
 

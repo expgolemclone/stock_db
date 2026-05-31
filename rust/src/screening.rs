@@ -24,6 +24,7 @@ pub struct ScreeningStock {
     pub financials: StatementMap,
     pub cf_history: Vec<HistoricalItems>,
     pub pl_history: Vec<HistoricalItems>,
+    pub dividend_history: Vec<HistoricalItems>,
 }
 
 fn load_screening_stocks(
@@ -31,6 +32,7 @@ fn load_screening_stocks(
     tickers: Option<&[String]>,
     fcf_periods: usize,
     pl_periods: usize,
+    payout_periods: usize,
 ) -> Result<Vec<ScreeningStock>, String> {
     crate::auto_update::ensure_prices_fresh_for_api(db_path)?;
 
@@ -45,7 +47,7 @@ fn load_screening_stocks(
         .into_iter()
         .map(|ticker| {
             let name = names.get(&ticker).cloned().unwrap_or_default();
-            build_screening_stock(&conn, ticker, name, fcf_periods, pl_periods)
+            build_screening_stock(&conn, ticker, name, fcf_periods, pl_periods, payout_periods)
         })
         .collect()
 }
@@ -54,9 +56,10 @@ pub fn load_default_screening_stocks(
     tickers: Option<&[String]>,
     fcf_periods: usize,
     pl_periods: usize,
+    payout_periods: usize,
 ) -> Result<Vec<ScreeningStock>, String> {
     let db_path = default_stocks_db_path();
-    load_screening_stocks(&db_path, tickers, fcf_periods, pl_periods)
+    load_screening_stocks(&db_path, tickers, fcf_periods, pl_periods, payout_periods)
 }
 
 pub fn default_stocks_db_path() -> PathBuf {
@@ -101,11 +104,13 @@ fn build_screening_stock(
     name: String,
     fcf_periods: usize,
     pl_periods: usize,
+    payout_periods: usize,
 ) -> Result<ScreeningStock, String> {
     let financials = get_financial_dict(conn, &ticker)?;
     let (price, price_date, shares_outstanding) = get_latest_price_with_shares(conn, &ticker)?;
     let cf_history = get_historical_items(conn, &ticker, "cf", fcf_periods)?;
     let pl_history = get_historical_items(conn, &ticker, "pl", pl_periods)?;
+    let dividend_history = get_historical_items(conn, &ticker, "dividend", payout_periods)?;
 
     Ok(ScreeningStock {
         ticker,
@@ -116,6 +121,7 @@ fn build_screening_stock(
         financials,
         cf_history,
         pl_history,
+        dividend_history,
     })
 }
 
@@ -385,7 +391,7 @@ mod tests {
         }
 
         let stock =
-            build_screening_stock(&conn, "1234".to_string(), "Example".to_string(), 2, 2).unwrap();
+            build_screening_stock(&conn, "1234".to_string(), "Example".to_string(), 2, 2, 2).unwrap();
 
         assert_eq!(stock.price, Some(321.0));
         assert_eq!(stock.shares_outstanding, Some(1_000));
