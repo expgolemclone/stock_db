@@ -9,3 +9,5 @@ WorkingDirectory=/home/exp/projects/stock_db
 Environment=PATH=/etc/profiles/per-user/exp/bin:/run/current-system/sw/bin:/usr/bin:/bin
 Environment=NODE_PATH=/etc/profiles/per-user/exp/bin/node
 ExecStart=/etc/profiles/per-user/exp/bin/uv run scheduled-refresh-prices --headless
+Restart=on-failure
+RestartSec=5min
