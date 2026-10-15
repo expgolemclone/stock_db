@@ -1,0 +1,29 @@
+[generate_validation_site_list]
+count = 5000
+output = "var/generated/validation_sites.txt"
+
+[scrape_edinet_reports]
+skip_existing = true
+headless = false
+disable_xvfb = true
+
+[parse_xbrl_financials]
+skip_existing = true
+memory_restart_percent = 70
+parse_batch_size = 25
+
+[scrape_stooq_prices]
+pool_size = 1
+headless = false
+disable_xvfb = false
+output_dir = "var/raw/stooq"
+
+[scrape_yahoo_finance_prices]
+pool_size = 1
+headless = false
+disable_xvfb = true
+
+[scrape_edinet_historical]
+skip_existing = true
+years = 10
+commit_interval = 100

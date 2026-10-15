@@ -1,0 +1,4001 @@
+{
+  "_meta": {
+    "canonical_fields_count": 82,
+    "field_map_count": 162,
+    "reverse_map_count": 54,
+    "source": "FSA EDINET Taxonomy",
+    "taxonomy_year": "2026"
+  },
+  "canonical_fields": {
+    "accounting_standard": {
+      "category": "dei",
+      "description_jp": "提出者が採用する会計基準を示すDEI項目.",
+      "label_en": "Accounting standard",
+      "label_jp": "会計基準",
+      "sources": [
+        "FSA EDINET Taxonomy 2026"
+      ],
+      "standard_notes": {
+        "jp_gaap": "EDINETのDEI会計基準タグを正規化する."
+      },
+      "standards": [
+        "jp_gaap"
+      ],
+      "statement": "dei"
+    },
+    "accounts_payable_current": {
+      "category": "financial_statement",
+      "description_jp": "流動区分の買掛債務.",
+      "label_en": "Accounts payable (current)",
+      "label_jp": "流動買掛金",
+      "sources": [
+        "FSA EDINET Taxonomy 2026"
+      ],
+      "standard_notes": {
+        "ifrs": "流動買掛債務として独立させる.",
+        "us_gaap": "AccountsPayableCurrentは一般の流動買掛債務でありtrade限定ではない."
+      },
+      "standards": [
+        "us_gaap",
+        "ifrs"
+      ],
+      "statement": "balance_sheet"
+    },
+    "accounts_payable_trade": {
+      "category": "financial_statement",
+      "description_jp": "営業取引から生じる買掛債務. 工事未払金など業種別の営業債務を含み得る.",
+      "label_en": "Accounts payable, trade",
+      "label_jp": "営業買掛金",
+      "sources": [
+        "FSA EDINET Taxonomy 2026"
+      ],
+      "standard_notes": {
+        "jp_gaap": "レビュー済みtaxonomy aliasとして正規化する."
+      },
+      "standards": [
+        "jp_gaap"
+      ],
+      "statement": "balance_sheet"
+    },
+    "accounts_receivable_net": {
+      "category": "financial_statement",
+      "description_jp": "貸倒引当金控除後の売掛債権純額.",
+      "label_en": "Accounts receivable, net",
+      "label_jp": "売掛金純額",
+      "sources": [
+        "FSA EDINET Taxonomy 2026"
+      ],
+      "standard_notes": {
+        "ifrs": "純額の売掛債権として独立させる.",
+        "us_gaap": "AccountsReceivableNetは純額表示の売掛債権."
+      },
+      "standards": [
+        "us_gaap",
+        "ifrs"
+      ],
+      "statement": "balance_sheet"
+    },
+    "accounts_receivable_net_current": {
+      "category": "financial_statement",
+      "description_jp": "流動区分の売掛債権純額.",
+      "label_en": "Accounts receivable, net (current)",
+      "label_jp": "流動売掛金純額",
+      "sources": [
+        "FSA EDINET Taxonomy 2026"
+      ],
+      "standard_notes": {
+        "ifrs": "流動の純額売掛債権として独立させる.",
+        "us_gaap": "AccountsReceivableNetCurrentは流動の純額売掛債権."
+      },
+      "standards": [
+        "us_gaap",
+        "ifrs"
+      ],
+      "statement": "balance_sheet"
+    },
+    "accounts_receivable_trade": {
+      "category": "financial_statement",
+      "description_jp": "営業取引から生じる売掛債権. 顧客との契約から生じた債権として表示されるものを含み得る.",
+      "label_en": "Accounts receivable, trade",
+      "label_jp": "営業売掛金",
+      "sources": [
+        "FSA EDINET Taxonomy 2026"
+      ],
+      "standard_notes": {
+        "jp_gaap": "レビュー済みtaxonomy aliasとして正規化する."
+      },
+      "standards": [
+        "jp_gaap"
+      ],
+      "statement": "balance_sheet"
+    },
+    "additional_paid_in_capital": {
+      "category": "financial_statement",
+      "description_jp": "US GAAPの額面超過払込額. 株式報酬等による増減も含み得る独立の資本構成要素.",
+      "label_en": "Additional paid-in capital",
+      "label_jp": "追加実資本",
+      "sources": [
+        "FSA EDINET Taxonomy 2026"
+      ],
+      "standard_notes": {
+        "us_gaap": "AdditionalPaidInCapitalはAPICとして独立させ, capital_surplusへ一括しない."
+      },
+      "standards": [
+        "us_gaap"
+      ],
+      "statement": "balance_sheet"
+    },
+    "amortization": {
+      "category": "financial_statement",
+      "description_jp": "無形固定資産及び繰延資産の期間配分費用.",
+      "label_en": "Amortization",
+      "label_jp": "繰延資産償却",
+      "sources": [
+        "FSA EDINET Taxonomy 2026"
+      ],
+      "standard_notes": {
+        "ifrs": "Amortisationを正規化する.",
+        "jp_gaap": "繰延資産償却を正規化する.",
+        "us_gaap": "Amortization系タグを正規化する."
+      },
+      "standards": [
+        "jp_gaap",
+        "ifrs",
+        "us_gaap"
+      ],
+      "statement": "profit_and_loss"
+    },
+    "bonds_and_borrowings": {
+      "category": "financial_statement",
+      "description_jp": "流動・非流動の区別を持たない社債及び借入金. 個別の流動性はCL/NCLタグで判定する.",
+      "label_en": "Bonds and borrowings",
+      "label_jp": "社債及び借入金",
+      "sources": [
+        "FSA EDINET Taxonomy 2026"
+      ],
+      "standard_notes": {
+        "ifrs": "BondsAndBorrowingsLiabilitiesIFRSなど流動性サフィックスの無いタグは, 流動・非流動を確定しない中間fieldとする."
+      },
+      "standards": [
+        "ifrs"
+      ],
+      "statement": "balance_sheet"
+    },
+    "bonds_payable": {
+      "category": "financial_statement",
+      "description_jp": "発行済み社債など, 返済義務を伴う有利子負債を表す.",
+      "label_en": "Bonds payable",
+      "label_jp": "社債",
+      "sources": [
+        "FSA EDINET Taxonomy 2026"
+      ],
+      "standard_notes": {
+        "ifrs": "発行体の有利子負債(社債)に限定する. 保有債券であるDebtSecuritiesは資産のdebt_securitiesへ分離する.",
+        "jp_gaap": "EDINETの社債タグを主に対応させる."
+      },
+      "standards": [
+        "jp_gaap",
+        "ifrs",
+        "us_gaap"
+      ],
+      "statement": "balance_sheet"
+    },
+    "capex": {
+      "category": "financial_statement",
+      "description_jp": "有形固定資産の取得による現金支出(投資活動CF).",
+      "label_en": "Capital expenditure",
+      "label_jp": "設備投資",
+      "sources": [
+        "FSA EDINET Taxonomy 2026"
+      ],
+      "standard_notes": {
+        "ifrs": "Purchase of property, plant and equipmentを正規化する.",
+        "jp_gaap": "PurchaseOfPropertyPlantAndEquipmentを正規化する.",
+        "us_gaap": "PaymentsToAcquirePropertyPlantAndEquipment系タグを正規化する."
+      },
+      "standards": [
+        "jp_gaap",
+        "ifrs",
+        "us_gaap"
+      ],
+      "statement": "cash_flow"
+    },
+    "capital_stock": {
+      "category": "financial_statement",
+      "description_jp": "株式発行などにより資本金として計上された払込資本.",
+      "label_en": "Capital stock",
+      "label_jp": "資本金",
+      "sources": [
+        "FSA EDINET Taxonomy 2026",
+        "https://laws.e-gov.go.jp/law/417AC0000000086/"
+      ],
+      "standard_notes": {
+        "ifrs": "Issued capital又はshare capitalに相当する払込資本として扱う.",
+        "jp_gaap": "会社法445条の資本金に相当する.",
+        "us_gaap": "Common stock等の払込資本系タグを正規化する."
+      },
+      "standards": [
+        "jp_gaap",
+        "ifrs",
+        "us_gaap"
+      ],
+      "statement": "balance_sheet"
+    },
+    "capital_surplus": {
+      "category": "financial_statement",
+      "description_jp": "資本取引から生じる剰余金. 資本準備金及びその他資本剰余金を含み得る.",
+      "label_en": "Capital surplus",
+      "label_jp": "資本剰余金",
+      "sources": [
+        "FSA EDINET Taxonomy 2026",
+        "https://laws.e-gov.go.jp/law/417AC0000000086/"
+      ],
+      "standard_notes": {
+        "ifrs": "日本基準の資本剰余金. IFRSのSharePremiumはshare_premiumへ分離する.",
+        "jp_gaap": "会社法445条に基づき資本金に計上しない払込額は資本準備金として計上される.",
+        "us_gaap": "日本基準の資本剰余金. US GAAPのAdditionalPaidInCapitalはadditional_paid_in_capitalへ分離する."
+      },
+      "standards": [
+        "jp_gaap",
+        "ifrs",
+        "us_gaap"
+      ],
+      "statement": "balance_sheet"
+    },
+    "cash_and_cash_equivalents": {
+      "category": "financial_statement",
+      "description_jp": "流動性の高い現金および即時換金可能な短期投資.",
+      "label_en": "Cash and cash equivalents",
+      "label_jp": "現金及び現金同等物",
+      "sources": [
+        "FSA EDINET Taxonomy 2026"
+      ],
+      "standard_notes": {
+        "ifrs": "CashAndCashEquivalentsを現金同等物として正規化する.",
+        "jp_gaap": "EDINETの現金及び預金等同タグを対応させる.",
+        "us_gaap": "CashAndCashEquivalentsを同じ流動資産項目へ正規化する."
+      },
+      "standards": [
+        "jp_gaap",
+        "ifrs",
+        "us_gaap"
+      ],
+      "statement": "balance_sheet"
+    },
+    "cash_dividends_paid": {
+      "category": "financial_statement",
+      "description_jp": "配当の支払による現金流出(財務活動CF).",
+      "label_en": "Cash dividends paid",
+      "label_jp": "配当金支払額",
+      "sources": [
+        "FSA EDINET Taxonomy 2026"
+      ],
+      "standard_notes": {
+        "ifrs": "Dividends paidを正規化する.",
+        "jp_gaap": "配当金支払額を正規化する.",
+        "us_gaap": "PaymentsOfDividends系タグを正規化する."
+      },
+      "standards": [
+        "jp_gaap",
+        "ifrs",
+        "us_gaap"
+      ],
+      "statement": "cash_flow"
+    },
+    "commercial_paper": {
+      "category": "financial_statement",
+      "description_jp": "短期資金調達のために発行される無担保約束手形等の負債項目.",
+      "label_en": "Commercial paper",
+      "label_jp": "コマーシャル・ペーパー",
+      "sources": [
+        "FSA EDINET Taxonomy 2026"
+      ],
+      "standard_notes": {
+        "jp_gaap": "EDINETのコマーシャル・ペーパー系タグを正規化する."
+      },
+      "standards": [
+        "jp_gaap"
+      ],
+      "statement": "balance_sheet"
+    },
+    "company_name_en": {
+      "category": "dei",
+      "description_jp": "提出者の英語名称を示すDEI項目.",
+      "label_en": "Filer name in English",
+      "label_jp": "提出者名（英語表記）",
+      "sources": [
+        "FSA EDINET Taxonomy 2026"
+      ],
+      "standard_notes": {
+        "jp_gaap": "EDINETの英語提出者名タグを正規化する."
+      },
+      "standards": [
+        "jp_gaap"
+      ],
+      "statement": "dei"
+    },
+    "company_name_jp": {
+      "category": "dei",
+      "description_jp": "提出者の日本語名称又は会社名を示すDEI項目.",
+      "label_en": "Filer name in Japanese",
+      "label_jp": "提出者名",
+      "sources": [
+        "FSA EDINET Taxonomy 2026"
+      ],
+      "standard_notes": {
+        "jp_gaap": "DEIの提出者名と各開示様式の会社名を同一の提出者名へ正規化する."
+      },
+      "standards": [
+        "jp_gaap"
+      ],
+      "statement": "dei"
+    },
+    "corporate_bonds_investment_securities_assets": {
+      "category": "financial_statement",
+      "description_jp": "銀行業などで投資有価証券資産として表示される社債.",
+      "label_en": "Corporate bonds in investment securities",
+      "label_jp": "投資有価証券に含まれる社債",
+      "sources": [
+        "FSA EDINET Taxonomy 2026"
+      ],
+      "standard_notes": {
+        "jp_gaap": "金融業の資産側表示を通常の社債負債とは分けて保持する."
+      },
+      "standards": [
+        "jp_gaap"
+      ],
+      "statement": "balance_sheet"
+    },
+    "cost_of_revenue": {
+      "category": "financial_statement",
+      "description_jp": "売上高又は売上収益に対応する売上原価, 役務原価, cost of sales系項目.",
+      "label_en": "Cost of revenue",
+      "label_jp": "売上原価",
+      "sources": [
+        "FSA EDINET Taxonomy 2026"
+      ],
+      "standard_notes": {
+        "ifrs": "Cost of sales又はcost of revenue系タグを正規化する.",
+        "jp_gaap": "売上高に対応する原価として扱う.",
+        "us_gaap": "Cost of revenue系タグを正規化する."
+      },
+      "standards": [
+        "jp_gaap",
+        "ifrs",
+        "us_gaap"
+      ],
+      "statement": "profit_and_loss"
+    },
+    "current_assets": {
+      "category": "financial_statement",
+      "description_jp": "1年以内又は正常営業循環内に換金・費用化される資産の合計.",
+      "label_en": "Current assets",
+      "label_jp": "流動資産",
+      "sources": [
+        "FSA EDINET Taxonomy 2026"
+      ],
+      "standard_notes": {
+        "ifrs": "Current assets相当の流動資産合計.",
+        "jp_gaap": "EDINETの流動資産合計タグを正規化する.",
+        "us_gaap": "CurrentAssets系タグを正規化する."
+      },
+      "standards": [
+        "jp_gaap",
+        "ifrs",
+        "us_gaap"
+      ],
+      "statement": "balance_sheet"
+    },
+    "current_liabilities": {
+      "category": "financial_statement",
+      "description_jp": "通常1年以内又は正常営業循環内に決済される負債.",
+      "label_en": "Current liabilities",
+      "label_jp": "流動負債",
+      "sources": [
+        "FSA EDINET Taxonomy 2026"
+      ],
+      "standard_notes": {
+        "ifrs": "Current liabilitiesに相当する流動区分の負債として扱う.",
+        "jp_gaap": "EDINETのCurrentLiabilities系タグを正規化する."
+      },
+      "standards": [
+        "jp_gaap",
+        "ifrs",
+        "us_gaap"
+      ],
+      "statement": "balance_sheet"
+    },
+    "current_portion_long_term_loans_payable": {
+      "category": "financial_statement",
+      "description_jp": "長期借入金のうち, 1年以内に返済期限が到来する部分.",
+      "label_en": "Current portion of long-term borrowings",
+      "label_jp": "1年内返済予定の長期借入金",
+      "sources": [
+        "FSA EDINET Taxonomy 2026"
+      ],
+      "standard_notes": {
+        "jp_gaap": "流動負債に表示される長期借入金の短期返済部分を示す."
+      },
+      "standards": [
+        "jp_gaap"
+      ],
+      "statement": "balance_sheet"
+    },
+    "debt_securities": {
+      "category": "financial_statement",
+      "description_jp": "保有する債券などの金融資産. 発行した社債(負債)であるbonds_payableとは資産・負債が反転する.",
+      "label_en": "Debt securities",
+      "label_jp": "債券（金融資産）",
+      "sources": [
+        "FSA EDINET Taxonomy 2026"
+      ],
+      "standard_notes": {
+        "ifrs": "DebtSecuritiesは金融資産として公正価値または償却原価で計上される.",
+        "jp_gaap": "有価証券のうち債券系を資産として区別する.",
+        "us_gaap": "FASBではDebt Securitiesは資産として扱う."
+      },
+      "standards": [
+        "ifrs",
+        "us_gaap",
+        "jp_gaap"
+      ],
+      "statement": "balance_sheet"
+    },
+    "depreciation": {
+      "category": "financial_statement",
+      "description_jp": "有形固定資産の期間配分費用.",
+      "label_en": "Depreciation",
+      "label_jp": "減価償却費",
+      "sources": [
+        "FSA EDINET Taxonomy 2026"
+      ],
+      "standard_notes": {
+        "ifrs": "Depreciationを正規化する.",
+        "jp_gaap": "減価償却費を正規化する.",
+        "us_gaap": "Depreciation系タグを正規化する."
+      },
+      "standards": [
+        "jp_gaap",
+        "ifrs",
+        "us_gaap"
+      ],
+      "statement": "profit_and_loss"
+    },
+    "depreciation_cf_adjustment": {
+      "category": "financial_statement",
+      "description_jp": "営業活動キャッシュ・フローで加減算される減価償却費調整額.",
+      "label_en": "Depreciation cash-flow adjustment",
+      "label_jp": "減価償却費調整額",
+      "sources": [
+        "FSA EDINET Taxonomy 2026"
+      ],
+      "standard_notes": {
+        "jp_gaap": "レビュー済みtaxonomy aliasとして正規化する."
+      },
+      "standards": [
+        "jp_gaap"
+      ],
+      "statement": "cash_flow"
+    },
+    "dividends_per_share": {
+      "category": "financial_statement",
+      "description_jp": "普通株式等の1株当たり配当額.",
+      "label_en": "Dividends per share",
+      "label_jp": "1株当たり配当金",
+      "sources": [
+        "FSA EDINET Taxonomy 2026"
+      ],
+      "standard_notes": {
+        "jp_gaap": "有価証券報告書の配当情報又は経営指標内の1株当たり配当額を正規化する."
+      },
+      "standards": [
+        "jp_gaap",
+        "ifrs",
+        "us_gaap"
+      ],
+      "statement": "per_share"
+    },
+    "dividends_per_share_from_surplus": {
+      "category": "financial_statement",
+      "description_jp": "剰余金の配当に関する1株当たり配当額.",
+      "label_en": "Dividend per share from surplus",
+      "label_jp": "剰余金の配当に係る1株当たり配当額",
+      "sources": [
+        "FSA EDINET Taxonomy 2026"
+      ],
+      "standard_notes": {
+        "jp_gaap": "jpcrp_cor:DividendPerShareDividendsOfSurplusを正規化する."
+      },
+      "standards": [
+        "jp_gaap"
+      ],
+      "statement": "per_share"
+    },
+    "edinet_code": {
+      "category": "dei",
+      "description_jp": "金融庁EDINETで提出者を識別するコード.",
+      "label_en": "EDINET code",
+      "label_jp": "EDINETコード",
+      "sources": [
+        "FSA EDINET Taxonomy 2026",
+        "https://axiora.dev/en/blog/edinet-for-developers"
+      ],
+      "standard_notes": {
+        "jp_gaap": "EDINET提出者コードを正規化する."
+      },
+      "standards": [
+        "jp_gaap"
+      ],
+      "statement": "dei"
+    },
+    "equity_attributable_to_owners_of_parent": {
+      "category": "financial_statement",
+      "description_jp": "親会社の株主に帰属する持分. 非支配持分は含まない.",
+      "label_en": "Equity attributable to owners of parent",
+      "label_jp": "親会社株主に帰属する持分",
+      "sources": [
+        "FSA EDINET Taxonomy 2026"
+      ],
+      "standard_notes": {
+        "ifrs": "EquityAttributableToOwnersOfParentは親会社所有者帰属持分.",
+        "us_gaap": "非支配持分を含む概念(StockholdersEquityIncludingPortion...)とは別に, StockholdersEquityを親会社帰属として扱う."
+      },
+      "standards": [
+        "ifrs",
+        "us_gaap"
+      ],
+      "statement": "balance_sheet"
+    },
+    "financing_cf": {
+      "category": "financial_statement",
+      "description_jp": "資金調達及び返済, 配当支払などの財務活動から生じるキャッシュ・フロー.",
+      "label_en": "Cash flows from financing activities",
+      "label_jp": "財務活動によるキャッシュ・フロー",
+      "sources": [
+        "FSA EDINET Taxonomy 2026"
+      ],
+      "standard_notes": {
+        "ifrs": "Net cash provided by used in financing activities系タグを正規化する."
+      },
+      "standards": [
+        "ifrs",
+        "jp_gaap",
+        "us_gaap"
+      ],
+      "statement": "cash_flow"
+    },
+    "fiscal_year_end": {
+      "category": "dei",
+      "description_jp": "提出書類の対象事業年度の終了日.",
+      "label_en": "Current fiscal year end date",
+      "label_jp": "当事業年度終了日",
+      "sources": [
+        "FSA EDINET Taxonomy 2026"
+      ],
+      "standard_notes": {
+        "jp_gaap": "DEIの事業年度終了日を正規化する."
+      },
+      "standards": [
+        "jp_gaap"
+      ],
+      "statement": "dei"
+    },
+    "fiscal_year_start": {
+      "category": "dei",
+      "description_jp": "提出書類の対象事業年度の開始日.",
+      "label_en": "Current fiscal year start date",
+      "label_jp": "当事業年度開始日",
+      "sources": [
+        "FSA EDINET Taxonomy 2026"
+      ],
+      "standard_notes": {
+        "jp_gaap": "DEIの事業年度開始日を正規化する."
+      },
+      "standards": [
+        "jp_gaap"
+      ],
+      "statement": "dei"
+    },
+    "gross_profit": {
+      "category": "financial_statement",
+      "description_jp": "売上高又は売上収益から売上原価を控除した利益.",
+      "label_en": "Gross profit",
+      "label_jp": "売上総利益",
+      "sources": [
+        "FSA EDINET Taxonomy 2026"
+      ],
+      "standard_notes": {
+        "ifrs": "Gross profit系タグを同じPL項目へ正規化する.",
+        "jp_gaap": "売上総利益又は売上総損失を正規化する."
+      },
+      "standards": [
+        "jp_gaap",
+        "ifrs",
+        "us_gaap"
+      ],
+      "statement": "profit_and_loss"
+    },
+    "income_before_tax": {
+      "category": "financial_statement",
+      "description_jp": "法人税等を控除する前の期間損益.",
+      "label_en": "Income before tax",
+      "label_jp": "税引前利益",
+      "sources": [
+        "FSA EDINET Taxonomy 2026"
+      ],
+      "standard_notes": {
+        "ifrs": "Profit loss before tax系タグを正規化する.",
+        "jp_gaap": "税引前当期純利益又は税引前利益を正規化する."
+      },
+      "standards": [
+        "ifrs",
+        "jp_gaap",
+        "us_gaap"
+      ],
+      "statement": "profit_and_loss"
+    },
+    "income_before_tax_continuing_operations": {
+      "category": "financial_statement",
+      "description_jp": "継続事業の税引前利益. 非継続事業や全社合計とは区別する.",
+      "label_en": "Income before tax (continuing operations)",
+      "label_jp": "継続事業税引前利益",
+      "sources": [
+        "FSA EDINET Taxonomy 2026"
+      ],
+      "standard_notes": {
+        "ifrs": "継続事業区分を保持しincome_before_taxへ一括しない.",
+        "us_gaap": "continuing operationsの範囲を保存する."
+      },
+      "standards": [
+        "ifrs",
+        "us_gaap"
+      ],
+      "statement": "profit_and_loss"
+    },
+    "income_taxes": {
+      "category": "financial_statement",
+      "description_jp": "法人税, 住民税, 事業税及び税金費用に相当する項目.",
+      "label_en": "Income taxes",
+      "label_jp": "法人税等",
+      "sources": [
+        "FSA EDINET Taxonomy 2026"
+      ],
+      "standard_notes": {
+        "ifrs": "Income tax expenseに相当する税金費用として扱う.",
+        "jp_gaap": "法人税等のPL費用項目として扱う."
+      },
+      "standards": [
+        "jp_gaap",
+        "ifrs",
+        "us_gaap"
+      ],
+      "statement": "profit_and_loss"
+    },
+    "income_taxes_continuing_operations": {
+      "category": "financial_statement",
+      "description_jp": "継続事業に係る法人税等.",
+      "label_en": "Income taxes (continuing operations)",
+      "label_jp": "継続事業法人税等",
+      "sources": [
+        "FSA EDINET Taxonomy 2026"
+      ],
+      "standard_notes": {
+        "ifrs": "IncomeTaxExpenseContinuingOperationsは継続事業区分として保持しincome_taxesへ一括しない.",
+        "us_gaap": "continuing operationsの範囲を保存する."
+      },
+      "standards": [
+        "ifrs",
+        "us_gaap"
+      ],
+      "statement": "profit_and_loss"
+    },
+    "intangible_asset_purchases": {
+      "category": "financial_statement",
+      "description_jp": "投資活動キャッシュ・フローで表示される無形資産の取得支出.",
+      "label_en": "Additions to intangible assets",
+      "label_jp": "無形資産の取得による支出",
+      "sources": [
+        "FSA EDINET Taxonomy 2026"
+      ],
+      "standard_notes": {
+        "jp_gaap": "レビュー済みtaxonomy aliasとして正規化する."
+      },
+      "standards": [
+        "jp_gaap"
+      ],
+      "statement": "cash_flow"
+    },
+    "intangible_fixed_assets": {
+      "category": "financial_statement",
+      "description_jp": "ソフトウェア, 営業権, 特許等の無形の長期使用資産.",
+      "label_en": "Intangible assets",
+      "label_jp": "無形固定資産",
+      "sources": [
+        "FSA EDINET Taxonomy 2026"
+      ],
+      "standard_notes": {
+        "ifrs": "Intangible assets other than goodwillを正規化する.",
+        "jp_gaap": "無形固定資産合計を正規化する.",
+        "us_gaap": "IntangibleAssets系タグを正規化する."
+      },
+      "standards": [
+        "jp_gaap",
+        "ifrs",
+        "us_gaap"
+      ],
+      "statement": "balance_sheet"
+    },
+    "interest_expenses": {
+      "category": "financial_statement",
+      "description_jp": "借入金, 社債等に係る支払利息及び割引料.",
+      "label_en": "Interest expenses",
+      "label_jp": "支払利息",
+      "sources": [
+        "FSA EDINET Taxonomy 2026"
+      ],
+      "standard_notes": {
+        "ifrs": "Finance costのうち利息費用を正規化する.",
+        "jp_gaap": "支払利息及び割引料を正規化する.",
+        "us_gaap": "InterestExpense系タグを正規化する."
+      },
+      "standards": [
+        "jp_gaap",
+        "ifrs",
+        "us_gaap"
+      ],
+      "statement": "profit_and_loss"
+    },
+    "interest_income": {
+      "category": "financial_statement",
+      "description_jp": "預金, 貸付金等に係る受取利息及び類似収益.",
+      "label_en": "Interest income",
+      "label_jp": "受取利息",
+      "sources": [
+        "FSA EDINET Taxonomy 2026"
+      ],
+      "standard_notes": {
+        "ifrs": "Finance incomeのうち利息収益を正規化する.",
+        "jp_gaap": "受取利息及び配当金を正規化する.",
+        "us_gaap": "InterestIncome系タグを正規化する."
+      },
+      "standards": [
+        "jp_gaap",
+        "ifrs",
+        "us_gaap"
+      ],
+      "statement": "profit_and_loss"
+    },
+    "inventories": {
+      "category": "financial_statement",
+      "description_jp": "商品, 製品, 半製品, 原材料, 仕掛品等の在庫資産.",
+      "label_en": "Inventories",
+      "label_jp": "棚卸資産（事務用消耗品等を含む）",
+      "sources": [
+        "FSA EDINET Taxonomy 2026",
+        "https://www.asb-j.jp/jp/accounting_standards_system/details.html?topics_id=24",
+        "https://www.ifrs.org/issued-standards/list-of-standards/ias-2-inventories/"
+      ],
+      "standard_notes": {
+        "ifrs": "IAS 2では通常の事業過程で販売目的に保有される資産, その販売のための生産過程にある資産, 又は生産過程若しくはサービス提供で消費される材料及び貯蔵品を棚卸資産とする.",
+        "jp_gaap": "企業会計基準第9号第3項では, 売却を予定しない資産であっても販売活動及び一般管理活動で短期間に消費される事務用消耗品等も棚卸資産に含む.",
+        "us_gaap": "販売又は生産に関連するinventory系タグを正規化する."
+      },
+      "standards": [
+        "jp_gaap",
+        "ifrs",
+        "us_gaap"
+      ],
+      "statement": "balance_sheet"
+    },
+    "investing_cf": {
+      "category": "financial_statement",
+      "description_jp": "固定資産や投資有価証券の取得及び売却などの投資活動から生じるキャッシュ・フロー.",
+      "label_en": "Cash flows from investing activities",
+      "label_jp": "投資活動によるキャッシュ・フロー",
+      "sources": [
+        "FSA EDINET Taxonomy 2026"
+      ],
+      "standard_notes": {
+        "ifrs": "Net cash provided by used in investing activities系タグを正規化する."
+      },
+      "standards": [
+        "ifrs",
+        "jp_gaap",
+        "us_gaap"
+      ],
+      "statement": "cash_flow"
+    },
+    "investment_securities": {
+      "category": "financial_statement",
+      "description_jp": "長期保有目的の有価証券. 子会社株式等を除く投資.",
+      "label_en": "Investment securities",
+      "label_jp": "投資有価証券",
+      "sources": [
+        "FSA EDINET Taxonomy 2026"
+      ],
+      "standard_notes": {
+        "ifrs": "投資目的の金融資産として扱う.",
+        "jp_gaap": "投資有価証券を正規化する.",
+        "us_gaap": "Investment securities系タグを正規化する."
+      },
+      "standards": [
+        "jp_gaap",
+        "ifrs",
+        "us_gaap"
+      ],
+      "statement": "balance_sheet"
+    },
+    "is_consolidated": {
+      "category": "dei",
+      "description_jp": "連結財務諸表が作成されているかを示すDEI項目.",
+      "label_en": "Whether consolidated financial statements are prepared",
+      "label_jp": "連結決算の有無",
+      "sources": [
+        "FSA EDINET Taxonomy 2026"
+      ],
+      "standard_notes": {
+        "jp_gaap": "EDINETの連結決算有無タグを正規化する."
+      },
+      "standards": [
+        "jp_gaap"
+      ],
+      "statement": "dei"
+    },
+    "legal_capital_surplus": {
+      "category": "financial_statement",
+      "description_jp": "会社法上の準備金として計上される資本準備金.",
+      "label_en": "Legal capital surplus",
+      "label_jp": "法定資本準備金",
+      "sources": [
+        "FSA EDINET Taxonomy 2026",
+        "https://laws.e-gov.go.jp/law/417AC0000000086/"
+      ],
+      "standard_notes": {
+        "jp_gaap": "会社法445条に基づく資本準備金の法定性を明示するため, capital_surplusとは別のcanonical項目として保持する."
+      },
+      "standards": [
+        "jp_gaap"
+      ],
+      "statement": "balance_sheet"
+    },
+    "long_term_debt": {
+      "category": "financial_statement",
+      "description_jp": "1年超の返済期限を持つ借入金, 社債及びその他の有利子負債.",
+      "label_en": "Long-term debt",
+      "label_jp": "長期債務",
+      "sources": [
+        "FSA EDINET Taxonomy 2026"
+      ],
+      "standard_notes": {
+        "ifrs": "Bonds and borrowings non-current系タグを正規化する.",
+        "jp_gaap": "長期借入金及び社債を含む長期の債務概念として使う."
+      },
+      "standards": [
+        "ifrs",
+        "jp_gaap",
+        "us_gaap"
+      ],
+      "statement": "balance_sheet"
+    },
+    "long_term_loans": {
+      "category": "financial_statement",
+      "description_jp": "返済期限が1年を超える借入金.",
+      "label_en": "Long-term borrowings",
+      "label_jp": "長期借入金",
+      "sources": [
+        "FSA EDINET Taxonomy 2026"
+      ],
+      "standard_notes": {
+        "jp_gaap": "EDINETのLongTermLoansPayableを正規化する."
+      },
+      "standards": [
+        "jp_gaap"
+      ],
+      "statement": "balance_sheet"
+    },
+    "net_income": {
+      "category": "financial_statement",
+      "description_jp": "税金等を控除した後の当期の最終損益.",
+      "label_en": "Net income",
+      "label_jp": "当期純利益",
+      "sources": [
+        "FSA EDINET Taxonomy 2026"
+      ],
+      "standard_notes": {
+        "ifrs": "Profit loss for the period系タグを正規化する.",
+        "jp_gaap": "当期純利益又は当期純損失を正規化する.",
+        "us_gaap": "Net income loss系タグを正規化する."
+      },
+      "standards": [
+        "jp_gaap",
+        "ifrs",
+        "us_gaap"
+      ],
+      "statement": "profit_and_loss"
+    },
+    "net_income_parent": {
+      "category": "financial_statement",
+      "description_jp": "親会社株主に帰属する当期利益又は損失.",
+      "label_en": "Profit attributable to owners of parent",
+      "label_jp": "親会社株主に帰属する当期純利益",
+      "sources": [
+        "FSA EDINET Taxonomy 2026"
+      ],
+      "standard_notes": {
+        "ifrs": "Profit loss attributable to owners of parentを正規化する.",
+        "jp_gaap": "非支配株主持分を除いた親会社株主帰属損益として扱う."
+      },
+      "standards": [
+        "jp_gaap",
+        "ifrs",
+        "us_gaap"
+      ],
+      "statement": "profit_and_loss"
+    },
+    "non_current_assets": {
+      "category": "financial_statement",
+      "description_jp": "流動資産以外の長期保有資産. 有形・無形・投資その他から成る.",
+      "label_en": "Non-current assets",
+      "label_jp": "固定資産",
+      "sources": [
+        "FSA EDINET Taxonomy 2026"
+      ],
+      "standard_notes": {
+        "ifrs": "Non-current assets相当の固定資産合計.",
+        "jp_gaap": "EDINETの固定資産合計タグを正規化する.",
+        "us_gaap": "NoncurrentAssets系タグを正規化する."
+      },
+      "standards": [
+        "jp_gaap",
+        "ifrs",
+        "us_gaap"
+      ],
+      "statement": "balance_sheet"
+    },
+    "non_current_liabilities": {
+      "category": "financial_statement",
+      "description_jp": "流動負債に該当しない長期性の負債.",
+      "label_en": "Non-current liabilities",
+      "label_jp": "非流動負債",
+      "sources": [
+        "FSA EDINET Taxonomy 2026"
+      ],
+      "standard_notes": {
+        "ifrs": "Non-current liabilitiesに相当する非流動区分の負債として扱う.",
+        "jp_gaap": "固定負債又は非流動負債系タグを正規化する."
+      },
+      "standards": [
+        "jp_gaap",
+        "ifrs",
+        "us_gaap"
+      ],
+      "statement": "balance_sheet"
+    },
+    "non_operating_expenses": {
+      "category": "financial_statement",
+      "description_jp": "営業活動以外から生じる費用項目.",
+      "label_en": "Non-operating expenses",
+      "label_jp": "営業外費用",
+      "sources": [
+        "FSA EDINET Taxonomy 2026"
+      ],
+      "standard_notes": {
+        "jp_gaap": "レビュー済みtaxonomy aliasとして正規化する."
+      },
+      "standards": [
+        "jp_gaap"
+      ],
+      "statement": "profit_and_loss"
+    },
+    "non_operating_income": {
+      "category": "financial_statement",
+      "description_jp": "営業活動以外から生じる収益項目.",
+      "label_en": "Non-operating income",
+      "label_jp": "営業外収益",
+      "sources": [
+        "FSA EDINET Taxonomy 2026"
+      ],
+      "standard_notes": {
+        "jp_gaap": "レビュー済みtaxonomy aliasとして正規化する."
+      },
+      "standards": [
+        "jp_gaap"
+      ],
+      "statement": "profit_and_loss"
+    },
+    "noncontrolling_interests": {
+      "category": "financial_statement",
+      "description_jp": "子会社の純資産のうち親会社以外の株主に帰属する持分.",
+      "label_en": "Non-controlling interests",
+      "label_jp": "非支配持分",
+      "sources": [
+        "FSA EDINET Taxonomy 2026"
+      ],
+      "standard_notes": {
+        "ifrs": "Non-controlling interestsを正規化する.",
+        "jp_gaap": "非支配株主持分を正規化する.",
+        "us_gaap": "NoncontrollingInterest系タグを正規化する."
+      },
+      "standards": [
+        "jp_gaap",
+        "ifrs",
+        "us_gaap"
+      ],
+      "statement": "balance_sheet"
+    },
+    "notes_and_accounts_payable_trade": {
+      "category": "financial_statement",
+      "description_jp": "営業取引から生じる支払手形及び買掛金.",
+      "label_en": "Notes and accounts payable, trade",
+      "label_jp": "支払手形及び買掛金",
+      "sources": [
+        "FSA EDINET Taxonomy 2026"
+      ],
+      "standard_notes": {
+        "jp_gaap": "レビュー済みtaxonomy aliasとして正規化する."
+      },
+      "standards": [
+        "jp_gaap"
+      ],
+      "statement": "balance_sheet"
+    },
+    "num_employees": {
+      "category": "summary",
+      "description_jp": "提出者又は企業集団の従業員数.",
+      "label_en": "Number of employees",
+      "label_jp": "従業員数",
+      "sources": [
+        "FSA EDINET Taxonomy 2026"
+      ],
+      "standard_notes": {
+        "jp_gaap": "企業情報開示の従業員数タグを正規化する."
+      },
+      "standards": [
+        "jp_gaap"
+      ],
+      "statement": "disclosure"
+    },
+    "operating_cf": {
+      "category": "financial_statement",
+      "description_jp": "営業活動から生じるキャッシュ・フロー.",
+      "label_en": "Cash flows from operating activities",
+      "label_jp": "営業活動によるキャッシュ・フロー",
+      "sources": [
+        "FSA EDINET Taxonomy 2026"
+      ],
+      "standard_notes": {
+        "ifrs": "Net cash provided by used in operating activities系タグを正規化する."
+      },
+      "standards": [
+        "ifrs",
+        "jp_gaap",
+        "us_gaap"
+      ],
+      "statement": "cash_flow"
+    },
+    "operating_income": {
+      "category": "financial_statement",
+      "description_jp": "主たる営業活動から生じる利益又は損失.",
+      "label_en": "Operating income",
+      "label_jp": "営業利益",
+      "sources": [
+        "FSA EDINET Taxonomy 2026"
+      ],
+      "standard_notes": {
+        "ifrs": "Operating profit loss又はprofit loss from operating activitiesを正規化する.",
+        "jp_gaap": "営業収益から営業費用を控除した営業利益又は営業損失を正規化する.",
+        "us_gaap": "Operating income lossを正規化する."
+      },
+      "standards": [
+        "jp_gaap",
+        "ifrs",
+        "us_gaap"
+      ],
+      "statement": "profit_and_loss"
+    },
+    "operating_revenue_incidental_elc": {
+      "category": "financial_statement",
+      "description_jp": "電力業における付帯事業の営業収益.",
+      "label_en": "Operating revenue incidental ELC",
+      "label_jp": "営業収益（電力付帯）",
+      "sources": [
+        "FSA EDINET Taxonomy 2026"
+      ],
+      "standard_notes": {
+        "jp_gaap": "業種固有の営業収益を通常の営業収益と区別して保持する."
+      },
+      "standards": [
+        "jp_gaap"
+      ],
+      "statement": "profit_and_loss"
+    },
+    "operating_revenue_oil_telecommunications": {
+      "category": "financial_statement",
+      "description_jp": "石油又は電気通信業の業種固有営業収益.",
+      "label_en": "Operating revenue oil telecommunications",
+      "label_jp": "営業収益（石油・電気通信）",
+      "sources": [
+        "FSA EDINET Taxonomy 2026"
+      ],
+      "standard_notes": {
+        "jp_gaap": "業種固有の営業収益を通常の営業収益と区別して保持する."
+      },
+      "standards": [
+        "jp_gaap"
+      ],
+      "statement": "profit_and_loss"
+    },
+    "ordinary_income": {
+      "category": "financial_statement",
+      "description_jp": "営業損益に営業外損益を加減した経常的な損益.",
+      "label_en": "Ordinary income",
+      "label_jp": "経常利益",
+      "sources": [
+        "FSA EDINET Taxonomy 2026"
+      ],
+      "standard_notes": {
+        "jp_gaap": "経常利益又は経常損失を正規化する."
+      },
+      "standards": [
+        "jp_gaap"
+      ],
+      "statement": "profit_and_loss"
+    },
+    "other_operating_revenue": {
+      "category": "financial_statement",
+      "description_jp": "主たる営業活動に付随するその他の営業収益.",
+      "label_en": "Other operating revenue",
+      "label_jp": "その他営業収益",
+      "sources": [
+        "FSA EDINET Taxonomy 2026"
+      ],
+      "standard_notes": {
+        "jp_gaap": "レビュー済みtaxonomy aliasとして正規化する."
+      },
+      "standards": [
+        "jp_gaap"
+      ],
+      "statement": "profit_and_loss"
+    },
+    "research_and_development": {
+      "category": "financial_statement",
+      "description_jp": "研究開発活動に係る費用.",
+      "label_en": "Research and development expenses",
+      "label_jp": "研究開発費",
+      "sources": [
+        "FSA EDINET Taxonomy 2026"
+      ],
+      "standard_notes": {
+        "ifrs": "Research and development expenseを正規化する.",
+        "jp_gaap": "研究開発費を正規化する.",
+        "us_gaap": "ResearchAndDevelopmentExpenses系タグを正規化する."
+      },
+      "standards": [
+        "jp_gaap",
+        "ifrs",
+        "us_gaap"
+      ],
+      "statement": "profit_and_loss"
+    },
+    "retained_earnings": {
+      "category": "financial_statement",
+      "description_jp": "過去の累積損益から配当等を控除した利益剰余.",
+      "label_en": "Retained earnings",
+      "label_jp": "繰越利益剰余金",
+      "sources": [
+        "FSA EDINET Taxonomy 2026"
+      ],
+      "standard_notes": {
+        "ifrs": "Retained earningsを資本の構成要素として扱う.",
+        "jp_gaap": "繰越利益剰余金を正規化する.",
+        "us_gaap": "RetainedEarningsAccumulatedDeficit系タグを正規化する."
+      },
+      "standards": [
+        "jp_gaap",
+        "ifrs",
+        "us_gaap"
+      ],
+      "statement": "balance_sheet"
+    },
+    "revenue": {
+      "category": "financial_statement",
+      "description_jp": "売上高, 売上収益, 業種別営業収益, 金融業の経常収益など, 企業の主要な収益項目.",
+      "label_en": "Revenue",
+      "label_jp": "売上高又は売上収益",
+      "sources": [
+        "FSA EDINET Taxonomy 2026",
+        "https://axiora.dev/en/blog/edinet-for-developers"
+      ],
+      "standard_notes": {
+        "ifrs": "IFRS 15のrevenue系タグを売上収益として正規化する.",
+        "jp_gaap": "製造業等の売上高に加え, 銀行・保険・業種別の収益表示をrevenueへ正規化する.",
+        "us_gaap": "Revenues又はSalesRevenueNetを正規化する."
+      },
+      "standards": [
+        "jp_gaap",
+        "ifrs",
+        "us_gaap"
+      ],
+      "statement": "profit_and_loss"
+    },
+    "roe": {
+      "category": "summary",
+      "description_jp": "自己資本に対する利益率の推移を示す開示項目.",
+      "label_en": "Return on equity",
+      "label_jp": "自己資本利益率",
+      "sources": [
+        "FSA EDINET Taxonomy 2026"
+      ],
+      "standard_notes": {
+        "jp_gaap": "経営指標等のROE text blockを正規化対象にする."
+      },
+      "standards": [
+        "jp_gaap"
+      ],
+      "statement": "disclosure"
+    },
+    "security_code": {
+      "category": "dei",
+      "description_jp": "提出者に対応する証券コード.",
+      "label_en": "Security code",
+      "label_jp": "証券コード",
+      "sources": [
+        "FSA EDINET Taxonomy 2026",
+        "https://axiora.dev/en/blog/edinet-for-developers"
+      ],
+      "standard_notes": {
+        "jp_gaap": "EDINETの5桁secCodeは通常, 先頭4桁を上場銘柄コードとして扱う."
+      },
+      "standards": [
+        "jp_gaap"
+      ],
+      "statement": "dei"
+    },
+    "selling_general_admin": {
+      "category": "financial_statement",
+      "description_jp": "販売活動及び一般管理活動に係る費用の合計.",
+      "label_en": "Selling, general and administrative expenses",
+      "label_jp": "販売費及び一般管理費",
+      "sources": [
+        "FSA EDINET Taxonomy 2026"
+      ],
+      "standard_notes": {
+        "ifrs": "SGA expensesを正規化する.",
+        "jp_gaap": "販管費を正規化する.",
+        "us_gaap": "SellingGeneralAndAdministrativeExpenses系タグを正規化する."
+      },
+      "standards": [
+        "jp_gaap",
+        "ifrs",
+        "us_gaap"
+      ],
+      "statement": "profit_and_loss"
+    },
+    "share_premium": {
+      "category": "financial_statement",
+      "description_jp": "IFRSにおける払込資本の超過額. 資本の構成要素として独立表示される.",
+      "label_en": "Share premium",
+      "label_jp": "株式発行差金",
+      "sources": [
+        "FSA EDINET Taxonomy 2026"
+      ],
+      "standard_notes": {
+        "ifrs": "SharePremiumは資本構成要素として独立させ, 日本の資本剰余金(capital_surplus)へ一括しない."
+      },
+      "standards": [
+        "ifrs"
+      ],
+      "statement": "balance_sheet"
+    },
+    "shareholders_equity": {
+      "category": "financial_statement",
+      "description_jp": "日本基準の株主資本合計. 親会社所有者帰属持分とは別概念.",
+      "label_en": "Shareholders' equity",
+      "label_jp": "株主資本",
+      "sources": [
+        "FSA EDINET Taxonomy 2026"
+      ],
+      "standard_notes": {
+        "jp_gaap": "ShareholdersEquityはEDINETの株主資本合計であり, 親会社帰属持分(equity_attributable_to_owners_of_parent)とは区別する."
+      },
+      "standards": [
+        "jp_gaap"
+      ],
+      "statement": "balance_sheet"
+    },
+    "short_term_debt": {
+      "category": "financial_statement",
+      "description_jp": "1年以内に返済又は償還される借入金, 社債及びその他の有利子負債.",
+      "label_en": "Short-term debt",
+      "label_jp": "短期債務",
+      "sources": [
+        "FSA EDINET Taxonomy 2026"
+      ],
+      "standard_notes": {
+        "ifrs": "Bonds and borrowings current系タグを正規化する.",
+        "jp_gaap": "短期借入金及び1年内返済予定部分を含み得る短期の債務概念として使う."
+      },
+      "standards": [
+        "ifrs",
+        "jp_gaap",
+        "us_gaap"
+      ],
+      "statement": "balance_sheet"
+    },
+    "short_term_loans": {
+      "category": "financial_statement",
+      "description_jp": "返済期限が1年以内の借入金.",
+      "label_en": "Short-term borrowings",
+      "label_jp": "短期借入金",
+      "sources": [
+        "FSA EDINET Taxonomy 2026"
+      ],
+      "standard_notes": {
+        "jp_gaap": "EDINETのShortTermLoansPayableを正規化する."
+      },
+      "standards": [
+        "jp_gaap"
+      ],
+      "statement": "balance_sheet"
+    },
+    "tangible_fixed_assets": {
+      "category": "financial_statement",
+      "description_jp": "建物, 機械, 土地等の有形の長期使用資産.",
+      "label_en": "Property, plant and equipment",
+      "label_jp": "有形固定資産",
+      "sources": [
+        "FSA EDINET Taxonomy 2026"
+      ],
+      "standard_notes": {
+        "ifrs": "PropertyPlantAndEquipmentを正規化する.",
+        "jp_gaap": "有形固定資産合計を正規化する.",
+        "us_gaap": "PropertyPlantAndEquipmentNet系タグを正規化する."
+      },
+      "standards": [
+        "jp_gaap",
+        "ifrs",
+        "us_gaap"
+      ],
+      "statement": "balance_sheet"
+    },
+    "total_assets": {
+      "category": "financial_statement",
+      "description_jp": "貸借対照表又は財政状態計算書に表示される資産合計.",
+      "label_en": "Total assets",
+      "label_jp": "総資産",
+      "sources": [
+        "FSA EDINET Taxonomy 2026"
+      ],
+      "standard_notes": {
+        "ifrs": "AssetsIFRSを同じ総資産項目へ正規化する.",
+        "jp_gaap": "資産合計としてjppfs_cor:Assetsを正規化する."
+      },
+      "standards": [
+        "jp_gaap",
+        "ifrs",
+        "us_gaap"
+      ],
+      "statement": "balance_sheet"
+    },
+    "total_equity": {
+      "category": "financial_statement",
+      "description_jp": "貸借対照表の持分合計. J-GAAPの純資産合計, IFRSの資本合計, US-GAAPの非支配持分を含む株主持分合計を正規化する.",
+      "label_en": "Total equity / net assets",
+      "label_jp": "純資産合計／資本合計",
+      "sources": [
+        "FSA EDINET Taxonomy 2026"
+      ],
+      "standard_notes": {
+        "ifrs": "EquityIFRSを資本合計として正規化する.",
+        "jp_gaap": "NetAssets(純資産合計)を正規化する. J-GAAP純資産にはその他有価証券評価差額金等の評価換算差額が含まれ, IFRS/US-GAAPの包括利益蓄積額と厳密には表示構造が異なる点に注意.",
+        "us_gaap": "StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest系タグを正規化する."
+      },
+      "standards": [
+        "jp_gaap",
+        "ifrs",
+        "us_gaap"
+      ],
+      "statement": "balance_sheet"
+    },
+    "total_liabilities": {
+      "category": "financial_statement",
+      "description_jp": "貸借対照表又は財政状態計算書に表示される負債合計.",
+      "label_en": "Total liabilities",
+      "label_jp": "負債合計",
+      "sources": [
+        "FSA EDINET Taxonomy 2026"
+      ],
+      "standard_notes": {
+        "ifrs": "LiabilitiesIFRSを同じ負債合計項目へ正規化する.",
+        "jp_gaap": "Liabilitiesを負債合計として正規化する."
+      },
+      "standards": [
+        "jp_gaap",
+        "ifrs",
+        "us_gaap"
+      ],
+      "statement": "balance_sheet"
+    },
+    "total_liabilities_and_net_assets": {
+      "category": "financial_statement",
+      "description_jp": "貸借対照表の負債と純資産(資本)の合計. 資産合計に一致.",
+      "label_en": "Total liabilities and equity",
+      "label_jp": "負債純資産合計",
+      "sources": [
+        "FSA EDINET Taxonomy 2026"
+      ],
+      "standard_notes": {
+        "ifrs": "Equity and liabilitiesを正規化する.",
+        "jp_gaap": "負債純資産合計を正規化する.",
+        "us_gaap": "LiabilitiesAndStockholdersEquity系タグを正規化する."
+      },
+      "standards": [
+        "jp_gaap",
+        "ifrs",
+        "us_gaap"
+      ],
+      "statement": "balance_sheet"
+    },
+    "trade_and_other_current_payables": {
+      "category": "financial_statement",
+      "description_jp": "買掛債務にその他の流動支払債務を加えた表示項目.",
+      "label_en": "Trade and other current payables",
+      "label_jp": "営業債務およびその他の流動支払債務",
+      "sources": [
+        "FSA EDINET Taxonomy 2026"
+      ],
+      "standard_notes": {
+        "ifrs": "IAS 1のTradeAndOtherCurrentPayablesは営業債務とその他を含むためtrade_payablesへ狭めない.",
+        "us_gaap": "trade and other の範囲を保存する."
+      },
+      "standards": [
+        "ifrs",
+        "us_gaap"
+      ],
+      "statement": "balance_sheet"
+    },
+    "trade_and_other_current_receivables": {
+      "category": "financial_statement",
+      "description_jp": "売掛債権にその他の流動受取債権を加えた表示項目. 営業債権のみのtrade_receivablesとは範囲が異なる.",
+      "label_en": "Trade and other current receivables",
+      "label_jp": "営業債権およびその他の流動受取債権",
+      "sources": [
+        "FSA EDINET Taxonomy 2026"
+      ],
+      "standard_notes": {
+        "ifrs": "IAS 1のTradeAndOtherCurrentReceivablesは営業債権とその他を含むためtrade_receivablesへ狭めない.",
+        "us_gaap": "trade and other の範囲を保存する."
+      },
+      "standards": [
+        "ifrs",
+        "us_gaap"
+      ],
+      "statement": "balance_sheet"
+    },
+    "treasury_stock_purchase": {
+      "category": "financial_statement",
+      "description_jp": "財務活動キャッシュ・フローで表示される自己株式の取得支出.",
+      "label_en": "Purchase of treasury stock",
+      "label_jp": "自己株式の取得",
+      "sources": [
+        "FSA EDINET Taxonomy 2026"
+      ],
+      "standard_notes": {
+        "jp_gaap": "レビュー済みtaxonomy aliasとして正規化する."
+      },
+      "standards": [
+        "jp_gaap"
+      ],
+      "statement": "cash_flow"
+    }
+  },
+  "excluded_concepts": {
+    "high_frequency_unsupported_detail": [
+      "AccountsPayableCreditGuaranteeCL",
+      "AccountsPayableShippingCLWAT",
+      "AccountsReceivableCARWY",
+      "AccountsReceivableCustomerCACMD",
+      "AccountsReceivableFormAgentsCAWAT",
+      "AccountsReceivableFromSubsidiariesAndAffiliatesTradeCAGAS",
+      "AccountsReceivableInstallmentSalesCALEA",
+      "AccountsReceivableInstallmentSalesCreditGuaranteeCA",
+      "AccountsReceivableOperatingLoansCALEA",
+      "AccountsReceivableOtherLoansToCustomersCALEA",
+      "AccountsReceivableShippingCAWAT",
+      "AccruedTaxes",
+      "AccumulatedDepreciationAntennaNCATelecommunications",
+      "AccumulatedDepreciationEngineeringNCATelecommunications",
+      "AccumulatedDepreciationEquipmentWAT",
+      "AccumulatedDepreciationLeaseAssets",
+      "AccumulatedDepreciationLongNCATelecommunications",
+      "AccumulatedDepreciationMachineryNCATelecommunications",
+      "AccumulatedDepreciationNCAAffiliatedRWY",
+      "AccumulatedDepreciationPPEIncidentalELC",
+      "AccumulatedDepreciationPPERailway",
+      "AccumulatedDepreciationVehiclesNCATelecommunications",
+      "AdministrativeExpensesOEOILTelecommunications",
+      "AdvancesForPurchasesAtLeasedAssetsPPELEA",
+      "AdvancesReceivedLeaseCLLEA",
+      "AdvertisingExpensesSGASPF",
+      "AntennaFacilitiesNCATelecommunications",
+      "AntennaFacilitiesNetNCATelecommunications",
+      "BalanceOfTrustAccountLoansSummaryOfBusinessResults",
+      "BalanceOfTrustAccountSecuritiesSummaryOfBusinessResults",
+      "BeginningInventoriesGAS",
+      "BuildingsNCATelecommunications",
+      "BusinessExpensesOEOILTelecommunications",
+      "CapitalCostCOSLEA",
+      "CashDepositsForCashCollectionAndDepositServicesCA",
+      "CommissionFeeOESPF",
+      "CommissionForAFinancialLoanNOE",
+      "CommunicationFacilityFeeOEOILTelecommunications",
+      "ConstructionAndRetirementInProgressNCAInProcessELE",
+      "ConstructionInProgressAffiliatedRWY",
+      "ConstructionInProgressELE",
+      "ConstructionInProgressNCAInProgressELE",
+      "ConstructionInProgressRWY",
+      "ConstructionInProgressRailwayRWY",
+      "CostOfLoanedFacilitiesOEElectricELE",
+      "CostOfOperationalInvestmentSecuritiesCOSExpOA",
+      "CostsOfGasForOwnUseGAS",
+      "CrewExpensesShipExpensesShippingBusinessExpenses",
+      "CurrentPortionOfLongTermAccountsPayableRailwayEquipmentCLRWY",
+      "CurrentPortionOfLongTermPayablesUnderFluidityLeaseReceivablesCLLEA",
+      "CurrentPortionOfNoncurrentLiabilitiesCLELE",
+      "CurrentPortionOfNoncurrentLiabilitiesCLGAS",
+      "CustomersDepositsReceivedForCommodityFuturesTransactionCLCMD",
+      "DebtForAgencyCLWAT",
+      "DecommissioningCostsOfNuclearPowerUnitsOpeCFELE",
+      "DecreaseIncreaseInAdvancePaidOpeCFSEC",
+      "DecreaseIncreaseInAssetsLiabilitiesForMarginTransactionOpeCFSEC",
+      "DecreaseIncreaseInReceivablesInstallmentOpeCFLEA",
+      "DeferredAndPrepaidExpensesCAWAT",
+      "DeferredProfitOnInstallmentSalesCLLEA",
+      "DepreciationOfRealEstateForRentAndOtherOEINS",
+      "DistributionExpensesOEElectricELE",
+      "DistributionFacilitiesNCAElectricELE",
+      "DistributionFacilitiesPPEGAS",
+      "ElectricPowerDevelopmentPromotionTaxOEElectricELE",
+      "ElectricUtilityOperatingExpensesELE",
+      "ElectricUtilityPlantAndEquipmentAssetsELE",
+      "EmployeesSalariesAndBonusesOESPF",
+      "EndingInventoriesGAS",
+      "EngineeringFacilitiesNCATelecommunications",
+      "EngineeringFacilitiesNetNCATelecommunications",
+      "EnterpriseTaxOEElectricELE",
+      "EquipmentNetPPELEA",
+      "EquipmentNetPPESPF",
+      "EquipmentNetPPEWAT",
+      "EquipmentPPESPF",
+      "EquipmentPPEWAT",
+      "ExpensesForIncidentalBusinessesGAS",
+      "ExpensesForThirdPartysPowerTransmissionServiceOEElectricELE",
+      "ExpensesOfInstallationWorkGAS",
+      "ExtraordinaryLossOnDisasterEL",
+      "FacilitiesForIncidentalBusinessesPPEGAS",
+      "FacilitiesLoanedNCAElectricELE",
+      "FacilitiesMaintenanceExpensesOEOILTelecommunications",
+      "FacilityExpensesSGA",
+      "FinancialExpensesIFRS",
+      "FreightExpensesNaviExpensesShipping",
+      "FuelExpensesNaviExpensesShipping",
+      "FuturesTransactionMarginCustomerDrCACMD",
+      "GainOnBadDebtsRecoveredORSPF",
+      "GainOnDisposalOfNoncurrentAssetsEIINSNonlife",
+      "GainOnSalesOfGoodsNOIRWY",
+      "GainOnSalesOfNoncurrentAssetsNOIELE",
+      "GeneralAndAdministrativeExpensesGAS",
+      "GeneralAndAdministrativeExpensesOEElectricELE",
+      "GeneralAndAdministrativeExpensesOERWY",
+      "GeneralAndAdministrativeExpensesWAT",
+      "GeneralFacilitiesNCAElectricELE",
+      "GrantUnderActOnPurchaseOfRenewableEnergySourcedElectricityORElectricELE",
+      "GuaranteeDepositsCACMD",
+      "GuaranteeReceivedNCLLEA",
+      "HydroelectricPowerProductionExpensesELE",
+      "HydroelectricPowerProductionFacilitiesNCAElectricELE",
+      "InactiveFacilitiesNCAElectricELE",
+      "IncidentalBusinessFacilitiesELE",
+      "IncidentalBusinessOperatingExpensesELE",
+      "IncomeFromTradingRelatedFinancialDerivativesTransactionsOIBNK",
+      "IncomeOnCoreBusinessGAS",
+      "IncreaseDecreaseInReserveForFluctuationInWaterLevelsOpeCFELE",
+      "InfectiousDiseaseRelatedCostNOE",
+      "InstallmentCostCOSLEA",
+      "InterLineFaresReceivedCLRWY",
+      "InternalCombustionEnginePowerProductionExpensesOEElectricELE",
+      "InternalCombustionEnginePowerProductionFacilitiesNCAElectricELE",
+      "InvestmentsInSubsidiariesAndAffiliatesIOAGAS",
+      "LandAndBuildingsForSaleCARWY",
+      "LandNCATelecommunications",
+      "LeaseAssetsNet",
+      "LeaseCostCOSLEA",
+      "LeasePropertyIALEA",
+      "LeasedAssetsIALEA",
+      "LeaseholdRightIANCATelecommunications",
+      "LevyUnderActOnPurchaseOfRenewableEnergySourcedElectricityOEElectricELE",
+      "LoadedNuclearFuelNCAELE",
+      "LongDistanceLineFacilitiesNCATelecommunications",
+      "LongDistanceLineFacilitiesNetNCATelecommunications",
+      "LongTermAccountsPayableRailwayEquipmentNCLRWY",
+      "LongTermAccountsPayableToJapanRailwayConstructionTransportAndTechnologyAgencyNCLRWY",
+      "LongTermAccruedLiabilitiesNCLELE",
+      "LongTermDeferredContributionForConstruction",
+      "LongTermInvestmentForSubsidiariesAndAffiliatesELE",
+      "LongTermInvestmentsELE",
+      "LossOnInvestmentsInPartnershipsNOE",
+      "LossOnSalesOfNoncurrentAssetsNOEELE",
+      "MachineryAndEquipmentNCATelecommunications",
+      "MachineryNCATelecommunications",
+      "MachineryNetNCATelecommunications",
+      "MiscellaneousExpensesGAS",
+      "MiscellaneousExpensesNOEELE",
+      "MiscellaneousExpensesNOERWY",
+      "MiscellaneousIncomeGAS",
+      "MiscellaneousIncomeNOIRWY",
+      "MiscellaneousIncomeOfTransportationORRWY",
+      "NavigationExpensesExpensesShipping",
+      "NetGainOnTradingORCMD",
+      "NetIncreaseDecreaseInShortTermCorporateBondsOpeCFBNK",
+      "NetOperatingIncomeFromIncidentalBusinessELC",
+      "NetOperatingIncomeFromTelecommunicationELC",
+      "NonOperatingFacilitiesELE",
+      "NoncurrentAssetsAffiliatedRWY",
+      "NoncurrentAssetsIncidentalBusinessNCAELC",
+      "NoncurrentAssetsRailwayRWY",
+      "NoncurrentAssetsRetirementCostOEOILTelecommunications",
+      "NoncurrentAssetsTelecommunicationsBusinessELC",
+      "NuclearFuelInProcessingNCAELE",
+      "NuclearFuelNCAELE",
+      "NuclearPowerAbolitionInProgressELE",
+      "NuclearPowerProductionExpensesELE",
+      "NuclearPowerProductionFacilitiesNCAElectricELE",
+      "OperatingExpensesELE",
+      "OperatingExpensesGasSupplyBusinessOEElectricELE",
+      "OperatingExpensesIncidentalELC",
+      "OperatingExpensesOILTelecommunications",
+      "OperatingExpensesOtherBusinessesOEIncidentalELE",
+      "OperatingExpensesRailwayRWY",
+      "OperatingExpensesSPF",
+      "OperatingGrossProfitWAT",
+      "OperatingIncomeRailwayRWY",
+      "OperatingMiscellaneousExpensesGAS",
+      "OrdinaryExpensesELE",
+      "OrdinaryRevenueELE",
+      "OtherAccountsReceivableCAELE",
+      "OtherAdvancesCLELE",
+      "OtherBusinessExpensesWAT",
+      "OtherBusinessIncomeWAT",
+      "OtherBusinessOperatingExpensesELE",
+      "OtherBusinessRevenueWAT",
+      "OtherCostOfSalesCOSLEA",
+      "OtherCurrentAssetsCAELE",
+      "OtherCurrentLiabilitiesCLELE",
+      "OtherElectricUtilityPlantAndEquipmentNCAElectricELE",
+      "OtherFacilitiesPPEGAS",
+      "OtherFinancialExpensesCOSExpOA",
+      "OtherFinancialExpensesSPF",
+      "OtherIntangibleAssetsIANCATelecommunications",
+      "OtherIntangibleAssetsLEA",
+      "OtherMiscellaneousOperatingExpensesGAS",
+      "OtherNavigationExpensesNaviExpensesShipping",
+      "OtherNetSalesSalesLEA",
+      "OtherNoncurrentAssetsELE",
+      "OtherNoncurrentLiabilitiesNCLELE",
+      "OtherOESPF",
+      "OtherOperatingAssetsCALEA",
+      "OtherOperatingExpensesSPF",
+      "OtherShipExpensesShipExpensesShipping",
+      "OtherShippingBusinessExpensesWAT",
+      "PersonalExpensesCOSExpOA",
+      "PersonnelTransferExpensesNOE",
+      "PortExpensesNaviExpensesShipping",
+      "PrepaidFaresReceivedCLRWY",
+      "ProductionFacilitiesPPEGAS",
+      "PropertyPlantAndEquipmentNCAAffiliatedRWY",
+      "PropertyPlantAndEquipmentNCAIncidentalELC",
+      "PropertyPlantAndEquipmentNCARailway",
+      "PropertyPlantAndEquipmentNCATelecommunications",
+      "PropertyPlantAndEquipmentNetNCAAffiliatedRWY",
+      "PropertyPlantAndEquipmentNetNCAIncidentalELC",
+      "PropertyPlantAndEquipmentNetNCARailway",
+      "PropertyPlantAndEquipmentNetNCARelatedRWY",
+      "ProvisionForBonusesShipExpensesShipping",
+      "ProvisionForGasApplianceWarrantiesNCL",
+      "ProvisionForLargeScaleRenovationOfTheShinkansenInfrastructureNCLRWY",
+      "ProvisionForLossOnExchangingGiftCertificatesCL",
+      "ProvisionForLossOnInterestRepaymentCL",
+      "ProvisionForLossOnInterestRepaymentNCLSPF",
+      "ProvisionForLossOnInterestRepaymentOESPF",
+      "ProvisionForLossOnInterestRepaymentSGA",
+      "ProvisionForLossOnRedemptionOfGiftCertificatesNCL",
+      "ProvisionForLossOnStoresClosingEL",
+      "ProvisionForPreparationOfTheReprocessingOfIrradiatedNuclearFuelNCLELE",
+      "ProvisionForReprocessingOfIrradiatedNuclearFuelNCLELE",
+      "ProvisionForSafetyMeasuresGAS",
+      "ProvisionForSpecialRepairsNCLWAT",
+      "ProvisionForStocksPaymentLiabilities",
+      "ProvisionOfReserveForFluctuationInWaterLevelsELE",
+      "ProvisionOfReserveForPreparationOfTheDepreciationOfNuclearPowerConstructionELE",
+      "ProvisionOrReversalOfReserveForFluctuationInWaterLevelsELE",
+      "ProvisionOrReversalOfReserveForPreparationOfTheDepreciationOfNuclearPowerConstructionELE",
+      "PurchaseOfLeasedAssetsOpeCFLEA",
+      "PurchaseOfOwnUsedAssetsInvCFLEA",
+      "PurchasedPowerFromOtherSuppliersOEElectricELE",
+      "PurchasedPowerFromOtherUtilitiesOEElectricELE",
+      "RailwayFaresReceivablesCARWY",
+      "ReductionEntryOfLandContributionForConstructionOpeCF",
+      "RenewablePowerProductionExpensesOEElectricELE",
+      "RenewablePowerProductionFacilitiesNCAElectricELE",
+      "RepairExpensesOfShipsShipExpensesShipping",
+      "ReserveForFluctuationInWaterLevelsReservesUnderTheSpecialLawsELE",
+      "ReserveForPreparationOfTheDepreciationOfNuclearPowerConstructionReservesUnderTheSpecialLawsELE",
+      "ReserveForRestorationCostsOfNaturalDisasterCL",
+      "ReserveForRestorationCostsOfNaturalDisasterNCL",
+      "ReserveForStocksPaymentLiabilities",
+      "ReserveFundForReprocessingOfIrradiatedNuclearFuelIOAELE",
+      "RetirementInProgressNCAInProgressELE",
+      "ReversalOfClericalCostsOnWorkPerformedOnContractNOIRWY",
+      "ReversalOfReserveForFluctuationInWaterLevelsELE",
+      "RightOfUsingFacilitiesIANCATelecommunications",
+      "RightOfUsingHarborFacilitiesIA",
+      "SecuritiesInCustodyCACMD",
+      "SecuritiesReceivedAsCustomersDepositsForCommodityFuturesTransactionCLCMD",
+      "SellingExpensesOEElectricELE",
+      "SellingGeneralAndAdministrativeExpensesGAS",
+      "ServiceAndMaintenanceFacilitiesPPEGAS",
+      "ShipExpensesExpensesShipping",
+      "ShipRentalFeeExpensesShipping",
+      "ShippingBusinessExpensesWAT",
+      "ShippingBusinessIncomeWAT",
+      "ShortTermInvestmentsCAELE",
+      "ShortTermReceivablesFromSubsidiariesAndAffiliatesCAELE",
+      "ShortTermReceivablesFromSubsidiariesAndAffiliatesCAGAS",
+      "SpecialAccountRelatedToReprocessingOfSpentNuclearFuelELE",
+      "StructuresNCATelecommunications",
+      "SubsidyEIRWY",
+      "SubsidyForTheMovementEIRWY",
+      "TaxesAndDuesOEOILTelecommunications",
+      "TaxesOERWY",
+      "ThermalPowerProductionExpensesOEElectricELE",
+      "ThermalPowerProductionFacilitiesNCAElectricELE",
+      "ToolsFurnitureAndFixturesNCATelecommunications",
+      "TradingRelatedFinancialDerivativesTradingAssetsAssetsBNK",
+      "TradingRelatedFinancialDerivativesTradingLiabilitiesLiabilitiesBNK",
+      "TransferredCostOfElectricityForConstructionAndIncidentalBusinessOEElectricELE",
+      "TransformationExpensesOEElectricELE",
+      "TransformationFacilitiesNCAElectricELE",
+      "TransmissionExpensesOEElectricELE",
+      "TransmissionFacilitiesNCAElectricELE",
+      "TransportationOperatingExpensesOERWY",
+      "TrustFeeSummaryOfBusinessResults",
+      "VehiclesNCATelecommunications",
+      "VehiclesNetNCATelecommunications"
+    ]
+  },
+  "field_map": {
+    "jpcrp-esr_cor:CompanyNameCoverPage": {
+      "category": "dei",
+      "field": "company_name_jp",
+      "label_en": "Company name",
+      "label_jp": "会社名",
+      "matched_by": "label",
+      "standard": "jp_gaap"
+    },
+    "jpcrp-sbr_cor:CompanyNameCoverPage": {
+      "category": "dei",
+      "field": "company_name_jp",
+      "label_en": "Company name",
+      "label_jp": "会社名",
+      "matched_by": "label",
+      "standard": "jp_gaap"
+    },
+    "jpcrp_cor:AnnexedDetailedScheduleOfCorporateBondsAndShortTermAndLongTermBorrowingsHWYTextBlock": {
+      "category": "financial_statement",
+      "field": "bonds_payable",
+      "label_en": "Annexed detailed schedule of corporate bonds and short-term and long-term borrowings",
+      "label_jp": "社債、長期借入金及び短期借入金の増減明細表",
+      "matched_by": "label",
+      "standard": "jp_gaap"
+    },
+    "jpcrp_cor:CompanyNameCoverPage": {
+      "category": "dei",
+      "field": "company_name_jp",
+      "label_en": "Company name",
+      "label_jp": "会社名",
+      "matched_by": "label",
+      "standard": "jp_gaap"
+    },
+    "jpcrp_cor:DividendPerShareDividendsOfSurplus": {
+      "category": "per_share",
+      "field": "dividends_per_share_from_surplus",
+      "label_en": "Dividend per share",
+      "label_jp": "１株当たり配当額",
+      "matched_by": "label",
+      "standard": "jp_gaap"
+    },
+    "jpcrp_cor:NumberOfEmployees": {
+      "category": "summary",
+      "field": "num_employees",
+      "label_en": "Number of employees",
+      "label_jp": "従業員数",
+      "matched_by": "label",
+      "standard": "jp_gaap"
+    },
+    "jpcrp_cor:RevenueKeyFinancialData": {
+      "category": "summary_ifrs",
+      "field": "revenue",
+      "label_en": "Revenue",
+      "label_jp": "売上収益",
+      "matched_by": "label",
+      "standard": "ifrs"
+    },
+    "jpctl_cor:CompanyNameCoverPage": {
+      "category": "dei",
+      "field": "company_name_jp",
+      "label_en": "Company name",
+      "label_jp": "会社名",
+      "matched_by": "label",
+      "standard": "jp_gaap"
+    },
+    "jpdei_cor:AccountingStandardsDEI": {
+      "category": "dei",
+      "field": "accounting_standard",
+      "label_en": "Accounting standards",
+      "label_jp": "会計基準",
+      "matched_by": "label",
+      "standard": "jp_gaap"
+    },
+    "jpdei_cor:CurrentFiscalYearEndDateDEI": {
+      "category": "dei",
+      "field": "fiscal_year_end",
+      "label_en": "Current fiscal year end date",
+      "label_jp": "当事業年度終了日",
+      "matched_by": "label",
+      "standard": "jp_gaap"
+    },
+    "jpdei_cor:CurrentFiscalYearStartDateDEI": {
+      "category": "dei",
+      "field": "fiscal_year_start",
+      "label_en": "Current fiscal year start date",
+      "label_jp": "当事業年度開始日",
+      "matched_by": "label",
+      "standard": "jp_gaap"
+    },
+    "jpdei_cor:EDINETCodeDEI": {
+      "category": "dei",
+      "field": "edinet_code",
+      "label_en": "EDINET code",
+      "label_jp": "EDINETコード",
+      "matched_by": "label",
+      "standard": "jp_gaap"
+    },
+    "jpdei_cor:FilerNameInEnglishDEI": {
+      "category": "dei",
+      "field": "company_name_en",
+      "label_en": "Filer name in English",
+      "label_jp": "提出者名（英語表記）",
+      "matched_by": "label",
+      "standard": "jp_gaap"
+    },
+    "jpdei_cor:FilerNameInJapaneseDEI": {
+      "category": "dei",
+      "field": "company_name_jp",
+      "label_en": "Filer name in Japanese",
+      "label_jp": "提出者名（日本語表記）",
+      "matched_by": "label",
+      "standard": "jp_gaap"
+    },
+    "jpdei_cor:SecurityCodeDEI": {
+      "category": "dei",
+      "field": "security_code",
+      "label_en": "Security code",
+      "label_jp": "証券コード",
+      "matched_by": "label",
+      "standard": "jp_gaap"
+    },
+    "jpdei_cor:WhetherConsolidatedFinancialStatementsArePreparedDEI": {
+      "category": "dei",
+      "field": "is_consolidated",
+      "label_en": "Whether consolidated financial statements are prepared",
+      "label_jp": "連結決算の有無",
+      "matched_by": "label",
+      "standard": "jp_gaap"
+    },
+    "jpigp_cor:ATMOperationBusinessRevenueIFRS": {
+      "category": "financial_statement_ifrs",
+      "field": "revenue",
+      "label_en": "ATM operation business revenue",
+      "label_jp": "ATM運営業務収益",
+      "matched_by": "reviewed_alias",
+      "standard": "ifrs"
+    },
+    "jpigp_cor:AdditionsToIntangibleAssetsInvCFIFRS": {
+      "category": "financial_statement_ifrs",
+      "field": "intangible_asset_purchases",
+      "label_en": "Additions to intangible assets",
+      "label_jp": "無形資産の取得による支出",
+      "matched_by": "reviewed_alias",
+      "standard": "ifrs"
+    },
+    "jpigp_cor:AssetsIFRS": {
+      "category": "financial_statement_ifrs",
+      "field": "total_assets",
+      "label_en": "Assets",
+      "label_jp": "資産",
+      "matched_by": "label",
+      "standard": "ifrs"
+    },
+    "jpigp_cor:BondsAndBorrowingsCLIFRS": {
+      "category": "financial_statement_ifrs",
+      "field": "short_term_debt",
+      "label_en": "Bonds and borrowings (current)",
+      "label_jp": "社債及び借入金（流動）",
+      "matched_by": "label",
+      "standard": "ifrs"
+    },
+    "jpigp_cor:BondsAndBorrowingsLiabilitiesIFRS": {
+      "category": "financial_statement_ifrs",
+      "field": "bonds_and_borrowings",
+      "label_en": "Bonds and borrowings",
+      "label_jp": "社債及び借入金",
+      "matched_by": "label",
+      "standard": "ifrs"
+    },
+    "jpigp_cor:BondsAndBorrowingsNCLIFRS": {
+      "category": "financial_statement_ifrs",
+      "field": "long_term_debt",
+      "label_en": "Bonds and borrowings (non-current)",
+      "label_jp": "社債及び借入金（非流動）",
+      "matched_by": "label",
+      "standard": "ifrs"
+    },
+    "jpigp_cor:EquityIFRS": {
+      "category": "financial_statement_ifrs",
+      "field": "total_equity",
+      "label_en": "Equity",
+      "label_jp": "資本",
+      "matched_by": "label",
+      "standard": "ifrs"
+    },
+    "jpigp_cor:GrossProfitLossIFRS": {
+      "category": "financial_statement_ifrs",
+      "field": "gross_profit",
+      "label_en": "Gross profit (loss)",
+      "label_jp": "売上総利益（損失）",
+      "matched_by": "stem",
+      "standard": "ifrs"
+    },
+    "jpigp_cor:LiabilitiesIFRS": {
+      "category": "financial_statement_ifrs",
+      "field": "total_liabilities",
+      "label_en": "Liabilities",
+      "label_jp": "負債",
+      "matched_by": "label",
+      "standard": "ifrs"
+    },
+    "jpigp_cor:NetCashProvidedByUsedInFinancingActivitiesIFRS": {
+      "category": "financial_statement_ifrs",
+      "field": "financing_cf",
+      "label_en": "Net cash provided by (used in) financing activities",
+      "label_jp": "財務活動によるキャッシュ・フロー",
+      "matched_by": "label",
+      "standard": "ifrs"
+    },
+    "jpigp_cor:NetCashProvidedByUsedInInvestingActivitiesIFRS": {
+      "category": "financial_statement_ifrs",
+      "field": "investing_cf",
+      "label_en": "Net cash provided by (used in) investing activities",
+      "label_jp": "投資活動によるキャッシュ・フロー",
+      "matched_by": "label",
+      "standard": "ifrs"
+    },
+    "jpigp_cor:NetCashProvidedByUsedInOperatingActivitiesIFRS": {
+      "category": "financial_statement_ifrs",
+      "field": "operating_cf",
+      "label_en": "Net cash provided by (used in) operating activities",
+      "label_jp": "営業活動によるキャッシュ・フロー",
+      "matched_by": "label",
+      "standard": "ifrs"
+    },
+    "jpigp_cor:NetRevenueIFRS": {
+      "category": "financial_statement_ifrs",
+      "field": "revenue",
+      "label_en": "Net revenue",
+      "label_jp": "純収益",
+      "matched_by": "reviewed_alias",
+      "standard": "ifrs"
+    },
+    "jpigp_cor:OperatingProfitLossIFRS": {
+      "category": "financial_statement_ifrs",
+      "field": "operating_income",
+      "label_en": "Operating profit (loss)",
+      "label_jp": "営業利益（△損失）",
+      "matched_by": "label",
+      "standard": "ifrs"
+    },
+    "jpigp_cor:ProfitLossBeforeTaxIFRS": {
+      "category": "financial_statement_ifrs",
+      "field": "income_before_tax",
+      "label_en": "Profit (loss) before tax",
+      "label_jp": "税引前利益（△損失）",
+      "matched_by": "label",
+      "standard": "ifrs"
+    },
+    "jpigp_cor:ProfitLossIFRS": {
+      "category": "financial_statement_ifrs",
+      "field": "net_income",
+      "label_en": "Profit (loss)",
+      "label_jp": "当期利益（△損失）",
+      "matched_by": "label",
+      "standard": "ifrs"
+    },
+    "jpigp_cor:Revenue2IFRS": {
+      "category": "financial_statement_ifrs",
+      "field": "revenue",
+      "label_en": "Revenue",
+      "label_jp": "収益",
+      "matched_by": "label",
+      "standard": "ifrs"
+    },
+    "jpigp_cor:RevenueIFRS": {
+      "category": "financial_statement_ifrs",
+      "field": "revenue",
+      "label_en": "Revenue",
+      "label_jp": "売上収益",
+      "matched_by": "label",
+      "standard": "ifrs"
+    },
+    "jplvh_cor:EDINETCodeDEI": {
+      "category": "dei",
+      "field": "edinet_code",
+      "label_en": "EDINET code",
+      "label_jp": "EDINETコード",
+      "matched_by": "label",
+      "standard": "jp_gaap"
+    },
+    "jplvh_cor:SecurityCodeDEI": {
+      "category": "dei",
+      "field": "security_code",
+      "label_en": "Security code",
+      "label_jp": "証券コード",
+      "matched_by": "label",
+      "standard": "jp_gaap"
+    },
+    "jplvh_cor:SecurityCodeOfIssuer": {
+      "category": "dei",
+      "field": "security_code",
+      "label_en": "Security code",
+      "label_jp": "証券コード",
+      "matched_by": "label",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:AccountsPayableTradeAndAccountsPayableForConstructionContracts": {
+      "category": "financial_statement",
+      "field": "accounts_payable_trade",
+      "label_en": "Accounts payable, trade and for construction contracts",
+      "label_jp": "買掛金及び工事未払金",
+      "matched_by": "reviewed_alias",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:AccountsPayableTradeAndAccountsPayableForConstructionContractsCL": {
+      "category": "financial_statement",
+      "field": "accounts_payable_trade",
+      "label_en": "Accounts payable, trade and for construction contracts",
+      "label_jp": "買掛金及び工事未払金",
+      "matched_by": "reviewed_alias",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:AccountsPayableTradeForFranchisedStores": {
+      "category": "financial_statement",
+      "field": "accounts_payable_trade",
+      "label_en": "Accounts payable, trade for franchised stores",
+      "label_jp": "加盟店買掛金",
+      "matched_by": "reviewed_alias",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:AccountsPayableTradeForFranchisedStoresCL": {
+      "category": "financial_statement",
+      "field": "accounts_payable_trade",
+      "label_en": "Accounts payable, trade for franchised stores",
+      "label_jp": "加盟店買掛金",
+      "matched_by": "reviewed_alias",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:AccountsReceivableTrade1CA": {
+      "category": "financial_statement",
+      "field": "accounts_receivable_trade",
+      "label_en": "Accounts receivable, trade",
+      "label_jp": "売掛金",
+      "matched_by": "reviewed_alias",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:AccountsReceivableTradeAccountsReceivableTrade": {
+      "category": "financial_statement",
+      "field": "accounts_receivable_trade",
+      "label_en": "Accounts receivable, trade",
+      "label_jp": "売掛金",
+      "matched_by": "reviewed_alias",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:AccountsReceivableTradeCA": {
+      "category": "financial_statement",
+      "field": "accounts_receivable_trade",
+      "label_en": "Accounts receivable, trade",
+      "label_jp": "売掛金",
+      "matched_by": "reviewed_alias",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:AccountsReceivableTradeReceivablesFromContractsWithCustomers": {
+      "category": "financial_statement",
+      "field": "accounts_receivable_trade",
+      "label_en": "Accounts receivable, trade and receivables from contracts with customers",
+      "label_jp": "売掛金及び顧客との契約から生じた債権",
+      "matched_by": "reviewed_alias",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:AccountsReceivableTradeReceivablesFromContractsWithCustomersCA": {
+      "category": "financial_statement",
+      "field": "accounts_receivable_trade",
+      "label_en": "Accounts receivable, trade and receivables from contracts with customers",
+      "label_jp": "売掛金及び顧客との契約から生じた債権",
+      "matched_by": "reviewed_alias",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:AcquisitionOfTreasurySharesViaTrustFinCF": {
+      "category": "financial_statement",
+      "field": "treasury_stock_purchase",
+      "label_en": "Acquisition of treasury shares via trust",
+      "label_jp": "信託を通じた自己株式の取得",
+      "matched_by": "reviewed_alias",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:Assets": {
+      "category": "financial_statement",
+      "field": "total_assets",
+      "label_en": "Assets",
+      "label_jp": "資産",
+      "matched_by": "label",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:BondsPayable": {
+      "category": "financial_statement",
+      "field": "bonds_payable",
+      "label_en": "Bonds payable",
+      "label_jp": "社債",
+      "matched_by": "label",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:BrokerageIncomeORCMD": {
+      "category": "financial_statement",
+      "field": "other_operating_revenue",
+      "label_en": "Brokerage income",
+      "label_jp": "受入手数料",
+      "matched_by": "reviewed_alias",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:CapitalStock": {
+      "category": "financial_statement",
+      "field": "capital_stock",
+      "label_en": "Capital stock",
+      "label_jp": "資本金",
+      "matched_by": "stem",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:CapitalSurplus": {
+      "category": "financial_statement",
+      "field": "capital_surplus",
+      "label_en": "Capital surplus",
+      "label_jp": "資本剰余金",
+      "matched_by": "stem",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:CommercialPapersCAFND": {
+      "category": "financial_statement",
+      "field": "debt_securities",
+      "label_en": "Commercial papers",
+      "label_jp": "コマーシャル・ペーパー",
+      "matched_by": "label",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:CommercialPapersLiabilities": {
+      "category": "financial_statement",
+      "field": "commercial_paper",
+      "label_en": "Commercial papers",
+      "label_jp": "コマーシャル・ペーパー",
+      "matched_by": "label",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:ConstructionMaterialCA": {
+      "category": "financial_statement",
+      "field": "inventories",
+      "label_en": "Construction material",
+      "label_jp": "工事材料",
+      "matched_by": "reviewed_alias",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:CorporateBondsAssetsINS": {
+      "category": "financial_statement",
+      "field": "corporate_bonds_investment_securities_assets",
+      "label_en": "Corporate bonds",
+      "label_jp": "社債",
+      "matched_by": "label",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:CorporateBondsInvestmentSecuritiesAssetsBNK": {
+      "category": "financial_statement",
+      "field": "corporate_bonds_investment_securities_assets",
+      "label_en": "Corporate bonds",
+      "label_jp": "社債",
+      "matched_by": "label",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:CostOfSalesCOSExpOA": {
+      "category": "financial_statement",
+      "field": "cost_of_revenue",
+      "label_en": "Cost of sales",
+      "label_jp": "売上原価",
+      "matched_by": "reviewed_alias",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:CreditCardRevenueRevOA": {
+      "category": "financial_statement",
+      "field": "other_operating_revenue",
+      "label_en": "Credit card revenue",
+      "label_jp": "クレジットカード収益",
+      "matched_by": "reviewed_alias",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:CurrentPortionOfLongTermLoansPayable": {
+      "category": "financial_statement",
+      "field": "current_portion_long_term_loans_payable",
+      "label_en": "Current portion of long-term borrowings",
+      "label_jp": "１年内返済予定の長期借入金",
+      "matched_by": "label",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:DebenturesLiabilitiesBNK": {
+      "category": "financial_statement",
+      "field": "bonds_payable",
+      "label_en": "Debentures liabilities",
+      "label_jp": "債券",
+      "matched_by": "reviewed_alias",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:DepreciationCOS": {
+      "category": "financial_statement",
+      "field": "depreciation",
+      "label_en": "Depreciation",
+      "label_jp": "減価償却費",
+      "matched_by": "reviewed_alias",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:DepreciationOEOILTelecommunications": {
+      "category": "financial_statement",
+      "field": "depreciation",
+      "label_en": "Depreciation",
+      "label_jp": "減価償却費",
+      "matched_by": "reviewed_alias",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:DepreciationOERWY": {
+      "category": "financial_statement",
+      "field": "depreciation",
+      "label_en": "Depreciation",
+      "label_jp": "減価償却費",
+      "matched_by": "reviewed_alias",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:DepreciationOESPF": {
+      "category": "financial_statement",
+      "field": "depreciation",
+      "label_en": "Depreciation",
+      "label_jp": "減価償却費",
+      "matched_by": "reviewed_alias",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:DepreciationOfLeasedAssetsOpeCFLEA": {
+      "category": "financial_statement",
+      "field": "depreciation_cf_adjustment",
+      "label_en": "Depreciation of leased assets",
+      "label_jp": "リース資産減価償却費",
+      "matched_by": "reviewed_alias",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:DepreciationOfRealEstateForRentOpeCFINS": {
+      "category": "financial_statement",
+      "field": "depreciation_cf_adjustment",
+      "label_en": "Depreciation of real estate for rent",
+      "label_jp": "賃貸不動産減価償却費",
+      "matched_by": "reviewed_alias",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:DepreciationShipsShipExpensesShipping": {
+      "category": "financial_statement",
+      "field": "depreciation",
+      "label_en": "Depreciation of ships",
+      "label_jp": "船舶減価償却費",
+      "matched_by": "reviewed_alias",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:ElectricUtilityOperatingRevenueELE": {
+      "category": "financial_statement",
+      "field": "revenue",
+      "label_en": "Electric utility operating revenue",
+      "label_jp": "電気事業営業収益",
+      "matched_by": "reviewed_alias",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:FinanceRevenueSalesLEA": {
+      "category": "financial_statement",
+      "field": "revenue",
+      "label_en": "Finance revenue",
+      "label_jp": "金融収益",
+      "matched_by": "reviewed_alias",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:FinancialExpensesNOEELE": {
+      "category": "financial_statement",
+      "field": "non_operating_expenses",
+      "label_en": "Financial expenses",
+      "label_jp": "財務費用",
+      "matched_by": "reviewed_alias",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:FinancialExpensesSPF": {
+      "category": "financial_statement",
+      "field": "non_operating_expenses",
+      "label_en": "Financial expenses",
+      "label_jp": "財務費用",
+      "matched_by": "reviewed_alias",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:FinancialRevenueNORELE": {
+      "category": "financial_statement",
+      "field": "non_operating_income",
+      "label_en": "Financial revenue",
+      "label_jp": "財務収益",
+      "matched_by": "reviewed_alias",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:FinancingRevenueRevOA": {
+      "category": "financial_statement",
+      "field": "other_operating_revenue",
+      "label_en": "Financing revenue",
+      "label_jp": "金融収益",
+      "matched_by": "reviewed_alias",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:FreightAndOtherRevenueShipping": {
+      "category": "financial_statement",
+      "field": "revenue",
+      "label_en": "Freight and other revenue",
+      "label_jp": "運賃及びその他収益",
+      "matched_by": "reviewed_alias",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:FreightRevenueShipping": {
+      "category": "financial_statement",
+      "field": "revenue",
+      "label_en": "Freight revenue",
+      "label_jp": "運賃収益",
+      "matched_by": "reviewed_alias",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:GasSalesGAS": {
+      "category": "financial_statement",
+      "field": "revenue",
+      "label_en": "Gas sales",
+      "label_jp": "ガス売上",
+      "matched_by": "reviewed_alias",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:GrossProfit": {
+      "category": "financial_statement",
+      "field": "gross_profit",
+      "label_en": "Gross profit",
+      "label_jp": "売上総利益",
+      "matched_by": "stem",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:HarborTransportationIncomeRevOA": {
+      "category": "financial_statement",
+      "field": "other_operating_revenue",
+      "label_en": "Harbor transportation income",
+      "label_jp": "港湾運送収益",
+      "matched_by": "reviewed_alias",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:IncidentalBusinessOperatingRevenueELE": {
+      "category": "financial_statement",
+      "field": "other_operating_revenue",
+      "label_en": "Incidental business operating revenue",
+      "label_jp": "附帯事業営業収益",
+      "matched_by": "reviewed_alias",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:IncomeBeforeIncomeTaxes": {
+      "category": "financial_statement",
+      "field": "income_before_tax",
+      "label_en": "Income before income taxes",
+      "label_jp": "税引前当期純利益",
+      "matched_by": "stem",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:IncomeFromPartnershipManagementRevOA": {
+      "category": "financial_statement",
+      "field": "other_operating_revenue",
+      "label_en": "Income from partnership management",
+      "label_jp": "匿名組合等管理収益",
+      "matched_by": "reviewed_alias",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:InstallmentSalesSalesLEA": {
+      "category": "financial_statement",
+      "field": "revenue",
+      "label_en": "Installment sales",
+      "label_jp": "割賦売上高",
+      "matched_by": "reviewed_alias",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:IntangibleAssetsAffiliatedRWY": {
+      "category": "financial_statement",
+      "field": "intangible_fixed_assets",
+      "label_en": "Intangible assets, affiliated railway",
+      "label_jp": "無形固定資産",
+      "matched_by": "reviewed_alias",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:IntangibleAssetsNCAIncidentalELC": {
+      "category": "financial_statement",
+      "field": "intangible_fixed_assets",
+      "label_en": "Intangible assets, incidental business",
+      "label_jp": "無形固定資産",
+      "matched_by": "reviewed_alias",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:IntangibleAssetsNCARWY": {
+      "category": "financial_statement",
+      "field": "intangible_fixed_assets",
+      "label_en": "Intangible assets, railway",
+      "label_jp": "無形固定資産",
+      "matched_by": "reviewed_alias",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:IntangibleAssetsNCATelecommunications": {
+      "category": "financial_statement",
+      "field": "intangible_fixed_assets",
+      "label_en": "Intangible assets, telecommunications",
+      "label_jp": "無形固定資産",
+      "matched_by": "reviewed_alias",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:InterestExpensesOESPF": {
+      "category": "financial_statement",
+      "field": "interest_expenses",
+      "label_en": "Interest expenses",
+      "label_jp": "支払利息",
+      "matched_by": "reviewed_alias",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:InterestOnBondsOESPF": {
+      "category": "financial_statement",
+      "field": "interest_expenses",
+      "label_en": "Interest on bonds",
+      "label_jp": "社債利息",
+      "matched_by": "reviewed_alias",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:InterestOnCommercialPapersCOSExpOA": {
+      "category": "financial_statement",
+      "field": "interest_expenses",
+      "label_en": "Interest on commercial papers",
+      "label_jp": "コマーシャル・ペーパー利息",
+      "matched_by": "reviewed_alias",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:InterestOnDebenturesBNK": {
+      "category": "financial_statement",
+      "field": "interest_expenses",
+      "label_en": "Interest on debentures",
+      "label_jp": "債券利息",
+      "matched_by": "reviewed_alias",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:InterestOnDepositsORSPF": {
+      "category": "financial_statement",
+      "field": "interest_income",
+      "label_en": "Interest on deposits",
+      "label_jp": "預金利息",
+      "matched_by": "reviewed_alias",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:InterestOnLoansORSPF": {
+      "category": "financial_statement",
+      "field": "interest_income",
+      "label_en": "Interest on loans",
+      "label_jp": "貸付金利息",
+      "matched_by": "reviewed_alias",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:InterestOnOperatingLoansSPF": {
+      "category": "financial_statement",
+      "field": "interest_income",
+      "label_en": "Interest on operating loans",
+      "label_jp": "営業貸付金利息",
+      "matched_by": "reviewed_alias",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:InterestOnShortTermBondsNOE": {
+      "category": "financial_statement",
+      "field": "interest_expenses",
+      "label_en": "Interest on short-term bonds",
+      "label_jp": "短期社債利息",
+      "matched_by": "reviewed_alias",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:InternationalTransportationIncomeRevOA": {
+      "category": "financial_statement",
+      "field": "other_operating_revenue",
+      "label_en": "International transportation income",
+      "label_jp": "国際運送収益",
+      "matched_by": "reviewed_alias",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:LandTransportationIncomeRevOA": {
+      "category": "financial_statement",
+      "field": "other_operating_revenue",
+      "label_en": "Land transportation income",
+      "label_jp": "陸上運送収益",
+      "matched_by": "reviewed_alias",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:LeaseSalesSalesLEA": {
+      "category": "financial_statement",
+      "field": "revenue",
+      "label_en": "Lease sales",
+      "label_jp": "リース売上高",
+      "matched_by": "reviewed_alias",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:LegalCapitalSurplus": {
+      "category": "financial_statement",
+      "field": "legal_capital_surplus",
+      "label_en": "Legal capital surplus",
+      "label_jp": "法定資本準備金",
+      "matched_by": "stem",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:Liabilities": {
+      "category": "financial_statement",
+      "field": "total_liabilities",
+      "label_en": "Liabilities",
+      "label_jp": "負債",
+      "matched_by": "label",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:LongTermDebtToSubsidiariesAndAffiliatesNCLELE": {
+      "category": "financial_statement",
+      "field": "long_term_debt",
+      "label_en": "Long-term debt to subsidiaries and affiliates",
+      "label_jp": "関係会社長期債務",
+      "matched_by": "reviewed_alias",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:LongTermLoansPayable": {
+      "category": "financial_statement",
+      "field": "long_term_loans",
+      "label_en": "Long-term borrowings",
+      "label_jp": "長期借入金",
+      "matched_by": "label",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:MiscellaneousOperatingRevenueGAS": {
+      "category": "financial_statement",
+      "field": "other_operating_revenue",
+      "label_en": "Miscellaneous operating revenue",
+      "label_jp": "雑営業収益",
+      "matched_by": "reviewed_alias",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:MiscellaneousRevenueNORELE": {
+      "category": "financial_statement",
+      "field": "non_operating_income",
+      "label_en": "Miscellaneous revenue",
+      "label_jp": "雑収益",
+      "matched_by": "reviewed_alias",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:NetAssets": {
+      "category": "financial_statement",
+      "field": "total_equity",
+      "label_en": "Net assets",
+      "label_jp": "純資産",
+      "matched_by": "label",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:NetSales": {
+      "category": "financial_statement",
+      "field": "revenue",
+      "label_en": "Net sales",
+      "label_jp": "売上高",
+      "matched_by": "label",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:NetSalesORRealEstate": {
+      "category": "financial_statement",
+      "field": "revenue",
+      "label_en": "Net sales",
+      "label_jp": "売上高",
+      "matched_by": "label",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:NonOperatingExpensesNOEELE": {
+      "category": "financial_statement",
+      "field": "non_operating_expenses",
+      "label_en": "Non-operating expenses",
+      "label_jp": "営業外費用",
+      "matched_by": "reviewed_alias",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:NonOperatingRevenueNORELE": {
+      "category": "financial_statement",
+      "field": "non_operating_income",
+      "label_en": "Non-operating revenue",
+      "label_jp": "営業外収益",
+      "matched_by": "reviewed_alias",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:NotesAndOperatingAccountsPayableTrade": {
+      "category": "financial_statement",
+      "field": "notes_and_accounts_payable_trade",
+      "label_en": "Notes and operating accounts payable, trade",
+      "label_jp": "支払手形及び営業未払金",
+      "matched_by": "reviewed_alias",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:OperatingIncome": {
+      "category": "financial_statement",
+      "field": "operating_income",
+      "label_en": "Operating profit (loss)",
+      "label_jp": "営業利益又は営業損失（△）",
+      "matched_by": "label",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:OperatingIncomeINS": {
+      "category": "financial_statement",
+      "field": "revenue",
+      "label_en": "Ordinary income",
+      "label_jp": "経常収益",
+      "matched_by": "label",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:OperatingRevenue1": {
+      "category": "financial_statement",
+      "field": "revenue",
+      "label_en": "Operating revenue",
+      "label_jp": "営業収益",
+      "matched_by": "label",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:OperatingRevenueCMD": {
+      "category": "financial_statement",
+      "field": "revenue",
+      "label_en": "Operating revenue",
+      "label_jp": "営業収益",
+      "matched_by": "label",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:OperatingRevenueCNA": {
+      "category": "financial_statement",
+      "field": "revenue",
+      "label_en": "Operating revenue",
+      "label_jp": "営業収益",
+      "matched_by": "label",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:OperatingRevenueELE": {
+      "category": "financial_statement",
+      "field": "revenue",
+      "label_en": "Operating revenue",
+      "label_jp": "営業収益",
+      "matched_by": "label",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:OperatingRevenueFND": {
+      "category": "financial_statement",
+      "field": "revenue",
+      "label_en": "Operating revenue",
+      "label_jp": "営業収益",
+      "matched_by": "label",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:OperatingRevenueGasSupplyBusinessORIncidentalELE": {
+      "category": "financial_statement",
+      "field": "other_operating_revenue",
+      "label_en": "Operating revenue from gas supply business",
+      "label_jp": "ガス供給事業営業収益",
+      "matched_by": "reviewed_alias",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:OperatingRevenueGeneralPassengerAutomobileTrafficRevOA": {
+      "category": "financial_statement",
+      "field": "other_operating_revenue",
+      "label_en": "Operating revenue, general passenger automobile traffic",
+      "label_jp": "一般旅客自動車運送事業営業収益",
+      "matched_by": "reviewed_alias",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:OperatingRevenueHighwayBusinessHWY": {
+      "category": "financial_statement",
+      "field": "revenue",
+      "label_en": "Operating revenue",
+      "label_jp": "営業収益",
+      "matched_by": "label",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:OperatingRevenueINV": {
+      "category": "financial_statement",
+      "field": "revenue",
+      "label_en": "Operating revenue",
+      "label_jp": "営業収益",
+      "matched_by": "label",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:OperatingRevenueIVT": {
+      "category": "financial_statement",
+      "field": "revenue",
+      "label_en": "Operating revenue",
+      "label_jp": "営業収益",
+      "matched_by": "label",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:OperatingRevenueIncidentalELC": {
+      "category": "financial_statement",
+      "field": "operating_revenue_incidental_elc",
+      "label_en": "Operating revenue (incidental ELC)",
+      "label_jp": "営業収益（電力付帯）",
+      "matched_by": "label",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:OperatingRevenueOILTelecommunications": {
+      "category": "financial_statement",
+      "field": "operating_revenue_oil_telecommunications",
+      "label_en": "Operating revenue (OIL telecommunications)",
+      "label_jp": "営業収益（石油・電気通信）",
+      "matched_by": "label",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:OperatingRevenueOtherBusinessesORIncidentalELE": {
+      "category": "financial_statement",
+      "field": "other_operating_revenue",
+      "label_en": "Operating revenue from other businesses",
+      "label_jp": "その他事業営業収益",
+      "matched_by": "reviewed_alias",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:OperatingRevenueRWY": {
+      "category": "financial_statement",
+      "field": "revenue",
+      "label_en": "Operating revenue",
+      "label_jp": "営業収益",
+      "matched_by": "label",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:OperatingRevenueRailwayRWY": {
+      "category": "financial_statement",
+      "field": "revenue",
+      "label_en": "Operating revenue, railway",
+      "label_jp": "鉄道事業営業収益",
+      "matched_by": "reviewed_alias",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:OperatingRevenueRelatedOperationsHighwayBusinessHWY": {
+      "category": "financial_statement",
+      "field": "revenue",
+      "label_en": "Operating revenue - related operations",
+      "label_jp": "営業収益",
+      "matched_by": "label",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:OperatingRevenueSEC": {
+      "category": "financial_statement",
+      "field": "revenue",
+      "label_en": "Operating revenue",
+      "label_jp": "営業収益",
+      "matched_by": "label",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:OperatingRevenueSPF": {
+      "category": "financial_statement",
+      "field": "revenue",
+      "label_en": "Operating revenue",
+      "label_jp": "営業収益",
+      "matched_by": "label",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:OrdinaryIncome": {
+      "category": "financial_statement",
+      "field": "ordinary_income",
+      "label_en": "Ordinary profit (loss)",
+      "label_jp": "経常利益又は経常損失（△）",
+      "matched_by": "label",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:OrdinaryIncomeBNK": {
+      "category": "financial_statement",
+      "field": "revenue",
+      "label_en": "Ordinary income",
+      "label_jp": "経常収益",
+      "matched_by": "label",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:OtherBusinessOperatingRevenueELE": {
+      "category": "financial_statement",
+      "field": "other_operating_revenue",
+      "label_en": "Other business operating revenue",
+      "label_jp": "その他事業営業収益",
+      "matched_by": "reviewed_alias",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:OtherElectricityRevenueORElectricELE": {
+      "category": "financial_statement",
+      "field": "other_operating_revenue",
+      "label_en": "Other electricity revenue",
+      "label_jp": "その他電気事業収益",
+      "matched_by": "reviewed_alias",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:OtherFinancialRevenueRevOA": {
+      "category": "financial_statement",
+      "field": "other_operating_revenue",
+      "label_en": "Other financial revenue",
+      "label_jp": "その他金融収益",
+      "matched_by": "reviewed_alias",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:OtherMiscellaneousOperatingRevenueGAS": {
+      "category": "financial_statement",
+      "field": "other_operating_revenue",
+      "label_en": "Other miscellaneous operating revenue",
+      "label_jp": "その他の雑営業収益",
+      "matched_by": "reviewed_alias",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:OtherOperatingRevenueSPF": {
+      "category": "financial_statement",
+      "field": "other_operating_revenue",
+      "label_en": "Other operating revenue",
+      "label_jp": "その他の営業収益",
+      "matched_by": "reviewed_alias",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:OtherShippingBusinessRevenueRevenueShipping": {
+      "category": "financial_statement",
+      "field": "other_operating_revenue",
+      "label_en": "Other shipping business revenue",
+      "label_jp": "その他海運業収益",
+      "matched_by": "reviewed_alias",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:PerItemRevenueRevOA": {
+      "category": "financial_statement",
+      "field": "other_operating_revenue",
+      "label_en": "Per-item revenue",
+      "label_jp": "品目別収益",
+      "matched_by": "reviewed_alias",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:ProfitLoss": {
+      "category": "financial_statement",
+      "field": "net_income",
+      "label_en": "Profit (loss)",
+      "label_jp": "当期純利益又は当期純損失（△）",
+      "matched_by": "label",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:ProfitLossAttributableToOwnersOfParent": {
+      "category": "financial_statement",
+      "field": "net_income_parent",
+      "label_en": "Profit (loss) attributable to owners of parent",
+      "label_jp": "親会社株主に帰属する当期純利益又は親会社株主に帰属する当期純損失（△）",
+      "matched_by": "label",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:RawMaterialsCAGAS": {
+      "category": "financial_statement",
+      "field": "inventories",
+      "label_en": "Raw materials",
+      "label_jp": "原材料",
+      "matched_by": "reviewed_alias",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:ResidentialORElectricELE": {
+      "category": "financial_statement",
+      "field": "other_operating_revenue",
+      "label_en": "Residential electricity revenue",
+      "label_jp": "電灯料",
+      "matched_by": "reviewed_alias",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:Revenue": {
+      "category": "summary_ifrs",
+      "field": "revenue",
+      "label_en": "Revenue",
+      "label_jp": "売上収益",
+      "matched_by": "label",
+      "standard": "ifrs"
+    },
+    "jppfs_cor:RevenueForIncidentalBusinessesGAS": {
+      "category": "financial_statement",
+      "field": "other_operating_revenue",
+      "label_en": "Revenue for incidental businesses",
+      "label_jp": "附帯事業収益",
+      "matched_by": "reviewed_alias",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:RevenueFromCreditGuaranteeRevOA": {
+      "category": "financial_statement",
+      "field": "other_operating_revenue",
+      "label_en": "Revenue from credit guarantee",
+      "label_jp": "信用保証収益",
+      "matched_by": "reviewed_alias",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:RevenueFromInstallationWorkGAS": {
+      "category": "financial_statement",
+      "field": "other_operating_revenue",
+      "label_en": "Revenue from installation work",
+      "label_jp": "工事収益",
+      "matched_by": "reviewed_alias",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:RevenueFromLoanedFacilitiesORElectricELE": {
+      "category": "financial_statement",
+      "field": "other_operating_revenue",
+      "label_en": "Revenue from loaned facilities",
+      "label_jp": "貸設備収益",
+      "matched_by": "reviewed_alias",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:RevenueFromOperationalInvestmentSecuritiesRevOA": {
+      "category": "financial_statement",
+      "field": "other_operating_revenue",
+      "label_en": "Revenue from operational investment securities",
+      "label_jp": "営業投資有価証券収益",
+      "matched_by": "reviewed_alias",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:SalesFromGasBusinessGAS": {
+      "category": "financial_statement",
+      "field": "revenue",
+      "label_en": "Sales from gas business",
+      "label_jp": "ガス事業売上高",
+      "matched_by": "reviewed_alias",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:SettlementRevenueAmongUtilitiesORElectricELE": {
+      "category": "financial_statement",
+      "field": "other_operating_revenue",
+      "label_en": "Settlement revenue among utilities",
+      "label_jp": "電力会社間精算収益",
+      "matched_by": "reviewed_alias",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:ShipLeaseRevenueShipping": {
+      "category": "financial_statement",
+      "field": "other_operating_revenue",
+      "label_en": "Ship lease revenue",
+      "label_jp": "船舶貸渡収益",
+      "matched_by": "reviewed_alias",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:ShippingBusinessRevenueWAT": {
+      "category": "financial_statement",
+      "field": "revenue",
+      "label_en": "Shipping business revenue",
+      "label_jp": "海運業収益",
+      "matched_by": "reviewed_alias",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:ShortTermDebtToSubsidiariesAndAffiliatesCLELE": {
+      "category": "financial_statement",
+      "field": "short_term_debt",
+      "label_en": "Short-term debt to subsidiaries and affiliates",
+      "label_jp": "関係会社短期債務",
+      "matched_by": "reviewed_alias",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:ShortTermDebtToSubsidiariesAndAffiliatesCLGAS": {
+      "category": "financial_statement",
+      "field": "short_term_debt",
+      "label_en": "Short-term debt to subsidiaries and affiliates",
+      "label_jp": "関係会社短期債務",
+      "matched_by": "reviewed_alias",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:ShortTermLoansPayable": {
+      "category": "financial_statement",
+      "field": "short_term_loans",
+      "label_en": "Short-term borrowings",
+      "label_jp": "短期借入金",
+      "matched_by": "label",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:SoldPowerToOtherSuppliersORElectricELE": {
+      "category": "financial_statement",
+      "field": "other_operating_revenue",
+      "label_en": "Power sold to other suppliers",
+      "label_jp": "他事業者への販売電力料",
+      "matched_by": "reviewed_alias",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:SoldPowerToOtherUtilitiesORElectricELE": {
+      "category": "financial_statement",
+      "field": "other_operating_revenue",
+      "label_en": "Power sold to other utilities",
+      "label_jp": "他電力会社への販売電力料",
+      "matched_by": "reviewed_alias",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:StevedoringIncomeRevOA": {
+      "category": "financial_statement",
+      "field": "other_operating_revenue",
+      "label_en": "Stevedoring income",
+      "label_jp": "荷役収益",
+      "matched_by": "reviewed_alias",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:TransmissionRevenueORElectricELE": {
+      "category": "financial_statement",
+      "field": "other_operating_revenue",
+      "label_en": "Transmission revenue",
+      "label_jp": "送電収益",
+      "matched_by": "reviewed_alias",
+      "standard": "jp_gaap"
+    },
+    "jppfs_cor:WarehouseIncomeRevOA": {
+      "category": "financial_statement",
+      "field": "other_operating_revenue",
+      "label_en": "Warehouse income",
+      "label_jp": "倉庫収益",
+      "matched_by": "reviewed_alias",
+      "standard": "jp_gaap"
+    },
+    "jpsps_cor:HistoricalRecordsOfROETextBlock": {
+      "category": "summary",
+      "field": "roe",
+      "label_en": "Historical records of ROE",
+      "label_jp": "自己資本利益率（収益率）の推移",
+      "matched_by": "label",
+      "standard": "jp_gaap"
+    }
+  },
+  "namespaces": {
+    "jpcrp_cor": "Corporate Reporting (disclosure ordinance)",
+    "jpdei_cor": "Document and Entity Information",
+    "jpdti_cor": "Document Type Information",
+    "jpigp_cor": "IFRS Group Reporting",
+    "jppfs_cor": "Primary Financial Statements (JP GAAP)"
+  },
+  "reverse_map": {
+    "accounting_standard": [
+      {
+        "category": "dei",
+        "element_id": "jpdei_cor:AccountingStandardsDEI",
+        "standard": "jp_gaap"
+      }
+    ],
+    "accounts_payable_trade": [
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:AccountsPayableTradeForFranchisedStores",
+        "standard": "jp_gaap"
+      },
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:AccountsPayableTradeForFranchisedStoresCL",
+        "standard": "jp_gaap"
+      },
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:AccountsPayableTradeAndAccountsPayableForConstructionContracts",
+        "standard": "jp_gaap"
+      },
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:AccountsPayableTradeAndAccountsPayableForConstructionContractsCL",
+        "standard": "jp_gaap"
+      }
+    ],
+    "accounts_receivable_trade": [
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:AccountsReceivableTrade1CA",
+        "standard": "jp_gaap"
+      },
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:AccountsReceivableTradeAccountsReceivableTrade",
+        "standard": "jp_gaap"
+      },
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:AccountsReceivableTradeCA",
+        "standard": "jp_gaap"
+      },
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:AccountsReceivableTradeReceivablesFromContractsWithCustomers",
+        "standard": "jp_gaap"
+      },
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:AccountsReceivableTradeReceivablesFromContractsWithCustomersCA",
+        "standard": "jp_gaap"
+      }
+    ],
+    "bonds_and_borrowings": [
+      {
+        "category": "financial_statement_ifrs",
+        "element_id": "jpigp_cor:BondsAndBorrowingsLiabilitiesIFRS",
+        "standard": "ifrs"
+      }
+    ],
+    "bonds_payable": [
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:BondsPayable",
+        "standard": "jp_gaap"
+      },
+      {
+        "category": "financial_statement",
+        "element_id": "jpcrp_cor:AnnexedDetailedScheduleOfCorporateBondsAndShortTermAndLongTermBorrowingsHWYTextBlock",
+        "standard": "jp_gaap"
+      },
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:DebenturesLiabilitiesBNK",
+        "standard": "jp_gaap"
+      }
+    ],
+    "capital_stock": [
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:CapitalStock",
+        "standard": "jp_gaap"
+      }
+    ],
+    "capital_surplus": [
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:CapitalSurplus",
+        "standard": "jp_gaap"
+      }
+    ],
+    "commercial_paper": [
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:CommercialPapersLiabilities",
+        "standard": "jp_gaap"
+      }
+    ],
+    "company_name_en": [
+      {
+        "category": "dei",
+        "element_id": "jpdei_cor:FilerNameInEnglishDEI",
+        "standard": "jp_gaap"
+      }
+    ],
+    "company_name_jp": [
+      {
+        "category": "dei",
+        "element_id": "jpdei_cor:FilerNameInJapaneseDEI",
+        "standard": "jp_gaap"
+      },
+      {
+        "category": "dei",
+        "element_id": "jpcrp_cor:CompanyNameCoverPage",
+        "standard": "jp_gaap"
+      },
+      {
+        "category": "dei",
+        "element_id": "jpcrp-esr_cor:CompanyNameCoverPage",
+        "standard": "jp_gaap"
+      },
+      {
+        "category": "dei",
+        "element_id": "jpcrp-sbr_cor:CompanyNameCoverPage",
+        "standard": "jp_gaap"
+      },
+      {
+        "category": "dei",
+        "element_id": "jpctl_cor:CompanyNameCoverPage",
+        "standard": "jp_gaap"
+      }
+    ],
+    "corporate_bonds_investment_securities_assets": [
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:CorporateBondsInvestmentSecuritiesAssetsBNK",
+        "standard": "jp_gaap"
+      },
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:CorporateBondsAssetsINS",
+        "standard": "jp_gaap"
+      }
+    ],
+    "cost_of_revenue": [
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:CostOfSalesCOSExpOA",
+        "standard": "jp_gaap"
+      }
+    ],
+    "current_portion_long_term_loans_payable": [
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:CurrentPortionOfLongTermLoansPayable",
+        "standard": "jp_gaap"
+      }
+    ],
+    "debt_securities": [
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:CommercialPapersCAFND",
+        "standard": "jp_gaap"
+      }
+    ],
+    "depreciation": [
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:DepreciationCOS",
+        "standard": "jp_gaap"
+      },
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:DepreciationOEOILTelecommunications",
+        "standard": "jp_gaap"
+      },
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:DepreciationOERWY",
+        "standard": "jp_gaap"
+      },
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:DepreciationOESPF",
+        "standard": "jp_gaap"
+      },
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:DepreciationShipsShipExpensesShipping",
+        "standard": "jp_gaap"
+      }
+    ],
+    "depreciation_cf_adjustment": [
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:DepreciationOfLeasedAssetsOpeCFLEA",
+        "standard": "jp_gaap"
+      },
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:DepreciationOfRealEstateForRentOpeCFINS",
+        "standard": "jp_gaap"
+      }
+    ],
+    "dividends_per_share_from_surplus": [
+      {
+        "category": "per_share",
+        "element_id": "jpcrp_cor:DividendPerShareDividendsOfSurplus",
+        "standard": "jp_gaap"
+      }
+    ],
+    "edinet_code": [
+      {
+        "category": "dei",
+        "element_id": "jpdei_cor:EDINETCodeDEI",
+        "standard": "jp_gaap"
+      },
+      {
+        "category": "dei",
+        "element_id": "jplvh_cor:EDINETCodeDEI",
+        "standard": "jp_gaap"
+      }
+    ],
+    "financing_cf": [
+      {
+        "category": "financial_statement_ifrs",
+        "element_id": "jpigp_cor:NetCashProvidedByUsedInFinancingActivitiesIFRS",
+        "standard": "ifrs"
+      }
+    ],
+    "fiscal_year_end": [
+      {
+        "category": "dei",
+        "element_id": "jpdei_cor:CurrentFiscalYearEndDateDEI",
+        "standard": "jp_gaap"
+      }
+    ],
+    "fiscal_year_start": [
+      {
+        "category": "dei",
+        "element_id": "jpdei_cor:CurrentFiscalYearStartDateDEI",
+        "standard": "jp_gaap"
+      }
+    ],
+    "gross_profit": [
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:GrossProfit",
+        "standard": "jp_gaap"
+      },
+      {
+        "category": "financial_statement_ifrs",
+        "element_id": "jpigp_cor:GrossProfitLossIFRS",
+        "standard": "ifrs"
+      }
+    ],
+    "income_before_tax": [
+      {
+        "category": "financial_statement_ifrs",
+        "element_id": "jpigp_cor:ProfitLossBeforeTaxIFRS",
+        "standard": "ifrs"
+      },
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:IncomeBeforeIncomeTaxes",
+        "standard": "jp_gaap"
+      }
+    ],
+    "intangible_asset_purchases": [
+      {
+        "category": "financial_statement_ifrs",
+        "element_id": "jpigp_cor:AdditionsToIntangibleAssetsInvCFIFRS",
+        "standard": "ifrs"
+      }
+    ],
+    "intangible_fixed_assets": [
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:IntangibleAssetsAffiliatedRWY",
+        "standard": "jp_gaap"
+      },
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:IntangibleAssetsNCAIncidentalELC",
+        "standard": "jp_gaap"
+      },
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:IntangibleAssetsNCARWY",
+        "standard": "jp_gaap"
+      },
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:IntangibleAssetsNCATelecommunications",
+        "standard": "jp_gaap"
+      }
+    ],
+    "interest_expenses": [
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:InterestExpensesOESPF",
+        "standard": "jp_gaap"
+      },
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:InterestOnBondsOESPF",
+        "standard": "jp_gaap"
+      },
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:InterestOnCommercialPapersCOSExpOA",
+        "standard": "jp_gaap"
+      },
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:InterestOnDebenturesBNK",
+        "standard": "jp_gaap"
+      },
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:InterestOnShortTermBondsNOE",
+        "standard": "jp_gaap"
+      }
+    ],
+    "interest_income": [
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:InterestOnDepositsORSPF",
+        "standard": "jp_gaap"
+      },
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:InterestOnLoansORSPF",
+        "standard": "jp_gaap"
+      },
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:InterestOnOperatingLoansSPF",
+        "standard": "jp_gaap"
+      }
+    ],
+    "inventories": [
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:ConstructionMaterialCA",
+        "standard": "jp_gaap"
+      },
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:RawMaterialsCAGAS",
+        "standard": "jp_gaap"
+      }
+    ],
+    "investing_cf": [
+      {
+        "category": "financial_statement_ifrs",
+        "element_id": "jpigp_cor:NetCashProvidedByUsedInInvestingActivitiesIFRS",
+        "standard": "ifrs"
+      }
+    ],
+    "is_consolidated": [
+      {
+        "category": "dei",
+        "element_id": "jpdei_cor:WhetherConsolidatedFinancialStatementsArePreparedDEI",
+        "standard": "jp_gaap"
+      }
+    ],
+    "legal_capital_surplus": [
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:LegalCapitalSurplus",
+        "standard": "jp_gaap"
+      }
+    ],
+    "long_term_debt": [
+      {
+        "category": "financial_statement_ifrs",
+        "element_id": "jpigp_cor:BondsAndBorrowingsNCLIFRS",
+        "standard": "ifrs"
+      },
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:LongTermDebtToSubsidiariesAndAffiliatesNCLELE",
+        "standard": "jp_gaap"
+      }
+    ],
+    "long_term_loans": [
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:LongTermLoansPayable",
+        "standard": "jp_gaap"
+      }
+    ],
+    "net_income": [
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:ProfitLoss",
+        "standard": "jp_gaap"
+      },
+      {
+        "category": "financial_statement_ifrs",
+        "element_id": "jpigp_cor:ProfitLossIFRS",
+        "standard": "ifrs"
+      }
+    ],
+    "net_income_parent": [
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:ProfitLossAttributableToOwnersOfParent",
+        "standard": "jp_gaap"
+      }
+    ],
+    "non_operating_expenses": [
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:NonOperatingExpensesNOEELE",
+        "standard": "jp_gaap"
+      },
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:FinancialExpensesNOEELE",
+        "standard": "jp_gaap"
+      },
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:FinancialExpensesSPF",
+        "standard": "jp_gaap"
+      }
+    ],
+    "non_operating_income": [
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:NonOperatingRevenueNORELE",
+        "standard": "jp_gaap"
+      },
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:FinancialRevenueNORELE",
+        "standard": "jp_gaap"
+      },
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:MiscellaneousRevenueNORELE",
+        "standard": "jp_gaap"
+      }
+    ],
+    "notes_and_accounts_payable_trade": [
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:NotesAndOperatingAccountsPayableTrade",
+        "standard": "jp_gaap"
+      }
+    ],
+    "num_employees": [
+      {
+        "category": "summary",
+        "element_id": "jpcrp_cor:NumberOfEmployees",
+        "standard": "jp_gaap"
+      }
+    ],
+    "operating_cf": [
+      {
+        "category": "financial_statement_ifrs",
+        "element_id": "jpigp_cor:NetCashProvidedByUsedInOperatingActivitiesIFRS",
+        "standard": "ifrs"
+      }
+    ],
+    "operating_income": [
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:OperatingIncome",
+        "standard": "jp_gaap"
+      },
+      {
+        "category": "financial_statement_ifrs",
+        "element_id": "jpigp_cor:OperatingProfitLossIFRS",
+        "standard": "ifrs"
+      }
+    ],
+    "operating_revenue_incidental_elc": [
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:OperatingRevenueIncidentalELC",
+        "standard": "jp_gaap"
+      }
+    ],
+    "operating_revenue_oil_telecommunications": [
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:OperatingRevenueOILTelecommunications",
+        "standard": "jp_gaap"
+      }
+    ],
+    "ordinary_income": [
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:OrdinaryIncome",
+        "standard": "jp_gaap"
+      }
+    ],
+    "other_operating_revenue": [
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:OtherOperatingRevenueSPF",
+        "standard": "jp_gaap"
+      },
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:MiscellaneousOperatingRevenueGAS",
+        "standard": "jp_gaap"
+      },
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:OtherMiscellaneousOperatingRevenueGAS",
+        "standard": "jp_gaap"
+      },
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:OtherBusinessOperatingRevenueELE",
+        "standard": "jp_gaap"
+      },
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:OperatingRevenueOtherBusinessesORIncidentalELE",
+        "standard": "jp_gaap"
+      },
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:OperatingRevenueGasSupplyBusinessORIncidentalELE",
+        "standard": "jp_gaap"
+      },
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:HarborTransportationIncomeRevOA",
+        "standard": "jp_gaap"
+      },
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:InternationalTransportationIncomeRevOA",
+        "standard": "jp_gaap"
+      },
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:LandTransportationIncomeRevOA",
+        "standard": "jp_gaap"
+      },
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:StevedoringIncomeRevOA",
+        "standard": "jp_gaap"
+      },
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:WarehouseIncomeRevOA",
+        "standard": "jp_gaap"
+      },
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:OtherShippingBusinessRevenueRevenueShipping",
+        "standard": "jp_gaap"
+      },
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:ShipLeaseRevenueShipping",
+        "standard": "jp_gaap"
+      },
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:RevenueForIncidentalBusinessesGAS",
+        "standard": "jp_gaap"
+      },
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:RevenueFromInstallationWorkGAS",
+        "standard": "jp_gaap"
+      },
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:OtherElectricityRevenueORElectricELE",
+        "standard": "jp_gaap"
+      },
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:SoldPowerToOtherSuppliersORElectricELE",
+        "standard": "jp_gaap"
+      },
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:SoldPowerToOtherUtilitiesORElectricELE",
+        "standard": "jp_gaap"
+      },
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:SettlementRevenueAmongUtilitiesORElectricELE",
+        "standard": "jp_gaap"
+      },
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:TransmissionRevenueORElectricELE",
+        "standard": "jp_gaap"
+      },
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:BrokerageIncomeORCMD",
+        "standard": "jp_gaap"
+      },
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:CreditCardRevenueRevOA",
+        "standard": "jp_gaap"
+      },
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:FinancingRevenueRevOA",
+        "standard": "jp_gaap"
+      },
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:IncomeFromPartnershipManagementRevOA",
+        "standard": "jp_gaap"
+      },
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:IncidentalBusinessOperatingRevenueELE",
+        "standard": "jp_gaap"
+      },
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:OperatingRevenueGeneralPassengerAutomobileTrafficRevOA",
+        "standard": "jp_gaap"
+      },
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:OtherFinancialRevenueRevOA",
+        "standard": "jp_gaap"
+      },
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:PerItemRevenueRevOA",
+        "standard": "jp_gaap"
+      },
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:ResidentialORElectricELE",
+        "standard": "jp_gaap"
+      },
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:RevenueFromCreditGuaranteeRevOA",
+        "standard": "jp_gaap"
+      },
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:RevenueFromLoanedFacilitiesORElectricELE",
+        "standard": "jp_gaap"
+      },
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:RevenueFromOperationalInvestmentSecuritiesRevOA",
+        "standard": "jp_gaap"
+      }
+    ],
+    "revenue": [
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:NetSales",
+        "standard": "jp_gaap"
+      },
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:OperatingRevenue1",
+        "standard": "jp_gaap"
+      },
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:OrdinaryIncomeBNK",
+        "standard": "jp_gaap"
+      },
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:OperatingIncomeINS",
+        "standard": "jp_gaap"
+      },
+      {
+        "category": "summary_ifrs",
+        "element_id": "jpcrp_cor:RevenueKeyFinancialData",
+        "standard": "ifrs"
+      },
+      {
+        "category": "summary_ifrs",
+        "element_id": "jppfs_cor:Revenue",
+        "standard": "ifrs"
+      },
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:OperatingRevenueCNA",
+        "standard": "jp_gaap"
+      },
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:OperatingRevenueSEC",
+        "standard": "jp_gaap"
+      },
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:NetSalesORRealEstate",
+        "standard": "jp_gaap"
+      },
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:OperatingRevenueRWY",
+        "standard": "jp_gaap"
+      },
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:OperatingRevenueHighwayBusinessHWY",
+        "standard": "jp_gaap"
+      },
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:OperatingRevenueRelatedOperationsHighwayBusinessHWY",
+        "standard": "jp_gaap"
+      },
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:OperatingRevenueELE",
+        "standard": "jp_gaap"
+      },
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:OperatingRevenueIVT",
+        "standard": "jp_gaap"
+      },
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:OperatingRevenueINV",
+        "standard": "jp_gaap"
+      },
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:OperatingRevenueSPF",
+        "standard": "jp_gaap"
+      },
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:OperatingRevenueCMD",
+        "standard": "jp_gaap"
+      },
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:OperatingRevenueFND",
+        "standard": "jp_gaap"
+      },
+      {
+        "category": "financial_statement_ifrs",
+        "element_id": "jpigp_cor:RevenueIFRS",
+        "standard": "ifrs"
+      },
+      {
+        "category": "financial_statement_ifrs",
+        "element_id": "jpigp_cor:Revenue2IFRS",
+        "standard": "ifrs"
+      },
+      {
+        "category": "financial_statement_ifrs",
+        "element_id": "jpigp_cor:NetRevenueIFRS",
+        "standard": "ifrs"
+      },
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:ElectricUtilityOperatingRevenueELE",
+        "standard": "jp_gaap"
+      },
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:OperatingRevenueRailwayRWY",
+        "standard": "jp_gaap"
+      },
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:GasSalesGAS",
+        "standard": "jp_gaap"
+      },
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:SalesFromGasBusinessGAS",
+        "standard": "jp_gaap"
+      },
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:FreightRevenueShipping",
+        "standard": "jp_gaap"
+      },
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:FreightAndOtherRevenueShipping",
+        "standard": "jp_gaap"
+      },
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:ShippingBusinessRevenueWAT",
+        "standard": "jp_gaap"
+      },
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:LeaseSalesSalesLEA",
+        "standard": "jp_gaap"
+      },
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:InstallmentSalesSalesLEA",
+        "standard": "jp_gaap"
+      },
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:FinanceRevenueSalesLEA",
+        "standard": "jp_gaap"
+      },
+      {
+        "category": "financial_statement_ifrs",
+        "element_id": "jpigp_cor:ATMOperationBusinessRevenueIFRS",
+        "standard": "ifrs"
+      }
+    ],
+    "roe": [
+      {
+        "category": "summary",
+        "element_id": "jpsps_cor:HistoricalRecordsOfROETextBlock",
+        "standard": "jp_gaap"
+      }
+    ],
+    "security_code": [
+      {
+        "category": "dei",
+        "element_id": "jpdei_cor:SecurityCodeDEI",
+        "standard": "jp_gaap"
+      },
+      {
+        "category": "dei",
+        "element_id": "jplvh_cor:SecurityCodeDEI",
+        "standard": "jp_gaap"
+      },
+      {
+        "category": "dei",
+        "element_id": "jplvh_cor:SecurityCodeOfIssuer",
+        "standard": "jp_gaap"
+      }
+    ],
+    "short_term_debt": [
+      {
+        "category": "financial_statement_ifrs",
+        "element_id": "jpigp_cor:BondsAndBorrowingsCLIFRS",
+        "standard": "ifrs"
+      },
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:ShortTermDebtToSubsidiariesAndAffiliatesCLELE",
+        "standard": "jp_gaap"
+      },
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:ShortTermDebtToSubsidiariesAndAffiliatesCLGAS",
+        "standard": "jp_gaap"
+      }
+    ],
+    "short_term_loans": [
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:ShortTermLoansPayable",
+        "standard": "jp_gaap"
+      }
+    ],
+    "total_assets": [
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:Assets",
+        "standard": "jp_gaap"
+      },
+      {
+        "category": "financial_statement_ifrs",
+        "element_id": "jpigp_cor:AssetsIFRS",
+        "standard": "ifrs"
+      }
+    ],
+    "total_equity": [
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:NetAssets",
+        "standard": "jp_gaap"
+      },
+      {
+        "category": "financial_statement_ifrs",
+        "element_id": "jpigp_cor:EquityIFRS",
+        "standard": "ifrs"
+      }
+    ],
+    "total_liabilities": [
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:Liabilities",
+        "standard": "jp_gaap"
+      },
+      {
+        "category": "financial_statement_ifrs",
+        "element_id": "jpigp_cor:LiabilitiesIFRS",
+        "standard": "ifrs"
+      }
+    ],
+    "treasury_stock_purchase": [
+      {
+        "category": "financial_statement",
+        "element_id": "jppfs_cor:AcquisitionOfTreasurySharesViaTrustFinCF",
+        "standard": "jp_gaap"
+      }
+    ]
+  }
+}

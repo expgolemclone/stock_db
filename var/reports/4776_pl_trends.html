@@ -1,0 +1,870 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>4776 損益計算書推移</title>
+<style>
+:root {
+  color-scheme: dark;
+  --paper: #0d100f;
+  --ink: #f0eadb;
+  --muted: #a8ad9f;
+  --line: #34392f;
+  --panel: #151917;
+  --panel-2: #1f2a24;
+  --accent: #55d6c2;
+  --accent-2: #ff6b57;
+  --accent-3: #f4b942;
+  --warn: #f2a65a;
+  --shadow: rgba(0, 0, 0, 0.45);
+}
+* { box-sizing: border-box; }
+html {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: clip;
+}
+body {
+  margin: 0;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: clip;
+  background:
+    radial-gradient(circle at 12% 8%, rgba(85,214,194,0.09), transparent 28%),
+    linear-gradient(90deg, rgba(240,234,219,0.045) 1px, transparent 1px) 0 0 / 22px 22px,
+    linear-gradient(rgba(240,234,219,0.035) 1px, transparent 1px) 0 0 / 22px 22px,
+    var(--paper);
+  color: var(--ink);
+  font-family: "IBM Plex Sans", "Yu Gothic", "Hiragino Kaku Gothic ProN", sans-serif;
+  letter-spacing: 0;
+}
+button, input { font: inherit; }
+.shell {
+  width: 100%;
+  min-width: 0;
+  min-height: 100vh;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  overflow-x: clip;
+}
+header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 24px;
+  align-items: end;
+  padding: 28px clamp(18px, 3vw, 44px) 20px;
+  border-bottom: 2px solid var(--ink);
+  background: rgba(13, 16, 15, 0.94);
+  min-width: 0;
+}
+header > * {
+  min-width: 0;
+}
+.kicker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  text-transform: uppercase;
+}
+h1 {
+  margin: 4px 0 0;
+  font-family: Georgia, "Yu Mincho", "Hiragino Mincho ProN", serif;
+  font-size: clamp(30px, 5vw, 64px);
+  line-height: 0.95;
+  font-weight: 700;
+}
+.meta {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  min-width: min(100%, 320px);
+}
+.stat {
+  min-width: 0;
+  min-height: 58px;
+  padding: 9px 12px;
+  border: 1px solid var(--ink);
+  background: var(--panel);
+  box-shadow: 4px 4px 0 rgba(240,234,219,0.2);
+}
+.stat b {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 18px;
+  line-height: 1.1;
+}
+.stat span {
+  color: var(--muted);
+  font-size: 11px;
+}
+main {
+  display: grid;
+  grid-template-columns: minmax(280px, 380px) minmax(0, 1fr);
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow-x: clip;
+}
+.rail {
+  min-width: 0;
+  border-right: 2px solid var(--ink);
+  min-height: calc(100vh - 120px);
+  background: rgba(13,16,15,0.72);
+}
+.controls {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+  border-bottom: 1px solid var(--ink);
+  background: var(--panel);
+}
+.search {
+  width: 100%;
+  height: 40px;
+  border: 1px solid var(--ink);
+  background: #0f1311;
+  color: var(--ink);
+  padding: 0 12px;
+  outline-offset: 3px;
+}
+.seg {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  border: 1px solid var(--ink);
+}
+.seg button {
+  height: 36px;
+  border: 0;
+  border-right: 1px solid var(--ink);
+  background: #0f1311;
+  color: var(--ink);
+  cursor: pointer;
+}
+.seg button:last-child { border-right: 0; }
+.seg button.active {
+  background: var(--ink);
+  color: var(--panel);
+}
+.items {
+  display: grid;
+}
+.item {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) 92px;
+  gap: 10px;
+  align-items: center;
+  min-height: 70px;
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--line);
+  background: rgba(21,25,23,0.78);
+  cursor: pointer;
+  text-align: left;
+}
+.item:hover, .item.selected {
+  background: var(--panel-2);
+}
+.item.selected {
+  box-shadow: inset 5px 0 0 var(--accent);
+}
+.item-toggle {
+  width: 18px;
+  height: 18px;
+  border: 1px solid var(--ink);
+  background: #0f1311;
+  box-shadow: 2px 2px 0 rgba(240,234,219,0.16);
+}
+.item.selected .item-toggle {
+  border-color: var(--series-color);
+  background: var(--series-color);
+  box-shadow: 0 0 0 2px rgba(240,234,219,0.18);
+}
+.item-name {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 700;
+}
+.item-code {
+  display: block;
+  margin-top: 3px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: 11px;
+}
+.item-value {
+  display: block;
+  margin-top: 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  color: var(--accent);
+  font-weight: 700;
+}
+.spark {
+  width: 92px;
+  height: 45px;
+}
+.stage {
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
+  padding: clamp(16px, 3vw, 36px);
+  overflow-x: clip;
+}
+.chart-panel {
+  min-width: 0;
+  max-width: 100%;
+  border: 2px solid var(--ink);
+  background: var(--panel);
+  box-shadow: 8px 8px 0 rgba(240,234,219,0.16);
+}
+.chart-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px;
+  padding: 18px 18px 10px;
+  border-bottom: 1px solid var(--ink);
+  min-width: 0;
+}
+.selected-label {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-family: Georgia, "Yu Mincho", "Hiragino Mincho ProN", serif;
+  font-size: clamp(24px, 3.8vw, 48px);
+  line-height: 1;
+}
+.selected-code {
+  margin-top: 5px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}
+.latest {
+  min-width: min(240px, 100%);
+  text-align: left;
+  font-variant-numeric: tabular-nums;
+}
+.latest-list {
+  display: grid;
+  gap: 5px;
+  margin-top: 6px;
+}
+.latest-row {
+  display: grid;
+  grid-template-columns: 9px minmax(0, 1fr) auto;
+  gap: 7px;
+  align-items: center;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}
+.latest-row b {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 700;
+}
+.latest-row strong {
+  color: var(--series-color);
+  font-size: 13px;
+}
+.series-dot {
+  width: 9px;
+  height: 9px;
+  background: var(--series-color);
+  box-shadow: 0 0 0 1px var(--ink);
+}
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 10px;
+}
+.legend-chip {
+  display: inline-grid;
+  grid-template-columns: 9px minmax(0, 1fr);
+  gap: 7px;
+  align-items: center;
+  max-width: 220px;
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  background: #101411;
+  color: var(--ink);
+  font-size: 12px;
+}
+.legend-chip span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.canvas-wrap {
+  position: relative;
+  width: 100%;
+  height: clamp(300px, 48vh, 560px);
+  padding: 14px;
+}
+#detailChart {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+.tooltip {
+  position: absolute;
+  pointer-events: none;
+  display: none;
+  min-width: 180px;
+  max-width: min(320px, calc(100% - 16px));
+  padding: 8px 10px;
+  border: 1px solid var(--ink);
+  background: #101411;
+  box-shadow: 3px 3px 0 rgba(240,234,219,0.18);
+  font-size: 12px;
+}
+.tooltip-row {
+  display: grid;
+  grid-template-columns: 9px minmax(0, 1fr) auto;
+  gap: 7px;
+  align-items: center;
+  margin-top: 6px;
+}
+.tooltip-row span:nth-child(2) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tooltip-row strong {
+  color: var(--series-color);
+  font-weight: 700;
+}
+.period-strip {
+  display: grid;
+  grid-template-columns: repeat(var(--period-count), minmax(46px, 1fr));
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  border-top: 1px solid var(--ink);
+}
+.period-cell {
+  min-width: 46px;
+  padding: 8px 6px;
+  border-right: 1px solid var(--line);
+  text-align: center;
+  color: var(--muted);
+  font-size: 11px;
+}
+.period-cell:last-child { border-right: 0; }
+.table-panel {
+  margin-top: 28px;
+  width: 100%;
+  max-width: 100%;
+  border: 1px solid var(--ink);
+  background: rgba(21,25,23,0.8);
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  contain: inline-size layout paint;
+}
+table {
+  width: max-content;
+  border-collapse: collapse;
+  min-width: 760px;
+}
+th, td {
+  padding: 9px 10px;
+  border-bottom: 1px solid var(--line);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+th:first-child, td:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  text-align: left;
+  background: var(--panel);
+  min-width: 260px;
+}
+th {
+  background: var(--ink);
+  color: var(--paper);
+  font-size: 12px;
+}
+td:first-child b {
+  display: block;
+  overflow-wrap: anywhere;
+}
+td:first-child span {
+  color: var(--muted);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+tr.selected-row td {
+  background: rgba(85,214,194,0.08);
+}
+tr.selected-row td:first-child {
+  box-shadow: inset 4px 0 0 var(--accent);
+}
+.empty {
+  padding: 28px 16px;
+  color: var(--muted);
+}
+@media (max-width: 1200px) {
+  header {
+    grid-template-columns: 1fr;
+  }
+  .meta {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  main {
+    grid-template-columns: 1fr;
+  }
+  .rail {
+    min-height: auto;
+    border-right: 0;
+    border-bottom: 2px solid var(--ink);
+  }
+  .controls {
+    position: static;
+  }
+  .items {
+    max-height: 360px;
+    overflow: auto;
+  }
+}
+@media (max-width: 640px) {
+  header {
+    padding: 22px 18px 16px;
+  }
+  .meta {
+    grid-template-columns: 1fr;
+    min-width: 0;
+  }
+  h1 {
+    font-size: clamp(30px, 10vw, 42px);
+  }
+  .item {
+    grid-template-columns: 24px minmax(0, 1fr) 80px;
+  }
+  .spark {
+    width: 80px;
+  }
+  .chart-head {
+    grid-template-columns: 1fr;
+  }
+  .latest {
+    text-align: left;
+  }
+  .canvas-wrap {
+    height: clamp(260px, 48vh, 420px);
+    padding: 10px;
+  }
+  .period-strip {
+    grid-template-columns: repeat(var(--period-count), minmax(64px, 1fr));
+  }
+  .period-cell {
+    min-width: 64px;
+  }
+  table {
+    min-width: 720px;
+  }
+}
+</style>
+</head>
+<body>
+<div class="shell">
+  <header>
+    <div>
+      <div class="kicker">
+        <span>EDINET XBRL</span>
+        <span id="scopeLabel"></span>
+        <span id="sourceLabel"></span>
+      </div>
+      <h1 id="title"></h1>
+    </div>
+    <div class="meta">
+      <div class="stat"><b id="periodCount"></b><span>対象期間</span></div>
+      <div class="stat"><b id="itemCount"></b><span>PL項目</span></div>
+      <div class="stat"><b id="latestDoc"></b><span>最新書類</span></div>
+    </div>
+  </header>
+  <main>
+    <aside class="rail">
+      <div class="controls">
+        <input id="search" class="search" type="search" autocomplete="off" placeholder="項目名・XBRL名で検索">
+        <div class="seg" role="group" aria-label="unit">
+          <button type="button" data-unit="1">円</button>
+          <button type="button" data-unit="1000000" class="active">百万円</button>
+          <button type="button" data-unit="100000000">億円</button>
+        </div>
+      </div>
+      <div id="items" class="items"></div>
+    </aside>
+    <section class="stage">
+      <div class="chart-panel">
+        <div class="chart-head">
+          <div>
+            <h2 id="selectedLabel" class="selected-label"></h2>
+            <div id="selectedCode" class="selected-code"></div>
+            <div id="legend" class="legend"></div>
+          </div>
+          <div class="latest">
+            <span>最新値</span>
+            <div id="latestValues" class="latest-list"></div>
+          </div>
+        </div>
+        <div class="canvas-wrap">
+          <canvas id="detailChart"></canvas>
+          <div id="tooltip" class="tooltip"></div>
+        </div>
+        <div id="periodStrip" class="period-strip"></div>
+      </div>
+      <div class="table-panel">
+        <table>
+          <thead id="tableHead"></thead>
+          <tbody id="tableBody"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+</div>
+<script>
+window.PL_TREND_DATA = {"ticker":"4776","name":"サイボウズ","source":"edinet_xbrl","requested_scope":"auto","periods":["2016-12","2017-12","2018-12","2019-12","2020-12","2021-12","2022-12","2023-12","2024-12","2025-12"],"selected_reports":[{"period":"2016-12","doc_id":"S100COJB","consolidation_scope":"consolidated","fact_count":71,"valued_count":71,"role_fact_count":71},{"period":"2017-12","doc_id":"S100COJB","consolidation_scope":"consolidated","fact_count":66,"valued_count":66,"role_fact_count":66},{"period":"2018-12","doc_id":"S100IAF5","consolidation_scope":"consolidated","fact_count":66,"valued_count":66,"role_fact_count":66},{"period":"2019-12","doc_id":"S100L0U5","consolidation_scope":"consolidated","fact_count":67,"valued_count":67,"role_fact_count":67},{"period":"2020-12","doc_id":"S100L0U5","consolidation_scope":"consolidated","fact_count":69,"valued_count":69,"role_fact_count":69},{"period":"2021-12","doc_id":"S100QFC3","consolidation_scope":"consolidated","fact_count":72,"valued_count":72,"role_fact_count":72},{"period":"2022-12","doc_id":"S100QFC3","consolidation_scope":"consolidated","fact_count":68,"valued_count":68,"role_fact_count":68},{"period":"2023-12","doc_id":"S100VHOF","consolidation_scope":"consolidated","fact_count":69,"valued_count":69,"role_fact_count":69},{"period":"2024-12","doc_id":"S100XUKS","consolidation_scope":"consolidated","fact_count":68,"valued_count":68,"role_fact_count":68},{"period":"2025-12","doc_id":"S100XUKS","consolidation_scope":"consolidated","fact_count":71,"valued_count":71,"role_fact_count":71}],"items":[{"concept_name":"NetSales","label":"売上高","values":[8039000000.0,9502000000.0,11303000000.0,13417000000.0,15674000000.0,18489000000.0,22067000000.0,25432000000.0,29675000000.0,37430000000.0],"latest_value":37430000000.0,"non_null_count":10,"min_value":8039000000.0,"max_value":37430000000.0,"total_abs_value":191028000000.0},{"concept_name":"CostOfSales","label":"売上原価","values":[496000000.0,641000000.0,749000000.0,1067000000.0,1086000000.0,1339000000.0,1951000000.0,2364000000.0,2940000000.0,3736000000.0],"latest_value":3736000000.0,"non_null_count":10,"min_value":496000000.0,"max_value":3736000000.0,"total_abs_value":16369000000.0},{"concept_name":"GrossProfit","label":"売上総利益","values":[7543000000.0,8860000000.0,10553000000.0,12350000000.0,14587000000.0,17150000000.0,20116000000.0,23068000000.0,26735000000.0,33694000000.0],"latest_value":33694000000.0,"non_null_count":10,"min_value":7543000000.0,"max_value":33694000000.0,"total_abs_value":174656000000.0},{"concept_name":"PersonalExpensesSGA","label":"人件費","values":[2891000000.0,3384000000.0,3955000000.0,4654000000.0,5502000000.0,6315000000.0,7854000000.0,8828000000.0,9389000000.0,9826000000.0],"latest_value":9826000000.0,"non_null_count":10,"min_value":2891000000.0,"max_value":9826000000.0,"total_abs_value":62598000000.0},{"concept_name":"BusinessConsignmentExpensesSGA","label":"業務委託費","values":[526000000.0,649000000.0,767000000.0,783000000.0,841000000.0,960000000.0,1000000000.0,986000000.0,930000000.0,932000000.0],"latest_value":932000000.0,"non_null_count":10,"min_value":526000000.0,"max_value":1000000000.0,"total_abs_value":8374000000.0},{"concept_name":"AdvertisingExpensesSGA","label":"広告宣伝費","values":[1523000000.0,1674000000.0,1765000000.0,1854000000.0,2673000000.0,4907000000.0,6452000000.0,4313000000.0,5618000000.0,6370000000.0],"latest_value":6370000000.0,"non_null_count":10,"min_value":1523000000.0,"max_value":6452000000.0,"total_abs_value":37149000000.0},{"concept_name":"ResearchAndDevelopmentExpensesSGA","label":"研究開発費","values":[274000000.0,284000000.0,441000000.0,481000000.0,341000000.0,266000000.0,270000000.0,889000000.0,1228000000.0,1491000000.0],"latest_value":1491000000.0,"non_null_count":10,"min_value":266000000.0,"max_value":1491000000.0,"total_abs_value":5965000000.0},{"concept_name":"RetirementBenefitExpensesSGA","label":"退職給付費用","values":[null,null,null,null,null,23000000.0,37000000.0,38000000.0,35000000.0,35000000.0],"latest_value":35000000.0,"non_null_count":5,"min_value":23000000.0,"max_value":38000000.0,"total_abs_value":168000000.0},{"concept_name":"OtherSGA","label":"その他販管費","values":[1797000000.0,2064000000.0,2520000000.0,2838000000.0,2959000000.0,3234000000.0,3889000000.0,4618000000.0,4638000000.0,4937000000.0],"latest_value":4937000000.0,"non_null_count":10,"min_value":1797000000.0,"max_value":4937000000.0,"total_abs_value":33494000000.0},{"concept_name":"SellingGeneralAndAdministrativeExpenses","label":"販売費及び一般管理費","values":[7028000000.0,8058000000.0,9450000000.0,10613000000.0,12317000000.0,15709000000.0,19505000000.0,19674000000.0,21842000000.0,23593000000.0],"latest_value":23593000000.0,"non_null_count":10,"min_value":7028000000.0,"max_value":23593000000.0,"total_abs_value":147789000000.0},{"concept_name":"OperatingIncome","label":"営業利益","values":[515000000.0,802000000.0,1103000000.0,1732000000.0,2270000000.0,1441000000.0,611000000.0,3394000000.0,4892000000.0,10101000000.0],"latest_value":10101000000.0,"non_null_count":10,"min_value":515000000.0,"max_value":10101000000.0,"total_abs_value":26861000000.0},{"concept_name":"InterestIncomeNOI","label":"受取利息","values":[0.0,2000000.0,8000000.0,0.0,0.0,1000000.0,1000000.0,5000000.0,6000000.0,14000000.0],"latest_value":14000000.0,"non_null_count":10,"min_value":0.0,"max_value":14000000.0,"total_abs_value":37000000.0},{"concept_name":"DividendsIncomeNOI","label":"受取配当金","values":[0.0,0.0,0.0,0.0,0.0,0.0,5000000.0,14000000.0,17000000.0,20000000.0],"latest_value":20000000.0,"non_null_count":10,"min_value":0.0,"max_value":20000000.0,"total_abs_value":56000000.0},{"concept_name":"GainOnInvestmentsInPartnershipNOI","label":"投資事業組合運用益","values":[null,4000000.0,null,null,null,null,null,null,null,13000000.0],"latest_value":13000000.0,"non_null_count":2,"min_value":4000000.0,"max_value":13000000.0,"total_abs_value":17000000.0},{"concept_name":"CoSponsorFeeNOI","label":"共催料収入","values":[28000000.0,36000000.0,42000000.0,61000000.0,31000000.0,42000000.0,80000000.0,84000000.0,171000000.0,184000000.0],"latest_value":184000000.0,"non_null_count":10,"min_value":28000000.0,"max_value":184000000.0,"total_abs_value":759000000.0},{"concept_name":"ForeignExchangeGainsNOI","label":"為替差益","values":[53000000.0,null,31000000.0,0.0,null,null,293000000.0,75000000.0,270000000.0,null],"latest_value":270000000.0,"non_null_count":6,"min_value":0.0,"max_value":293000000.0,"total_abs_value":722000000.0},{"concept_name":"MembershipFeeIncomeNOI","label":"会費収入","values":[null,null,null,null,null,null,null,37000000.0,44000000.0,48000000.0],"latest_value":48000000.0,"non_null_count":3,"min_value":37000000.0,"max_value":48000000.0,"total_abs_value":129000000.0},{"concept_name":"OtherNOI","label":"その他営業外収益","values":[3000000.0,4000000.0,6000000.0,10000000.0,13000000.0,26000000.0,68000000.0,32000000.0,33000000.0,25000000.0],"latest_value":25000000.0,"non_null_count":10,"min_value":3000000.0,"max_value":68000000.0,"total_abs_value":220000000.0},{"concept_name":"NonOperatingIncome","label":"営業外収益","values":[96000000.0,50000000.0,97000000.0,77000000.0,61000000.0,71000000.0,449000000.0,250000000.0,543000000.0,307000000.0],"latest_value":307000000.0,"non_null_count":10,"min_value":50000000.0,"max_value":543000000.0,"total_abs_value":2001000000.0},{"concept_name":"InterestExpensesNOE","label":"支払利息","values":[2000000.0,1000000.0,2000000.0,3000000.0,0.0,6000000.0,23000000.0,2000000.0,0.0,0.0],"latest_value":0.0,"non_null_count":10,"min_value":0.0,"max_value":23000000.0,"total_abs_value":39000000.0},{"concept_name":"ContractCostsNOE","label":"業務受託費","values":[null,null,null,null,null,14000000.0,18000000.0,16000000.0,12000000.0,10000000.0],"latest_value":10000000.0,"non_null_count":5,"min_value":10000000.0,"max_value":18000000.0,"total_abs_value":70000000.0},{"concept_name":"LossOnSalesOfAccountsReceivableNOE","label":"売上債権売却損","values":[null,null,null,null,null,0.0,28000000.0,42000000.0,46000000.0,58000000.0],"latest_value":58000000.0,"non_null_count":5,"min_value":0.0,"max_value":58000000.0,"total_abs_value":174000000.0},{"concept_name":"LossOnInvestmentsInPartnershipNOE","label":"投資事業組合運用損","values":[6000000.0,0.0,3000000.0,2000000.0,3000000.0,15000000.0,3000000.0,0.0,31000000.0,null],"latest_value":31000000.0,"non_null_count":9,"min_value":0.0,"max_value":31000000.0,"total_abs_value":63000000.0},{"concept_name":"ForeignExchangeLossesNOE","label":"為替差損","values":[null,28000000.0,null,null,55000000.0,6000000.0,null,null,null,11000000.0],"latest_value":11000000.0,"non_null_count":4,"min_value":6000000.0,"max_value":55000000.0,"total_abs_value":100000000.0},{"concept_name":"OtherNOE","label":"その他営業外費用","values":[0.0,0.0,0.0,0.0,0.0,0.0,0.0,3000000.0,9000000.0,1000000.0],"latest_value":1000000.0,"non_null_count":10,"min_value":0.0,"max_value":9000000.0,"total_abs_value":13000000.0},{"concept_name":"NonOperatingExpenses","label":"営業外費用","values":[23000000.0,31000000.0,6000000.0,5000000.0,60000000.0,43000000.0,73000000.0,64000000.0,100000000.0,82000000.0],"latest_value":82000000.0,"non_null_count":10,"min_value":5000000.0,"max_value":100000000.0,"total_abs_value":487000000.0},{"concept_name":"OrdinaryIncome","label":"経常利益","values":[587000000.0,821000000.0,1194000000.0,1804000000.0,2272000000.0,1468000000.0,987000000.0,3579000000.0,5335000000.0,10325000000.0],"latest_value":10325000000.0,"non_null_count":10,"min_value":587000000.0,"max_value":10325000000.0,"total_abs_value":28372000000.0},{"concept_name":"GainOnSalesOfNoncurrentAssetsEI","label":"固定資産売却益","values":[null,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],"latest_value":0.0,"non_null_count":9,"min_value":0.0,"max_value":0.0,"total_abs_value":0.0},{"concept_name":"GainOnDonationOfNoncurrentAssetsEI","label":"固定資産受贈益","values":[9000000.0,null,8000000.0,null,15000000.0,4000000.0,0.0,26000000.0,null,81000000.0],"latest_value":81000000.0,"non_null_count":7,"min_value":0.0,"max_value":81000000.0,"total_abs_value":143000000.0},{"concept_name":"ExtraordinaryIncome","label":"特別利益","values":[14000000.0,0.0,8000000.0,0.0,385000000.0,24000000.0,0.0,27000000.0,0.0,81000000.0],"latest_value":81000000.0,"non_null_count":10,"min_value":0.0,"max_value":385000000.0,"total_abs_value":539000000.0},{"concept_name":"ImpairmentLossEL","label":"減損損失","values":[6000000.0,5000000.0,3000000.0,3000000.0,3000000.0,4000000.0,46000000.0,17000000.0,2000000.0,2000000.0],"latest_value":2000000.0,"non_null_count":10,"min_value":2000000.0,"max_value":46000000.0,"total_abs_value":91000000.0},{"concept_name":"LossOnSalesAndRetirementOfNoncurrentAssetsEL","label":"固定資産売却除却損","values":[0.0,9000000.0,4000000.0,0.0,1000000.0,1000000.0,2000000.0,11000000.0,3000000.0,0.0],"latest_value":0.0,"non_null_count":10,"min_value":0.0,"max_value":11000000.0,"total_abs_value":31000000.0},{"concept_name":"LossOnValuationOfInvestmentSecuritiesEL","label":"投資有価証券評価損","values":[null,null,null,null,null,null,null,49000000.0,null,79000000.0],"latest_value":79000000.0,"non_null_count":2,"min_value":49000000.0,"max_value":79000000.0,"total_abs_value":128000000.0},{"concept_name":"BusinessStructureImprovementExpensesEL","label":"事業構造改善費用","values":[null,null,null,null,null,null,null,null,150000000.0,null],"latest_value":150000000.0,"non_null_count":1,"min_value":150000000.0,"max_value":150000000.0,"total_abs_value":150000000.0},{"concept_name":"ExtraordinaryLoss","label":"特別損失","values":[11000000.0,31000000.0,12000000.0,20000000.0,4000000.0,5000000.0,49000000.0,78000000.0,156000000.0,82000000.0],"latest_value":82000000.0,"non_null_count":10,"min_value":4000000.0,"max_value":156000000.0,"total_abs_value":448000000.0},{"concept_name":"IncomeBeforeIncomeTaxes","label":"税金等調整前当期純利益","values":[591000000.0,790000000.0,1191000000.0,1784000000.0,2652000000.0,1487000000.0,938000000.0,3528000000.0,5179000000.0,10325000000.0],"latest_value":10325000000.0,"non_null_count":10,"min_value":591000000.0,"max_value":10325000000.0,"total_abs_value":28465000000.0},{"concept_name":"IncomeTaxesCurrent","label":"法人税等合計","values":[282000000.0,406000000.0,574000000.0,882000000.0,1346000000.0,929000000.0,678000000.0,1363000000.0,1961000000.0,3816000000.0],"latest_value":3816000000.0,"non_null_count":10,"min_value":282000000.0,"max_value":3816000000.0,"total_abs_value":12237000000.0},{"concept_name":"IncomeTaxesDeferred","label":"法人税等調整額","values":[2000000.0,-29000000.0,-37000000.0,-110000000.0,-129000000.0,6000000.0,193000000.0,-323000000.0,-338000000.0,-521000000.0],"latest_value":-521000000.0,"non_null_count":10,"min_value":-521000000.0,"max_value":193000000.0,"total_abs_value":1688000000.0},{"concept_name":"IncomeTaxes","label":"法人税等","values":[285000000.0,376000000.0,537000000.0,771000000.0,1216000000.0,935000000.0,871000000.0,1039000000.0,1623000000.0,3295000000.0],"latest_value":3295000000.0,"non_null_count":10,"min_value":285000000.0,"max_value":3295000000.0,"total_abs_value":10948000000.0},{"concept_name":"ProfitLoss","label":"当期純利益","values":[305000000.0,414000000.0,653000000.0,1012000000.0,1435000000.0,551000000.0,66000000.0,2488000000.0,3555000000.0,7030000000.0],"latest_value":7030000000.0,"non_null_count":10,"min_value":66000000.0,"max_value":7030000000.0,"total_abs_value":17509000000.0},{"concept_name":"ProfitLossAttributableToNonControllingInterests","label":"非支配株主に帰属する当期純利益","values":[null,null,null,null,null,null,null,null,0.0,-51000000.0],"latest_value":-51000000.0,"non_null_count":2,"min_value":-51000000.0,"max_value":0.0,"total_abs_value":51000000.0},{"concept_name":"ProfitLossAttributableToOwnersOfParent","label":"親会社株主に帰属する当期純利益","values":[305000000.0,414000000.0,653000000.0,1012000000.0,1435000000.0,551000000.0,66000000.0,2488000000.0,3555000000.0,7081000000.0],"latest_value":7081000000.0,"non_null_count":10,"min_value":66000000.0,"max_value":7081000000.0,"total_abs_value":17560000000.0},{"concept_name":"CommissionFeeNOI","label":"受取手数料","values":[1000000.0,0.0,null,null,null,null,null,null,null,null],"latest_value":0.0,"non_null_count":2,"min_value":0.0,"max_value":1000000.0,"total_abs_value":1000000.0},{"concept_name":"EquityInLossesOfAffiliatesNOE","label":"持分法による投資損失","values":[15000000.0,null,null,null,null,null,null,null,null,null],"latest_value":15000000.0,"non_null_count":1,"min_value":15000000.0,"max_value":15000000.0,"total_abs_value":15000000.0},{"concept_name":"GainOnSalesOfInvestmentSecuritiesEI","label":"投資有価証券売却益","values":[5000000.0,null,null,null,369000000.0,null,null,null,null,null],"latest_value":369000000.0,"non_null_count":2,"min_value":5000000.0,"max_value":369000000.0,"total_abs_value":374000000.0},{"concept_name":"GainOnSalesOfSubsidiariesAndAffiliatesStocksEI","label":"関係会社株式売却益","values":[null,null,null,null,null,20000000.0,null,null,null,null],"latest_value":20000000.0,"non_null_count":1,"min_value":20000000.0,"max_value":20000000.0,"total_abs_value":20000000.0},{"concept_name":"GrossProfitNetGP","label":"売上総利益純額","values":[null,null,10553000000.0,12346000000.0,14587000000.0,17150000000.0,20116000000.0,null,null,null],"latest_value":20116000000.0,"non_null_count":5,"min_value":10553000000.0,"max_value":20116000000.0,"total_abs_value":74752000000.0},{"concept_name":"ImpairmentLossOnGoodwillEL","label":"のれん減損損失","values":[null,null,null,13000000.0,null,null,null,null,null,null],"latest_value":13000000.0,"non_null_count":1,"min_value":13000000.0,"max_value":13000000.0,"total_abs_value":13000000.0},{"concept_name":"OfficeTransferExpensesEL","label":"事務所移転費用","values":[4000000.0,16000000.0,4000000.0,3000000.0,null,null,null,null,null,null],"latest_value":3000000.0,"non_null_count":4,"min_value":3000000.0,"max_value":16000000.0,"total_abs_value":27000000.0},{"concept_name":"OtherEI","label":"その他特別利益","values":[0.0,null,null,null,null,null,null,null,null,null],"latest_value":0.0,"non_null_count":1,"min_value":0.0,"max_value":0.0,"total_abs_value":0.0},{"concept_name":"ProvisionForDirectorsBonusesSGA","label":"役員賞与引当金繰入額","values":[13000000.0,null,null,null,null,null,null,null,null,null],"latest_value":13000000.0,"non_null_count":1,"min_value":13000000.0,"max_value":13000000.0,"total_abs_value":13000000.0},{"concept_name":"ProvisionForSalesReturnsGP","label":"返品調整引当金繰入額","values":[null,null,null,3000000.0,null,0.0,null,null,null,null],"latest_value":0.0,"non_null_count":2,"min_value":0.0,"max_value":3000000.0,"total_abs_value":3000000.0},{"concept_name":"ProvisionOfAllowanceForDoubtfulAccountsSGA","label":"貸倒引当金繰入額","values":[1000000.0,1000000.0,null,null,null,null,null,null,null,null],"latest_value":1000000.0,"non_null_count":2,"min_value":1000000.0,"max_value":1000000.0,"total_abs_value":2000000.0},{"concept_name":"RefundedConsumptionTaxesNOI","label":"消費税等還付金","values":[8000000.0,2000000.0,6000000.0,2000000.0,3000000.0,null,null,null,null,null],"latest_value":3000000.0,"non_null_count":5,"min_value":2000000.0,"max_value":8000000.0,"total_abs_value":21000000.0},{"concept_name":"ReversalOfProvisionForSalesReturnsGP","label":"返品調整引当金戻入額","values":[null,null,null,null,0.0,null,null,null,null,null],"latest_value":0.0,"non_null_count":1,"min_value":0.0,"max_value":0.0,"total_abs_value":0.0},{"concept_name":"SubsidyIncomeNOIBounty","label":"助成金収入","values":[null,null,null,null,11000000.0,null,null,null,null,null],"latest_value":11000000.0,"non_null_count":1,"min_value":11000000.0,"max_value":11000000.0,"total_abs_value":11000000.0}]};
+</script>
+<script>
+const data = window.PL_TREND_DATA;
+let unit = 1000000;
+const initialItem = data.items.find((item) => item.concept_name === "NetSales") || data.items[0];
+let selectedConcepts = initialItem ? [initialItem.concept_name] : [];
+let chartResizeFrame = 0;
+const colors = ["#55d6c2", "#ff6b57", "#f4b942", "#9ad66d", "#b58cff", "#5da9ff", "#ff8fb3", "#d8d456", "#8ce0a3", "#d89b6a"];
+const canvasTheme = {
+  grid: "#34392f",
+  text: "#a8ad9f",
+  zero: "#f0eadb",
+  pointFill: "#151917"
+};
+
+const el = (id) => document.getElementById(id);
+const seriesColor = (index) => colors[index % colors.length];
+const selectedItems = () => selectedConcepts
+  .map((concept) => data.items.find((item) => item.concept_name === concept))
+  .filter(Boolean);
+const selectedIndexOf = (item) => selectedConcepts.indexOf(item.concept_name);
+const scopeText = (scope) => scope === "consolidated" ? "連結" : scope === "non_consolidated" ? "個別" : scope;
+const sourceText = (source) => source === "edinet_xbrl" ? "EDINET XBRL" : source;
+const unitLabel = () => unit === 1 ? "円" : unit === 1000000 ? "百万円" : "億円";
+const scaleValue = (value) => value === null || value === undefined ? null : value / unit;
+const formatValue = (value) => {
+  if (value === null || value === undefined || Number.isNaN(value)) return "-";
+  const scaled = scaleValue(value);
+  const abs = Math.abs(scaled);
+  const digits = abs >= 100 ? 0 : abs >= 10 ? 1 : 2;
+  return scaled.toLocaleString("ja-JP", { maximumFractionDigits: digits }) + " " + unitLabel();
+};
+const compactValue = (value) => {
+  if (value === null || value === undefined || Number.isNaN(value)) return "-";
+  const scaled = scaleValue(value);
+  return scaled.toLocaleString("ja-JP", { notation: "compact", maximumFractionDigits: 2 });
+};
+
+function toggleItemSelection(conceptName) {
+  if (selectedConcepts.includes(conceptName)) {
+    if (selectedConcepts.length > 1) {
+      selectedConcepts = selectedConcepts.filter((concept) => concept !== conceptName);
+    }
+  } else {
+    selectedConcepts = [...selectedConcepts, conceptName];
+  }
+  renderAll();
+}
+
+function initHeader() {
+  const latestReport = data.selected_reports[data.selected_reports.length - 1];
+  el("title").textContent = `${data.ticker} ${data.name || ""} 損益計算書`;
+  el("scopeLabel").textContent = scopeText(latestReport.consolidation_scope);
+  el("sourceLabel").textContent = sourceText(data.source);
+  el("periodCount").textContent = data.periods.length;
+  el("itemCount").textContent = data.items.length;
+  el("latestDoc").textContent = latestReport.doc_id;
+  el("periodStrip").style.setProperty("--period-count", data.periods.length);
+  el("periodStrip").innerHTML = data.periods.map((period) => `<div class="period-cell">${period}</div>`).join("");
+  el("tableHead").innerHTML = `<tr><th>項目</th>${data.periods.map((period) => `<th>${period}</th>`).join("")}</tr>`;
+}
+
+function sparkline(values) {
+  const width = 92;
+  const height = 45;
+  const present = values.map((value, index) => [value, index]).filter(([value]) => value !== null && value !== undefined);
+  if (present.length < 2) return `<svg class="spark" viewBox="0 0 ${width} ${height}" aria-hidden="true"></svg>`;
+  const ys = present.map(([value]) => scaleValue(value));
+  let min = Math.min(...ys);
+  let max = Math.max(...ys);
+  if (min === max) {
+    min -= 1;
+    max += 1;
+  }
+  const points = present.map(([value, index]) => {
+    const x = values.length === 1 ? width / 2 : (index / (values.length - 1)) * (width - 8) + 4;
+    const y = height - 5 - ((scaleValue(value) - min) / (max - min)) * (height - 10);
+    return `${x.toFixed(2)},${y.toFixed(2)}`;
+  });
+  return `<svg class="spark" viewBox="0 0 ${width} ${height}" aria-hidden="true">
+    <polyline points="${points.join(" ")}" fill="none" stroke="#55d6c2" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></polyline>
+  </svg>`;
+}
+
+function renderItems() {
+  const query = el("search").value.trim().toLowerCase();
+  const filtered = data.items.filter((item) => {
+    const haystack = `${item.label} ${item.concept_name}`.toLowerCase();
+    return haystack.includes(query);
+  });
+  if (!filtered.length) {
+    el("items").innerHTML = `<div class="empty">一致する項目がありません</div>`;
+    return;
+  }
+  el("items").innerHTML = filtered.map((item) => {
+    const selectedIndex = selectedIndexOf(item);
+    const isSelected = selectedIndex !== -1;
+    const color = isSelected ? seriesColor(selectedIndex) : "#34392f";
+    return `
+    <button class="item ${isSelected ? "selected" : ""}" type="button" data-concept="${item.concept_name}" aria-pressed="${isSelected ? "true" : "false"}" style="--series-color: ${color}">
+      <span class="item-toggle" aria-hidden="true"></span>
+      <span>
+        <span class="item-name">${item.label}</span>
+        <span class="item-code">${item.concept_name}</span>
+        <span class="item-value">${formatValue(item.latest_value)}</span>
+      </span>
+      ${sparkline(item.values)}
+    </button>
+  `;
+  }).join("");
+  document.querySelectorAll(".item").forEach((button) => {
+    button.addEventListener("click", () => {
+      toggleItemSelection(button.dataset.concept);
+    });
+  });
+}
+
+function renderTable() {
+  const rows = data.items.map((item) => {
+    const isSelected = selectedConcepts.includes(item.concept_name);
+    return `
+    <tr class="${isSelected ? "selected-row" : ""}">
+      <td><b>${item.label}</b><span>${item.concept_name}</span></td>
+      ${item.values.map((value) => `<td>${compactValue(value)}</td>`).join("")}
+    </tr>
+  `;
+  }).join("");
+  el("tableBody").innerHTML = rows;
+}
+
+function setCanvasSize(canvas) {
+  const rect = canvas.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = Math.max(1, Math.round(rect.width * dpr));
+  canvas.height = Math.max(1, Math.round(rect.height * dpr));
+  const ctx = canvas.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return { ctx, width: rect.width, height: rect.height };
+}
+
+function drawChart() {
+  const canvas = el("detailChart");
+  const { ctx, width, height } = setCanvasSize(canvas);
+  ctx.clearRect(0, 0, width, height);
+  const series = selectedItems();
+  const compact = width < 560;
+  const padding = {
+    left: compact ? 60 : 76,
+    right: compact ? 14 : 24,
+    top: 28,
+    bottom: compact ? 46 : 54
+  };
+  const chartWidth = width - padding.left - padding.right;
+  const chartHeight = height - padding.top - padding.bottom;
+  const scaledSeries = series.map((item) => item.values.map(scaleValue));
+  const present = scaledSeries.flat().filter((value) => value !== null && value !== undefined);
+  if (!present.length) return;
+  let min = Math.min(...present, 0);
+  let max = Math.max(...present, 0);
+  if (min === max) {
+    min -= 1;
+    max += 1;
+  }
+  const pad = (max - min) * 0.12;
+  min -= pad;
+  max += pad;
+  const xAt = (index) => padding.left + (data.periods.length === 1 ? chartWidth / 2 : index / (data.periods.length - 1) * chartWidth);
+  const yAt = (value) => padding.top + (max - value) / (max - min) * chartHeight;
+
+  ctx.strokeStyle = canvasTheme.grid;
+  ctx.lineWidth = 1;
+  ctx.fillStyle = canvasTheme.text;
+  ctx.font = `${compact ? 11 : 12}px Yu Gothic, Hiragino Kaku Gothic ProN, sans-serif`;
+  ctx.textAlign = "right";
+  ctx.textBaseline = "middle";
+  for (let i = 0; i <= 4; i++) {
+    const value = min + (max - min) * i / 4;
+    const y = yAt(value);
+    ctx.beginPath();
+    ctx.moveTo(padding.left, y);
+    ctx.lineTo(width - padding.right, y);
+    ctx.stroke();
+    ctx.fillText(value.toLocaleString("ja-JP", { maximumFractionDigits: 1 }), padding.left - 10, y);
+  }
+
+  const zeroY = yAt(0);
+  if (zeroY > padding.top && zeroY < height - padding.bottom) {
+    ctx.strokeStyle = canvasTheme.zero;
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.moveTo(padding.left, zeroY);
+    ctx.lineTo(width - padding.right, zeroY);
+    ctx.stroke();
+  }
+
+  ctx.textAlign = "center";
+  ctx.textBaseline = "top";
+  const visibleLabels = Math.max(2, Math.floor(chartWidth / (compact ? 76 : 64)));
+  const labelStep = Math.max(1, Math.ceil(data.periods.length / visibleLabels));
+  data.periods.forEach((period, index) => {
+    if (index !== 0 && index !== data.periods.length - 1 && index % labelStep !== 0) return;
+    const x = xAt(index);
+    ctx.fillStyle = canvasTheme.text;
+    ctx.fillText(period, x, height - padding.bottom + 18);
+  });
+
+  scaledSeries.forEach((values, seriesIndex) => {
+    ctx.strokeStyle = seriesColor(seriesIndex);
+    ctx.lineWidth = 3;
+    ctx.lineJoin = "round";
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    let started = false;
+    values.forEach((value, index) => {
+      if (value === null || value === undefined) {
+        started = false;
+        return;
+      }
+      const x = xAt(index);
+      const y = yAt(value);
+      if (!started) {
+        ctx.moveTo(x, y);
+        started = true;
+      } else {
+        ctx.lineTo(x, y);
+      }
+    });
+    ctx.stroke();
+
+    values.forEach((value, index) => {
+      if (value === null || value === undefined) return;
+      const x = xAt(index);
+      const y = yAt(value);
+      ctx.fillStyle = canvasTheme.pointFill;
+      ctx.strokeStyle = seriesColor(seriesIndex);
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(x, y, 4.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    });
+  });
+
+  canvas.onmousemove = (event) => {
+    const rect = canvas.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const nearest = data.periods
+      .map((period, index) => ({ period, index, dist: Math.abs(xAt(index) - x) }))
+      .sort((a, b) => a.dist - b.dist)[0];
+    const entries = series
+      .map((item, index) => ({
+        item,
+        index,
+        rawValue: item.values[nearest.index],
+        scaledValue: scaleValue(item.values[nearest.index])
+      }))
+      .filter((entry) => entry.rawValue !== null && entry.rawValue !== undefined);
+    if (!entries.length) {
+      el("tooltip").style.display = "none";
+      return;
+    }
+    const tip = el("tooltip");
+    const topY = Math.min(...entries.map((entry) => yAt(entry.scaledValue)));
+    tip.style.display = "block";
+    tip.style.left = `${Math.max(8, Math.min(rect.width - 240, xAt(nearest.index) + 10))}px`;
+    tip.style.top = `${Math.max(8, topY - 46)}px`;
+    tip.innerHTML = `<b>${nearest.period}</b>${entries.map((entry) => `
+      <div class="tooltip-row" style="--series-color: ${seriesColor(entry.index)}">
+        <span class="series-dot"></span>
+        <span>${entry.item.label}</span>
+        <strong>${formatValue(entry.rawValue)}</strong>
+      </div>
+    `).join("")}`;
+  };
+  canvas.onmouseleave = () => {
+    el("tooltip").style.display = "none";
+  };
+}
+
+function scheduleChartDraw() {
+  cancelAnimationFrame(chartResizeFrame);
+  chartResizeFrame = requestAnimationFrame(drawChart);
+}
+
+function renderSelected() {
+  const series = selectedItems();
+  if (!series.length) return;
+  el("selectedLabel").textContent = series.length === 1 ? series[0].label : `${series[0].label} + ${series.length - 1}項目`;
+  el("selectedCode").textContent = series.map((item) => item.concept_name).join(" / ");
+  el("legend").innerHTML = series.map((item, index) => `
+    <span class="legend-chip" style="--series-color: ${seriesColor(index)}">
+      <span class="series-dot"></span>
+      <span>${item.label}</span>
+    </span>
+  `).join("");
+  el("latestValues").innerHTML = series.map((item, index) => `
+    <div class="latest-row" style="--series-color: ${seriesColor(index)}">
+      <span class="series-dot"></span>
+      <b>${item.label}</b>
+      <strong>${formatValue(item.latest_value)}</strong>
+    </div>
+  `).join("");
+  drawChart();
+}
+
+function renderAll() {
+  renderItems();
+  renderTable();
+  renderSelected();
+}
+
+document.querySelectorAll("[data-unit]").forEach((button) => {
+  button.addEventListener("click", () => {
+    unit = Number(button.dataset.unit);
+    document.querySelectorAll("[data-unit]").forEach((item) => item.classList.toggle("active", item === button));
+    renderAll();
+  });
+});
+el("search").addEventListener("input", renderItems);
+window.addEventListener("resize", scheduleChartDraw);
+if ("ResizeObserver" in window) {
+  const chartResizeObserver = new ResizeObserver(scheduleChartDraw);
+  chartResizeObserver.observe(el("detailChart"));
+}
+initHeader();
+renderAll();
+</script>
+</body>
+</html>
