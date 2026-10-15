@@ -9,12 +9,12 @@ dependencies = [
     "brotli>=1.1,<2",
     "pysocks>=1.7,<2",
     "beautifulsoup4>=4.14.3,<5",
-    "pillow>=11.3,<12",
+    "pillow>=12.3,<13",
 ]
 
 [dependency-groups]
 dev = [
-    "pytest>=8.0,<9",
+    "pytest>=9.1.1,<10",
     "playwright>=1.52,<2",
 ]
 
